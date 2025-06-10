@@ -726,8 +726,8 @@
   const rootNotes = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
 
   function getRootNoteFromHeight(y, canvasHeight) {
-    // Map Y position to root notes (top = C, bottom = B)
-    const normalizedY = y / canvasHeight; // 0 = top, 1 = bottom
+    // Map Y position to root notes (top = B, bottom = C) - INVERTED for natural hand movement
+    const normalizedY = 1 - (y / canvasHeight); // 0 = bottom, 1 = top (INVERTED)
     const rootIndex = Math.floor(normalizedY * rootNotes.length);
     return rootNotes[Math.min(rootIndex, rootNotes.length - 1)];
   }
