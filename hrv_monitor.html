@@ -48,6 +48,35 @@
     let drawId = null;
     let torchTrack = null;
 
+    // Calculate signal quality based on signal stability and noise
+    function calculateSignalQuality() {
+      if (samples.length < 30) return 0; // Not enough data
+      
+      const recentSamples = samples.slice(-30); // Last 1 second of data
+      const mean = recentSamples.reduce((a, b) => a + b, 0) / recentSamples.length;
+      const variance = recentSamples.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / recentSamples.length;
+      const coefficientOfVariation = Math.sqrt(variance) / mean;
+      
+      // Lower coefficient of variation = better signal quality
+      // Typical good PPG signals have CoV between 0.02-0.1
+      const normalizedQuality = Math.max(0, Math.min(1, (0.15 - coefficientOfVariation) / 0.13));
+      
+      return normalizedQuality;
+    }
+
+    // Calculate RMSSD (Root Mean Square of Successive Differences)
+    function calculateRMSSD(intervals) {
+      if (intervals.length < 2) return 0;
+      
+      let sumSquaredDiffs = 0;
+      for (let i = 1; i < intervals.length; i++) {
+        const diff = intervals[i] - intervals[i-1];
+        sumSquaredDiffs += diff * diff;
+      }
+      
+      return Math.sqrt(sumSquaredDiffs / (intervals.length - 1));
+    }
+
     // Start camera with torch (if supported)
     async function startCamera() {
       const constraints = {
@@ -106,9 +135,10 @@
       bpmDiv.textContent = '';
       hrvDiv.textContent = '';
       chartCtx.clearRect(0, 0, chart.width, chart.height);
+      console.log('Data reset - starting fresh measurement');
     }
 
-    // Extract average red pixel value from a frame, with spike removal
+    // Extract average red pixel value from a frame, with enhanced spike removal
     function getRedValue() {
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       let frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -117,35 +147,156 @@
         sum += frame.data[i]; // R
         count++;
       }
-      let avg = sum / count;
-      // Remove initial spikes: if the last value exists and this is >30% different, smooth it
-      if (samples.length > 0) {
-        let last = samples[samples.length - 1];
-        if (Math.abs(avg - last) / last > 0.3) {
-          avg = last + 0.3 * (avg > last ? 1 : -1) * Math.abs(last);
-        }
-      }
-      return avg;
+      let rawValue = sum / count;
+      
+      // Enhanced spike removal with multiple filters
+      let filteredValue = applySpikeFilter(rawValue);
+      
+      return filteredValue;
     }
 
-    // Simple peak detection for heartbeat (PPG)
+    // Enhanced spike filtering function
+    function applySpikeFilter(currentValue) {
+      // Skip the first few samples to establish baseline
+      const WARMUP_SAMPLES = 10;
+      if (samples.length < WARMUP_SAMPLES) {
+        return currentValue;
+      }
+      
+      // Calculate rolling statistics for spike detection
+      const WINDOW_SIZE = Math.min(20, samples.length);
+      const recentSamples = samples.slice(-WINDOW_SIZE);
+      const mean = recentSamples.reduce((a, b) => a + b, 0) / recentSamples.length;
+      const variance = recentSamples.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / recentSamples.length;
+      const stdDev = Math.sqrt(variance);
+      
+      // Debug logging for spike detection
+      console.log(`Debug: Raw=${currentValue.toFixed(2)}, Mean=${mean.toFixed(2)}, StdDev=${stdDev.toFixed(2)}`);
+      
+      // Detect extreme spikes (beyond 3 standard deviations)
+      const SPIKE_THRESHOLD = 3;
+      const deviation = Math.abs(currentValue - mean);
+      
+      if (deviation > SPIKE_THRESHOLD * stdDev && stdDev > 1) {
+        // This is likely a spike - apply correction
+        console.log(`Spike detected! Deviation: ${deviation.toFixed(2)}, Threshold: ${(SPIKE_THRESHOLD * stdDev).toFixed(2)}`);
+        
+        // Option 1: Replace with median of recent samples
+        const sortedRecent = [...recentSamples].sort((a, b) => a - b);
+        const median = sortedRecent[Math.floor(sortedRecent.length / 2)];
+        
+        // Option 2: Limit the change to a reasonable amount
+        const maxChange = 2 * stdDev;
+        const limitedValue = currentValue > mean 
+          ? mean + maxChange 
+          : mean - maxChange;
+        
+        // Use the more conservative approach
+        const correctedValue = Math.abs(median - mean) < Math.abs(limitedValue - mean) ? median : limitedValue;
+        
+        console.log(`Spike corrected: ${currentValue.toFixed(2)} -> ${correctedValue.toFixed(2)}`);
+        return correctedValue;
+      }
+      
+      // For normal values, apply gentle smoothing to reduce noise
+      if (samples.length > 0) {
+        const SMOOTHING_FACTOR = 0.8; // Higher = more smoothing
+        const lastValue = samples[samples.length - 1];
+        return SMOOTHING_FACTOR * lastValue + (1 - SMOOTHING_FACTOR) * currentValue;
+      }
+      
+      return currentValue;
+    }
+
+    // Enhanced peak detection for heartbeat (PPG) with spike resistance
     function detectPeak(window) {
-      let max = Math.max(...window);
-      let idx = window.lastIndexOf(max);
-      // Only count as peak if it's the max in the 0.5s window and not at the edge
-      return idx > 0 && idx < window.length - 1 && window[idx] > window[idx - 1] && window[idx] > window[idx + 1];
+      if (window.length < 5) return false;
+      
+      // Apply additional smoothing to the detection window to reduce noise
+      const smoothedWindow = [];
+      for (let i = 0; i < window.length; i++) {
+        if (i === 0 || i === window.length - 1) {
+          smoothedWindow[i] = window[i];
+        } else {
+          // Simple 3-point moving average
+          smoothedWindow[i] = (window[i-1] + window[i] + window[i+1]) / 3;
+        }
+      }
+      
+      // Find local maxima that represent true peaks
+      const minPeakProminence = 0.1; // Minimum height difference to consider a peak
+      const windowMean = smoothedWindow.reduce((a, b) => a + b, 0) / smoothedWindow.length;
+      const windowStd = Math.sqrt(smoothedWindow.reduce((sum, val) => sum + Math.pow(val - windowMean, 2), 0) / smoothedWindow.length);
+      
+      // Look for the most prominent peak in the window
+      let bestPeakIdx = -1;
+      let bestPeakProminence = 0;
+      
+      for (let i = 2; i < smoothedWindow.length - 2; i++) {
+        const current = smoothedWindow[i];
+        const left = smoothedWindow[i - 1];
+        const right = smoothedWindow[i + 1];
+        
+        // Check if this is a local maximum
+        if (current > left && current > right) {
+          // Calculate prominence (how much this peak stands out)
+          const localMin = Math.min(...smoothedWindow.slice(Math.max(0, i-3), Math.min(smoothedWindow.length, i+4)));
+          const prominence = current - localMin;
+          
+          // Only consider significant peaks above the baseline noise
+          if (prominence > minPeakProminence && prominence > 0.5 * windowStd) {
+            if (prominence > bestPeakProminence) {
+              bestPeakProminence = prominence;
+              bestPeakIdx = i;
+            }
+          }
+        }
+      }
+      
+      // Debug logging for peak detection
+      if (bestPeakIdx > 0) {
+        console.log(`Peak detected at index ${bestPeakIdx}, prominence: ${bestPeakProminence.toFixed(3)}`);
+      }
+      
+      return bestPeakIdx > 0;
     }
 
     function drawChart(data) {
       chartCtx.clearRect(0, 0, chart.width, chart.height);
       if (data.length < 2) return;
+      
+      const min = Math.min(...data);
+      const max = Math.max(...data);
+      const range = max - min;
+      
+      // Draw the main signal line
       chartCtx.beginPath();
-      chartCtx.moveTo(0, chart.height - (data[0] - Math.min(...data)) / (Math.max(...data) - Math.min(...data)) * chart.height);
+      chartCtx.moveTo(0, chart.height - (data[0] - min) / range * chart.height);
       for (let i = 1; i < data.length; i++) {
-        chartCtx.lineTo(i / (data.length - 1) * chart.width, chart.height - (data[i] - Math.min(...data)) / (Math.max(...data) - Math.min(...data)) * chart.height);
+        chartCtx.lineTo(i / (data.length - 1) * chart.width, chart.height - (data[i] - min) / range * chart.height);
       }
       chartCtx.strokeStyle = 'red';
+      chartCtx.lineWidth = 1;
       chartCtx.stroke();
+      
+      // Add baseline reference line
+      if (data.length > 10) {
+        const baseline = data.slice(-10).reduce((a, b) => a + b, 0) / 10;
+        const baselineY = chart.height - (baseline - min) / range * chart.height;
+        chartCtx.beginPath();
+        chartCtx.moveTo(0, baselineY);
+        chartCtx.lineTo(chart.width, baselineY);
+        chartCtx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+        chartCtx.lineWidth = 1;
+        chartCtx.setLineDash([5, 5]);
+        chartCtx.stroke();
+        chartCtx.setLineDash([]);
+      }
+      
+      // Show signal quality indicator
+      const quality = calculateSignalQuality();
+      chartCtx.fillStyle = quality > 0.7 ? 'green' : quality > 0.4 ? 'orange' : 'red';
+      chartCtx.fillRect(chart.width - 20, 10, 10, 10);
     }
 
     // --- Add event listeners and main logic ---
@@ -185,7 +336,7 @@
       times.push(Date.now());
       drawChart(samples);
 
-      // Peak detection (simple, for demo)
+      // Enhanced peak detection with quality filtering
       const windowSize = 15; // ~0.5s at 30fps
       if (samples.length > windowSize) {
         const window = samples.slice(-windowSize);
@@ -193,15 +344,53 @@
           const now = Date.now();
           if (lastPeakTime && now - lastPeakTime > 300) { // at least 0.3s between peaks
             const rr = now - lastPeakTime;
-            rrIntervals.push(rr);
-            // Calculate BPM
-            const bpm = Math.round(60000 / rr);
-            bpmDiv.textContent = `Heart Rate: ${bpm} BPM`;
-            // Calculate HRV (SDNN)
-            if (rrIntervals.length > 1) {
-              const mean = rrIntervals.reduce((a, b) => a + b, 0) / rrIntervals.length;
-              const sdnn = Math.sqrt(rrIntervals.map(x => Math.pow(x - mean, 2)).reduce((a, b) => a + b, 0) / (rrIntervals.length - 1));
-              hrvDiv.textContent = `HRV (SDNN): ${Math.round(sdnn)} ms`;
+            
+            // Filter out physiologically impossible RR intervals
+            const MIN_RR = 300; // 200 BPM max
+            const MAX_RR = 2000; // 30 BPM min
+            
+            if (rr >= MIN_RR && rr <= MAX_RR) {
+              // Additional quality check: reject extreme changes from running average
+              if (rrIntervals.length > 2) {
+                const recentMean = rrIntervals.slice(-5).reduce((a, b) => a + b, 0) / Math.min(5, rrIntervals.length);
+                const changePercent = Math.abs(rr - recentMean) / recentMean;
+                
+                // Only accept changes up to 50% from recent average (handles arrhythmias but rejects artifacts)
+                if (changePercent > 0.5) {
+                  console.log(`RR interval rejected: ${rr}ms (${changePercent.toFixed(2)*100}% change from average)`);
+                  lastPeakTime = now; // Update timing but don't record interval
+                  return;
+                }
+              }
+              
+              rrIntervals.push(rr);
+              console.log(`Valid RR interval: ${rr}ms`);
+              
+              // Calculate BPM (use average of last few intervals for stability)
+              const recentRRs = rrIntervals.slice(-3); // Last 3 intervals
+              const avgRR = recentRRs.reduce((a, b) => a + b, 0) / recentRRs.length;
+              const bpm = Math.round(60000 / avgRR);
+              
+              // Calculate signal quality indicator
+              const signalQuality = calculateSignalQuality();
+              const qualityIcon = signalQuality > 0.7 ? '🟢' : signalQuality > 0.4 ? '🟡' : '🔴';
+              
+              bpmDiv.textContent = `Heart Rate: ${bpm} BPM ${qualityIcon}`;
+              
+              // Calculate HRV (SDNN) with improved algorithm
+              if (rrIntervals.length > 4) { // Need more samples for reliable HRV
+                const validIntervals = rrIntervals.slice(-20); // Use last 20 intervals max
+                const mean = validIntervals.reduce((a, b) => a + b, 0) / validIntervals.length;
+                const variance = validIntervals.reduce((sum, rr) => sum + Math.pow(rr - mean, 2), 0) / (validIntervals.length - 1);
+                const sdnn = Math.sqrt(variance);
+                
+                // Also calculate RMSSD (root mean square of successive differences)
+                const rmssd = calculateRMSSD(validIntervals);
+                
+                hrvDiv.textContent = `HRV: SDNN=${Math.round(sdnn)}ms, RMSSD=${Math.round(rmssd)}ms`;
+              }
+            } else {
+              console.log(`RR interval out of physiological range: ${rr}ms`);
             }
           }
           lastPeakTime = now;
