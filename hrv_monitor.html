@@ -120,4 +120,95 @@
       chartCtx.clearRect(0, 0, chart.width, chart.height);
       if (data.length < 2) return;
       chartCtx.beginPath();
-      chartCtx.moveTo(0, chart.height - (data[0] - Math.min(...
+      chartCtx.moveTo(0, chart.height - (data[0] - Math.min(...data)) / (Math.max(...data) - Math.min(...data)) * chart.height);
+      for (let i = 1; i < data.length; i++) {
+        chartCtx.lineTo(i / (data.length - 1) * chart.width, chart.height - (data[i] - Math.min(...data)) / (Math.max(...data) - Math.min(...data)) * chart.height);
+      }
+      chartCtx.strokeStyle = 'red';
+      chartCtx.stroke();
+    }
+
+    // --- Add event listeners and main logic ---
+
+    startBtn.addEventListener('click', async () => {
+      startBtn.disabled = true;
+      stopBtn.disabled = false;
+      tips.textContent = 'Requesting camera permission...';
+      try {
+        await startCamera();
+        tips.textContent = 'Camera started. Place your fingertip over the camera and flashlight.';
+        capturing = true;
+        resetData();
+        video.style.display = 'block';
+        sampleLoop();
+      } catch (e) {
+        tips.textContent = 'Camera permission denied or not available.';
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+      }
+    });
+
+    stopBtn.addEventListener('click', () => {
+      capturing = false;
+      stopCamera();
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+      video.style.display = 'none';
+      tips.textContent = 'Measurement stopped.';
+    });
+
+    // Main sampling loop
+    async function sampleLoop() {
+      if (!capturing) return;
+      const red = getRedValue();
+      samples.push(red);
+      times.push(Date.now());
+      drawChart(samples);
+
+      // Peak detection (simple, for demo)
+      const windowSize = 15; // ~0.5s at 30fps
+      if (samples.length > windowSize) {
+        const window = samples.slice(-windowSize);
+        if (detectPeak(window)) {
+          const now = Date.now();
+          if (lastPeakTime && now - lastPeakTime > 300) { // at least 0.3s between peaks
+            const rr = now - lastPeakTime;
+            rrIntervals.push(rr);
+            // Calculate BPM
+            const bpm = Math.round(60000 / rr);
+            bpmDiv.textContent = `Heart Rate: ${bpm} BPM`;
+            // Calculate HRV (SDNN)
+            if (rrIntervals.length > 1) {
+              const mean = rrIntervals.reduce((a, b) => a + b, 0) / rrIntervals.length;
+              const sdnn = Math.sqrt(rrIntervals.map(x => Math.pow(x - mean, 2)).reduce((a, b) => a + b, 0) / (rrIntervals.length - 1));
+              hrvDiv.textContent = `HRV (SDNN): ${Math.round(sdnn)} ms`;
+            }
+          }
+          lastPeakTime = now;
+        }
+      }
+      drawId = requestAnimationFrame(sampleLoop);
+    }
+
+    // --- UI improvements ---
+
+    // Add some tips for the user
+    tips.textContent = 'Press Start to measure your heart rate.';
+
+    // Adjust canvas size on window resize
+    window.addEventListener('resize', () => {
+      canvas.width = video.clientWidth;
+      canvas.height = video.clientHeight;
+      drawChart(samples);
+    });
+
+    // Hide video element when not capturing
+    video.addEventListener('playing', () => {
+      setTimeout(() => {
+        if (!capturing) video.style.display = 'none';
+      }, 3000);
+    });
+
+  </script>
+</body>
+</html>
