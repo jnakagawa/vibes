@@ -464,6 +464,28 @@
   // Canvas sizing
   let width = window.innerWidth, height = window.innerHeight;
   [vcanvas, ocanvas].forEach(c => { c.width = width; c.height = height; });
+
+  // Set dynamic distance values based on screen height
+  function updateDistanceCalibration() {
+    const maxDistance = height;           // Close hand = screen height (100% vol)
+    const minDistance = height * 0.1;     // Far hand = 10% of screen height (0% vol)
+    
+    // Update control values
+    ctrl.maxDistance.value = maxDistance;
+    ctrl.minDistance.value = minDistance;
+    
+    // Update the displayed values
+    document.getElementById('maxDistanceVal').textContent = Math.round(maxDistance);
+    document.getElementById('minDistanceVal').textContent = Math.round(minDistance);
+    
+    // Update slider ranges to accommodate the new values
+    ctrl.maxDistance.max = Math.max(maxDistance * 1.5, 800);
+    ctrl.minDistance.max = Math.max(minDistance * 3, 200);
+    
+    debugLog(`📏 Dynamic distance calibration: Close=${maxDistance}px, Far=${minDistance}px (based on screen height: ${height}px)`);
+  }
+  
+  updateDistanceCalibration();
   
   // Bind control values to display spans
   function bind(id, spanId) {
@@ -507,6 +529,8 @@
     // Also resize offscreen canvas for edge detection
     offCanvas.width = width;
     offCanvas.height = height;
+    // Update distance calibration for new screen size
+    updateDistanceCalibration();
     debugLog('Canvas resized', { width, height });
   });
 
