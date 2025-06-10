@@ -52,12 +52,24 @@
     async function startCamera() {
       const constraints = {
         video: {
-          facingMode: 'environment',
+          facingMode: { ideal: 'environment' },
           width: { ideal: 320 },
           height: { ideal: 240 },
-          frameRate: { ideal: 30 }
+          frameRate: { ideal: 30 },
+          // Prefer iPhone 0.5x (ultra-wide) lens if available
+          // deviceId will be set dynamically if found
         }
       };
+
+      // Try to select the 0.5x lens (ultra-wide) on iPhone
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoDevices = devices.filter(d => d.kind === 'videoinput');
+      // iPhone 0.5x lens often has 'ultra' or 'wide' in label
+      let ultraWide = videoDevices.find(d => /ultra|0.5|wide/i.test(d.label));
+      if (ultraWide) {
+        constraints.video.deviceId = { exact: ultraWide.deviceId };
+      }
+
       stream = await navigator.mediaDevices.getUserMedia(constraints);
       video.srcObject = stream;
       // Try to enable torch
@@ -96,7 +108,7 @@
       chartCtx.clearRect(0, 0, chart.width, chart.height);
     }
 
-    // Extract average red pixel value from a frame
+    // Extract average red pixel value from a frame, with spike removal
     function getRedValue() {
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       let frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -105,7 +117,15 @@
         sum += frame.data[i]; // R
         count++;
       }
-      return sum / count;
+      let avg = sum / count;
+      // Remove initial spikes: if the last value exists and this is >30% different, smooth it
+      if (samples.length > 0) {
+        let last = samples[samples.length - 1];
+        if (Math.abs(avg - last) / last > 0.3) {
+          avg = last + 0.3 * (avg > last ? 1 : -1) * Math.abs(last);
+        }
+      }
+      return avg;
     }
 
     // Simple peak detection for heartbeat (PPG)
