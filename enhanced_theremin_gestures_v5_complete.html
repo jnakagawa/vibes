@@ -1,0 +1,1596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Complete Gesture Theremin v5 - Onboarding & Scales</title>
+<style>
+  html, body { margin:0; padding:0; overflow:hidden; background:black; color:white; }
+  #controls {
+    position:absolute; top:10px; left:10px;
+    background:rgba(0,0,0,0.8); padding:15px; border-radius:10px;
+    font-family:sans-serif; z-index:5; max-width:450px;
+    border: 2px solid #333;
+    backdrop-filter: blur(10px);
+    max-height: 90vh;
+    overflow-y: auto;
+    transition: transform 0.3s ease;
+  }
+  #controls.collapsed {
+    transform: translateX(-85%);
+  }
+  #controls.collapsed:hover {
+    transform: translateX(-5%);
+  }
+  .main-collapse-btn {
+    position: absolute;
+    top: 10px;
+    right: -40px;
+    background: rgba(0,0,0,0.8);
+    border: 2px solid #333;
+    color: white;
+    padding: 8px 12px;
+    border-radius: 0 10px 10px 0;
+    cursor: pointer;
+    font-size: 16px;
+    backdrop-filter: blur(10px);
+    transition: all 0.3s ease;
+  }
+  .main-collapse-btn:hover {
+    background: rgba(50,50,50,0.9);
+  }
+  #controls label { display:block; margin-top:8px; font-size:12px; }
+  #controls input[type="range"] { width:100%; }
+  #controls select { width:100%; margin-top:4px; }
+  #start-btn { margin-top:8px; padding:8px 12px; background:#4CAF50; color:white; border:none; border-radius:5px; cursor:pointer; }
+  #start-btn:hover { opacity:0.8; }
+  
+  /* Collapsible Panel Styles */
+  .panel-header {
+    background: rgba(50,50,50,0.8);
+    padding: 10px;
+    border-radius: 5px;
+    margin: 8px 0 4px 0;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border: 1px solid #555;
+    transition: background-color 0.3s;
+  }
+  .panel-header:hover {
+    background: rgba(70,70,70,0.8);
+  }
+  .panel-header.collapsed {
+    margin-bottom: 8px;
+  }
+  .panel-content {
+    margin-left: 10px;
+    border-left: 2px solid #555;
+    padding-left: 10px;
+    transition: max-height 0.3s ease;
+    overflow: hidden;
+  }
+  .panel-content.collapsed {
+    max-height: 0;
+    padding: 0 0 0 10px;
+    margin: 0;
+  }
+  .panel-arrow {
+    transition: transform 0.3s;
+    font-size: 14px;
+  }
+  .panel-arrow.collapsed {
+    transform: rotate(-90deg);
+  }
+  
+  canvas { position:absolute; top:0; left:0; width:100%; height:100%; }
+  .status-indicator {
+    display: inline-block; width: 12px; height: 12px; border-radius: 50%;
+    margin-right: 8px; background: #ff4444;
+  }
+  .status-indicator.active { background: #44ff44; }
+  .hand-info {
+    background: rgba(255,255,255,0.1); padding: 8px; border-radius: 5px;
+    margin-top: 10px; font-size: 11px;
+  }
+  .progress { background: rgba(255,255,255,0.2); padding: 5px; border-radius: 3px; margin-top: 5px; }
+  .gesture-status {
+    background: rgba(100,255,100,0.2); padding: 8px; border-radius: 5px;
+    margin-top: 10px; font-size: 12px; border: 1px solid #4f4;
+  }
+  .active-sounds {
+    background: rgba(255,200,0,0.2); padding: 6px; border-radius: 5px;
+    margin-top: 8px; font-size: 11px; border: 1px solid #fc0;
+  }
+  .visual-controls {
+    background: rgba(255,0,255,0.2); padding: 8px; border-radius: 5px;
+    margin-top: 8px; font-size: 11px; border: 1px solid #f0f;
+  }
+</style>
+</head>
+<body>
+<div id="controls">
+  <button class="main-collapse-btn" id="main-collapse-btn">◀</button>
+  <div style="display: flex; align-items: center; margin-bottom: 10px;">
+    <h2 style="margin: 0; flex: 1;">🎵 Complete Theremin v5</h2>
+    <div class="status-indicator" id="model-status"></div>
+  </div>
+  
+  <button id="start-btn">Start Audio & Effects</button>
+  
+  <!-- System Info Panel -->
+  <div class="panel-header" id="system-header">
+    <span>🎭 System Information</span>
+    <span class="panel-arrow">▼</span>
+  </div>
+  <div class="panel-content" id="system-panel">
+    <div class="hand-info">
+      <div>🎭 <strong>Version 5:</strong> Complete Experience</div>
+      <div id="hand-detection-status">Loading ML5.js HandPose model...</div>
+      <div class="progress">
+        ✅ Collapsible interface<br>
+        ✅ Musical scales<br>
+        ✅ Interactive onboarding<br>
+        ✅ All v4 features
+      </div>
+    </div>
+  </div>
+
+  <!-- Gesture Controls Panel -->
+  <div class="panel-header" id="gesture-header">
+    <span>🤚 Gesture Controls</span>
+    <span class="panel-arrow">▼</span>
+  </div>
+  <div class="panel-content" id="gesture-panel">
+    <div class="gesture-status">
+      <strong>🤚 Gesture Controls:</strong><br>
+      • Open Hand: Start new sound<br>
+      • ✊ Fist: Freeze current sound<br>
+      • ✌️ Peace: Clear all sounds<br>
+      <div id="gesture-feedback">Show hands to see gestures...</div>
+    </div>
+
+    <div class="active-sounds">
+      <strong>🎵 Active Sound Layers:</strong>
+      <div id="sound-layers">None</div>
+    </div>
+  </div>
+
+  <!-- Musical Scale Panel -->
+  <div class="panel-header" id="scale-header">
+    <span>🎼 Musical Scales</span>
+    <span class="panel-arrow">▼</span>
+  </div>
+  <div class="panel-content" id="scale-panel">
+    <label>Scale Type:
+      <select id="scaleType">
+        <option value="chromatic">Chromatic (All Notes)</option>
+        <option value="major" selected>Major Scale</option>
+        <option value="minor">Minor Scale</option>
+        <option value="pentatonic">Pentatonic</option>
+        <option value="colundi">Colundi (Modal)</option>
+      </select>
+    </label>
+    <label>Root Note:
+      <select id="rootNote">
+        <option value="C">C</option>
+        <option value="C#">C# / Db</option>
+        <option value="D">D</option>
+        <option value="D#">D# / Eb</option>
+        <option value="E">E</option>
+        <option value="F">F</option>
+        <option value="F#">F# / Gb</option>
+        <option value="G">G</option>
+        <option value="G#">G# / Ab</option>
+        <option value="A" selected>A</option>
+        <option value="A#">A# / Bb</option>
+        <option value="B">B</option>
+      </select>
+    </label>
+    <div id="scale-info" style="font-size: 10px; color: #aaa; margin-top: 5px;">
+      Current scale: A Major
+    </div>
+  </div>
+
+  <!-- Visual Effects Panel -->
+  <div class="panel-header" id="visual-header">
+    <span>🌈 Visual Effects</span>
+    <span class="panel-arrow">▼</span>
+  </div>
+  <div class="panel-content" id="visual-panel">
+    <div class="visual-controls">
+      <strong>🌈 Visual Effects:</strong><br>
+      <label>Effect Intensity: <span id="effectIntensityVal">0.7</span>
+        <input type="range" id="effectIntensity" min="0.1" max="1" step="0.1" value="0.7">
+      </label>
+      <label>Hand Glow Size: <span id="handGlowVal">30</span>
+        <input type="range" id="handGlow" min="10" max="60" step="5" value="30">
+      </label>
+    </div>
+
+    <div class="visual-controls" style="border-color: #0ff;">
+      <strong>📏 Volume Calibration:</strong><br>
+      <label>Close Hand Distance (100% vol): <span id="maxDistanceVal">120</span>
+        <input type="range" id="maxDistance" min="100" max="800" step="10" value="120">
+      </label>
+      <label>Far Hand Distance (0% vol): <span id="minDistanceVal">40</span>
+        <input type="range" id="minDistance" min="10" max="200" step="5" value="40">
+      </label>
+      <div id="distance-debug" style="font-size: 10px; color: #0ff; margin-top: 5px;">
+        Current distances will appear here...
+      </div>
+    </div>
+  </div>
+
+
+
+  <!-- Left Hand Controls Panel -->
+  <div class="panel-header" id="left-header">
+    <span>👈 Left Hand LFO Instrument</span>
+    <span class="panel-arrow">▼</span>
+  </div>
+  <div class="panel-content" id="left-panel">
+    <label>Waveform:
+      <select id="leftWaveform">
+        <option value="sine">Sine Wave</option>
+        <option value="triangle">Triangle Wave</option>
+        <option value="sawtooth">Sawtooth Wave</option>
+      </select>
+    </label>
+    <label>Base Pitch: <span id="leftBasePitchVal">440</span> Hz
+      <input type="range" id="leftBasePitch" min="100" max="1000" value="440">
+    </label>
+    <label>Y-Pitch Range: <span id="leftPitchRangeVal">800</span> Hz
+      <input type="range" id="leftPitchRange" min="200" max="2000" value="800">
+    </label>
+    <label>LFO Depth: <span id="leftLfoDepthVal">50</span> Hz
+      <input type="range" id="leftLfoDepth" min="0" max="200" value="50">
+    </label>
+    <label>Max Volume: <span id="leftMaxGainVal">0.3</span>
+      <input type="range" id="leftMaxGain" min="0" max="1" step="0.01" value="0.3">
+    </label>
+  </div>
+
+  <!-- Right Hand Controls Panel -->
+  <div class="panel-header" id="right-header">
+    <span>👉 Right Hand White Noise</span>
+    <span class="panel-arrow">▼</span>
+  </div>
+  <div class="panel-content" id="right-panel">
+    <label>Max Volume: <span id="rightMaxGainVal">0.25</span>
+      <input type="range" id="rightMaxGain" min="0" max="1" step="0.01" value="0.25">
+    </label>
+    <label>Y-Pitch Range: <span id="rightPitchRangeVal">3000</span> Hz
+      <input type="range" id="rightPitchRange" min="1000" max="8000" value="3000">
+    </label>
+    <label>Min Pitch: <span id="rightMinPitchVal">200</span> Hz
+      <input type="range" id="rightMinPitch" min="50" max="1000" value="200">
+    </label>
+    <label>Reverb Wet: <span id="rightReverbWetVal">0.5</span>
+      <input type="range" id="rightReverbWet" min="0" max="1" step="0.01" value="0.5">
+    </label>
+  </div>
+
+  <!-- Global Settings Panel -->
+  <div class="panel-header" id="global-header">
+    <span>⚙️ Global Settings</span>
+    <span class="panel-arrow">▼</span>
+  </div>
+  <div class="panel-content" id="global-panel">
+    <label>Master Volume: <span id="masterVolumeVal">0.7</span>
+      <input type="range" id="masterVolume" min="0" max="1" step="0.01" value="0.7">
+    </label>
+    <label>Smoothing: <span id="smoothingVal">0.15</span>
+      <input type="range" id="smoothing" min="0.01" max="0.5" step="0.01" value="0.15">
+    </label>
+  </div>
+</div>
+
+<video id="video" autoplay playsinline style="display:none"></video>
+<canvas id="video-canvas"></canvas>
+<canvas id="overlay-canvas"></canvas>
+
+<!-- ML5.js library -->
+<script src="https://unpkg.com/ml5@latest/dist/ml5.min.js"></script>
+
+<script>
+(async () => {
+  // Debug logging
+  function debugLog(message, data = null) {
+    console.log(`[SimplifiedTheremin-v4] ${message}`, data || '');
+  }
+
+  debugLog('Initializing Complete Gesture Theremin v5 - Onboarding & Scales');
+
+  // DOM elements
+  const video = document.getElementById('video');
+  const vcanvas = document.getElementById('video-canvas'), vctx = vcanvas.getContext('2d');
+  const ocanvas = document.getElementById('overlay-canvas'), octx = ocanvas.getContext('2d');
+  const startBtn = document.getElementById('start-btn');
+  const modelStatus = document.getElementById('model-status');
+  const handDetectionStatus = document.getElementById('hand-detection-status');
+  const gestureFeedback = document.getElementById('gesture-feedback');
+  const soundLayers = document.getElementById('sound-layers');
+
+  // Control elements
+  const ctrl = {};
+  ['leftWaveform', 'leftBasePitch', 'leftPitchRange', 'leftLfoDepth', 'leftMaxGain',
+   'rightMaxGain', 'rightPitchRange', 'rightMinPitch', 'rightReverbWet',
+   'masterVolume', 'smoothing', 'effectIntensity', 'handGlow', 'maxDistance', 'minDistance',
+   'scaleType', 'rootNote'].forEach(id => {
+    ctrl[id] = document.getElementById(id);
+  });
+
+  // Additional DOM elements for calibration
+  const distanceDebug = document.getElementById('distance-debug');
+  const scaleInfo = document.getElementById('scale-info');
+
+  // Main collapse button
+  const mainCollapseBtn = document.getElementById('main-collapse-btn');
+
+  // Face detection variables (for mask effect, not mouth tracking)
+  let facemesh = null;
+  let faceDetections = [];
+
+  // Mobile detection and main collapse functionality
+  function isMobile() {
+    return /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+           window.innerWidth <= 768;
+  }
+
+  // Initialize collapse state based on device
+  let isMainCollapsed = isMobile();
+
+  // Main menu collapse functionality
+  function toggleMainCollapse() {
+    isMainCollapsed = !isMainCollapsed;
+    const controls = document.getElementById('controls');
+    
+    if (isMainCollapsed) {
+      controls.classList.add('collapsed');
+      mainCollapseBtn.textContent = '▶';
+      debugLog('🎛️ Controls panel collapsed');
+    } else {
+      controls.classList.remove('collapsed');
+      mainCollapseBtn.textContent = '◀';
+      debugLog('🎛️ Controls panel expanded');
+    }
+  }
+
+  // COLLAPSIBLE PANEL SYSTEM (updated without mouth-debug)
+  function initializePanels() {
+    const headers = ['system', 'gesture', 'scale', 'visual', 'left', 'right', 'global'];
+    
+    headers.forEach(name => {
+      const header = document.getElementById(`${name}-header`);
+      const panel = document.getElementById(`${name}-panel`);
+      const arrow = header.querySelector('.panel-arrow');
+      
+      if (!header || !panel || !arrow) return; // Skip if elements don't exist
+      
+      // Start with some panels collapsed to save space
+      if (['left', 'right', 'global'].includes(name)) {
+        panel.classList.add('collapsed');
+        header.classList.add('collapsed');
+        arrow.classList.add('collapsed');
+      }
+      
+      header.onclick = () => {
+        const isCollapsed = panel.classList.contains('collapsed');
+        
+        if (isCollapsed) {
+          panel.classList.remove('collapsed');
+          header.classList.remove('collapsed');
+          arrow.classList.remove('collapsed');
+        } else {
+          panel.classList.add('collapsed');
+          header.classList.add('collapsed');
+          arrow.classList.add('collapsed');
+        }
+        
+        debugLog(`Panel ${name} ${isCollapsed ? 'expanded' : 'collapsed'}`);
+      };
+    });
+    
+    debugLog('✅ Collapsible panels initialized');
+  }
+
+  // MUSICAL SCALE SYSTEM
+  const scaleDefinitions = {
+    chromatic: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], // All semitones
+    major: [0, 2, 4, 5, 7, 9, 11], // Major scale intervals
+    minor: [0, 2, 3, 5, 7, 8, 10], // Natural minor scale
+    pentatonic: [0, 2, 4, 7, 9], // Major pentatonic
+    colundi: [0, 1, 3, 5, 6, 8, 10] // Locrian mode (colundi approximation)
+  };
+
+  const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+  
+  function noteToFrequency(noteIndex) {
+    // A4 = 440Hz at index 57 (A4 in MIDI)
+    const A4_INDEX = 57;
+    const A4_FREQ = 440;
+    return A4_FREQ * Math.pow(2, (noteIndex - A4_INDEX) / 12);
+  }
+
+  function quantizeToScale(frequency) {
+    const scaleType = ctrl.scaleType.value;
+    const rootNote = ctrl.rootNote.value;
+    
+    if (scaleType === 'chromatic') {
+      // No quantization for chromatic
+      return frequency;
+    }
+    
+    // Find the closest MIDI note
+    const midiNote = Math.round(12 * Math.log2(frequency / 440) + 69);
+    
+    // Get root note index (C = 0, C# = 1, etc.)
+    const rootIndex = noteNames.indexOf(rootNote);
+    
+    // Get scale intervals
+    const scaleIntervals = scaleDefinitions[scaleType];
+    
+    // Find the closest note in the scale
+    let closestNote = midiNote;
+    let minDistance = Infinity;
+    
+    // Check all octaves around the target note
+    for (let octave = -2; octave <= 2; octave++) {
+      scaleIntervals.forEach(interval => {
+        const scaleNote = rootIndex + interval + (octave * 12) + Math.floor((midiNote - rootIndex) / 12) * 12;
+        const distance = Math.abs(midiNote - scaleNote);
+        
+        if (distance < minDistance) {
+          minDistance = distance;
+          closestNote = scaleNote;
+        }
+      });
+    }
+    
+    return noteToFrequency(closestNote);
+  }
+
+  function updateScaleInfo() {
+    const scaleType = ctrl.scaleType.value;
+    const rootNote = ctrl.rootNote.value;
+    scaleInfo.textContent = `Current scale: ${rootNote} ${scaleType.charAt(0).toUpperCase() + scaleType.slice(1)}`;
+  }
+
+  // Scale control event listeners
+  ctrl.scaleType.onchange = updateScaleInfo;
+  ctrl.rootNote.onchange = updateScaleInfo;
+
+  // Canvas sizing
+  let width = window.innerWidth, height = window.innerHeight;
+  [vcanvas, ocanvas].forEach(c => { c.width = width; c.height = height; });
+  
+  // Bind control values to display spans
+  function bind(id, spanId) {
+    const inp = document.getElementById(id), span = document.getElementById(spanId);
+    if (!inp || !span) return;
+    span.innerText = inp.value;
+    inp.oninput = () => span.innerText = inp.value;
+  }
+
+  // Bind all controls
+  ['leftBasePitch', 'leftPitchRange', 'leftLfoDepth', 'leftMaxGain',
+   'rightMaxGain', 'rightPitchRange', 'rightMinPitch', 'rightReverbWet',
+   'masterVolume', 'smoothing', 'effectIntensity', 'handGlow', 'maxDistance', 'minDistance'].forEach(id => {
+    bind(id, id + 'Val');
+  });
+
+  // Initialize system components
+  initializePanels();
+  
+  debugLog('✅ Control initialization complete');
+
+  // EDGE DETECTION MOTION TRACKING SYSTEM - Initialize early
+  let frameCount = 0;
+  
+  // Create offscreen canvas for edge detection
+  const offCanvas = document.createElement('canvas');
+  const offCtx = offCanvas.getContext('2d', { willReadFrequently: true });
+  let previousFrameData = null;
+
+  // Initialize offscreen canvas
+  function initializeEdgeDetection() {
+    offCanvas.width = width;
+    offCanvas.height = height;
+    debugLog('✅ Edge detection system initialized');
+  }
+
+  window.addEventListener('resize', () => {
+    width = window.innerWidth; 
+    height = window.innerHeight;
+    [vcanvas, ocanvas].forEach(c => { c.width = width; c.height = height; });
+    // Also resize offscreen canvas for edge detection
+    offCanvas.width = width;
+    offCanvas.height = height;
+    debugLog('Canvas resized', { width, height });
+  });
+
+  // Initialize edge detection system
+  initializeEdgeDetection();
+
+  // VISUAL EFFECTS SYSTEM
+  
+  // Simple pitch to color mapping
+  function pitchToColor(frequency, alpha = 1) {
+    // Map frequency to hue (0-360 degrees)
+    const minFreq = 80;
+    const maxFreq = 2000;
+    const normalizedFreq = Math.max(0, Math.min(1, (frequency - minFreq) / (maxFreq - minFreq)));
+    
+    // Create a rainbow mapping: low freq = red (0°), high freq = violet (280°)
+    const hue = normalizedFreq * 280;
+    
+    return `hsla(${hue}, 80%, 60%, ${alpha})`;
+  }
+
+  // Edge detection visual effect
+  function drawEdgeDetectionEffect() {
+    if (!webcamRunning) return;
+    
+    // Draw current frame to offscreen canvas
+    offCtx.drawImage(video, 0, 0, width, height);
+    const currentFrameData = offCtx.getImageData(0, 0, width, height).data;
+    
+    if (previousFrameData) {
+      const step = 30; // Sample every 30th pixel for performance
+      const threshold = parseFloat(ctrl.effectIntensity.value) * 100; // Dynamic threshold
+      
+      for (let y = 0; y < height; y += step) {
+        for (let x = 0; x < width; x += step) {
+          const i = (y * width + x) * 4;
+          
+          // Calculate color difference between frames
+          const rDiff = Math.abs(currentFrameData[i] - previousFrameData[i]);
+          const gDiff = Math.abs(currentFrameData[i + 1] - previousFrameData[i + 1]);
+          const bDiff = Math.abs(currentFrameData[i + 2] - previousFrameData[i + 2]);
+          const totalDiff = rDiff + gDiff + bDiff;
+          
+          if (totalDiff > threshold) {
+            // Create colorful motion circles
+            const hue = (totalDiff / 765) * 360; // Map difference to hue
+            const size = parseInt(ctrl.handGlow.value) * 0.5; // Use hand glow size control
+            
+            octx.beginPath();
+            octx.arc(x, y, size, 0, 2 * Math.PI);
+            octx.fillStyle = `hsla(${hue}, 100%, 50%, 0.7)`;
+            octx.fill();
+          }
+        }
+      }
+    }
+    
+    // Store current frame for next comparison
+    previousFrameData = new Uint8ClampedArray(currentFrameData);
+  }
+
+  // Draw all frozen sound layer circles
+  function drawFrozenLayers() {
+    activeSounds.forEach(sound => {
+      if (sound.sustained && sound.frozenPosition) {
+        const size = parseInt(ctrl.handGlow.value);
+        
+        // Draw frozen circle with distinctive styling
+        octx.strokeStyle = sound.frozenColor;
+        octx.lineWidth = 4;
+        octx.setLineDash([5, 5]); // Dashed outline to show it's frozen
+        octx.beginPath();
+        octx.arc(sound.frozenPosition.x, sound.frozenPosition.y, size, 0, 2 * Math.PI);
+        octx.stroke();
+        octx.setLineDash([]); // Reset dash pattern
+        
+        // Inner fill with frozen styling
+        octx.fillStyle = sound.frozenColor.replace('0.8)', '0.3)'); // More transparent
+        octx.beginPath();
+        octx.arc(sound.frozenPosition.x, sound.frozenPosition.y, size * 0.7, 0, 2 * Math.PI);
+        octx.fill();
+        
+        // Freeze indicator
+        octx.fillStyle = sound.frozenColor;
+        octx.font = 'bold 16px Arial';
+        octx.fillText('🧊', sound.frozenPosition.x - 8, sound.frozenPosition.y + 6);
+        
+        // Layer ID and frequency
+        octx.font = 'bold 10px Arial';
+        octx.fillStyle = sound.frozenColor;
+        octx.fillText(`#${sound.id}`, sound.frozenPosition.x - 8, sound.frozenPosition.y - 25);
+        octx.fillText(`${Math.round(sound.frozenFrequency)}Hz`, sound.frozenPosition.x - 15, sound.frozenPosition.y - 12);
+      }
+    });
+  }
+
+  // FIRST: Request camera access
+  debugLog('Requesting camera access...');
+  let webcamRunning = false;
+  
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ 
+      video: { 
+        width: 1280, 
+        height: 720,
+        facingMode: "user"
+      } 
+    });
+    video.srcObject = stream; 
+    await video.play();
+    debugLog('✅ Camera access granted and video stream started');
+    webcamRunning = true;
+    
+  } catch (error) {
+    debugLog('❌ Error accessing camera:', error);
+    alert('Camera access failed. Please refresh and allow camera permissions.');
+    handDetectionStatus.textContent = 'Camera access required';
+    return;
+  }
+
+  // SECOND: Load ML5.js models (HandPose + FaceMesh)
+  debugLog('Loading ML5.js HandPose and FaceMesh models...');
+  handDetectionStatus.textContent = 'Loading ML5.js HandPose and FaceMesh models...';
+  
+  let handpose = null;
+  let predictions = [];
+
+  function modelReady() {
+    debugLog('✅ ML5.js HandPose model loaded successfully');
+    loadFaceMesh(); // Load FaceMesh after HandPose
+  }
+
+  function loadFaceMesh() {
+    debugLog('🔄 Loading FaceMesh model for face mask effect...');
+    
+    try {
+      // Try simpler configuration first
+      facemesh = ml5.faceMesh({
+        flipHorizontal: true,
+        maxNumFaces: 1,
+        runtime: 'mediapipe'
+        // Removed refineLandmarks which might cause issues
+      }, faceMeshReady);
+    } catch (error) {
+      debugLog('❌ Error loading FaceMesh model:', error);
+      
+      // Try fallback configuration
+      try {
+        debugLog('🔄 Trying fallback FaceMesh configuration...');
+        facemesh = ml5.faceMesh(video, faceMeshReady);
+      } catch (fallbackError) {
+        debugLog('❌ Fallback FaceMesh also failed:', fallbackError);
+        handDetectionStatus.textContent = 'FaceMesh unavailable - continuing with hands only';
+        modelStatus.classList.add('active');
+        detectHands();
+      }
+    }
+  }
+
+  function faceMeshReady() {
+    debugLog('✅ ML5.js FaceMesh model loaded - face mask ready!');
+    modelStatus.classList.add('active');
+    handDetectionStatus.textContent = 'Hand + Face tracking ready - mask effect active!';
+    detectHands();
+    detectFaces();
+  }
+
+  async function detectHands() {
+    if (handpose && webcamRunning) {
+      try {
+        predictions = await handpose.detect(video);
+      } catch (error) {
+        debugLog('Error during hand detection:', error);
+        predictions = [];
+      }
+    }
+    setTimeout(detectHands, 100);
+  }
+
+  async function detectFaces() {
+    if (facemesh && webcamRunning) {
+      try {
+        faceDetections = await facemesh.detect(video);
+        
+      } catch (error) {
+        debugLog('Error during face detection:', error);
+        faceDetections = [];
+      }
+    }
+    setTimeout(detectFaces, 150); // Slightly slower than hands for performance
+  }
+
+  try {
+    handpose = ml5.handPose({
+      flipHorizontal: true,
+      maxNumHands: 2,
+      runtime: 'mediapipe',
+      modelType: 'full'
+    }, modelReady);
+  } catch (error) {
+    debugLog('❌ Error loading ML5.js HandPose model:', error);
+    handDetectionStatus.textContent = 'Hand detection unavailable';
+  }
+
+  // CHORD SYSTEM DEFINITIONS
+  const chordDefinitions = {
+    // Different root notes, each with 5 chord tones
+    'C': [261.63, 329.63, 392.00, 523.25, 659.25], // C, E, G, C, E
+    'D': [293.66, 369.99, 440.00, 587.33, 739.99], // D, F#, A, D, F#
+    'E': [329.63, 415.30, 493.88, 659.25, 830.61], // E, G#, B, E, G#
+    'F': [349.23, 440.00, 523.25, 698.46, 880.00], // F, A, C, F, A
+    'G': [392.00, 493.88, 587.33, 783.99, 987.77], // G, B, D, G, B
+    'A': [440.00, 554.37, 659.25, 880.00, 1108.73], // A, C#, E, A, C#
+    'B': [493.88, 622.25, 739.99, 987.77, 1244.51]  // B, D#, F#, B, D#
+  };
+  
+  const rootNotes = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
+
+  function getRootNoteFromHeight(y, canvasHeight) {
+    // Map Y position to root notes (top = C, bottom = B)
+    const normalizedY = y / canvasHeight; // 0 = top, 1 = bottom
+    const rootIndex = Math.floor(normalizedY * rootNotes.length);
+    return rootNotes[Math.min(rootIndex, rootNotes.length - 1)];
+  }
+
+  function countExtendedFingers(keypoints) {
+    if (!keypoints || keypoints.length < 21) return 0;
+    
+    // Finger tip and MCP (base) joint indices
+    const fingerTips = [8, 12, 16, 20];    // Index, Middle, Ring, Pinky tips
+    const fingerMCPs = [5, 9, 13, 17];     // Index, Middle, Ring, Pinky MCPs
+    const thumbTip = 4;
+    const thumbIP = 3; // Thumb interphalangeal joint
+    
+    let extendedCount = 0;
+    
+    // Check thumb (different logic - compare tip to IP joint)
+    const thumbExtended = keypoints[thumbTip].x > keypoints[thumbIP].x + 20; // Thumb pointing right
+    if (thumbExtended) extendedCount++;
+    
+    // Check other fingers (compare tip Y to MCP Y - lower Y means higher on screen)
+    for (let i = 0; i < 4; i++) {
+      const tipY = keypoints[fingerTips[i]].y;
+      const mcpY = keypoints[fingerMCPs[i]].y;
+      
+      // Finger is extended if tip is significantly above MCP
+      if (mcpY - tipY > 30) {
+        extendedCount++;
+      }
+    }
+    
+    return Math.min(extendedCount, 5); // Cap at 5 fingers
+  }
+
+  function detectHeadOutOfFrame() {
+    // Check if face is detected
+    if (!faceDetections || faceDetections.length === 0) {
+      return true; // Head is out of frame
+    }
+    
+    const face = faceDetections[0];
+    if (!face || !face.keypoints || face.keypoints.length === 0) {
+      return true; // No valid face data
+    }
+    
+    return false; // Face is detected and valid
+  }
+
+  function detectThumbsUpGesture(leftHand, rightHand) {
+    // Check if either hand shows thumbs up
+    if (leftHand && isThumbsUp(leftHand.keypoints)) return true;
+    if (rightHand && isThumbsUp(rightHand.keypoints)) return true;
+    return false;
+  }
+
+  function isThumbsUp(keypoints) {
+    if (!keypoints || keypoints.length < 21) return false;
+    
+    // Key landmarks for thumbs up detection
+    const thumb_tip = keypoints[4];
+    const thumb_ip = keypoints[3];
+    const thumb_mcp = keypoints[2];
+    const index_tip = keypoints[8];
+    const middle_tip = keypoints[12];
+    const ring_tip = keypoints[16];
+    const pinky_tip = keypoints[20];
+    const wrist = keypoints[0];
+    
+    if (!thumb_tip || !thumb_ip || !thumb_mcp || !index_tip || !middle_tip || !ring_tip || !pinky_tip || !wrist) {
+      return false;
+    }
+    
+    // Check if thumb is extended upward
+    const thumbExtended = thumb_tip.y < thumb_ip.y && thumb_ip.y < thumb_mcp.y;
+    
+    // Check if other fingers are down (tips below wrist level approximately)
+    const indexDown = index_tip.y > wrist.y - 30;
+    const middleDown = middle_tip.y > wrist.y - 30;
+    const ringDown = ring_tip.y > wrist.y - 30;
+    const pinkyDown = pinky_tip.y > wrist.y - 30;
+    
+    // Thumbs up: thumb extended and most other fingers down
+    const fingersDown = [indexDown, middleDown, ringDown, pinkyDown].filter(Boolean).length;
+    
+    return thumbExtended && fingersDown >= 3;
+  }
+
+  function detectXGesture(leftHand, rightHand) {
+    if (!leftHand || !rightHand) return false;
+    
+    // X gesture: both hands showing peace signs (2 fingers) and relatively close
+    const leftFingers = countExtendedFingers(leftHand.keypoints);
+    const rightFingers = countExtendedFingers(rightHand.keypoints);
+    
+    if (leftFingers === 2 && rightFingers === 2) {
+      // Check if hands are close together (X formation)
+      const distance = Math.sqrt(
+        Math.pow(leftHand.x - rightHand.x, 2) + 
+        Math.pow(leftHand.y - rightHand.y, 2)
+      );
+      
+      // Hands are close enough for X gesture
+      if (distance < 150) {
+        return true;
+      }
+    }
+    
+    return false;
+  }
+
+  // GESTURE RECOGNITION FUNCTIONS (unchanged)
+  function calculateHandDepth(keypoints) {
+    if (!keypoints || keypoints.length < 21) return 0.5;
+    
+    const wrist = keypoints[0];
+    const middleTip = keypoints[12];
+    
+    if (!wrist || !middleTip) return 0.5;
+    
+    const distance = Math.sqrt(
+      Math.pow(middleTip.x - wrist.x, 2) + 
+      Math.pow(middleTip.y - wrist.y, 2)
+    );
+    
+    // Debug logging for calibration
+    if (frameCount % 30 === 0) { // Log every 30 frames to avoid spam
+      debugLog(`Hand distance: ${distance.toFixed(1)} pixels`);
+    }
+    
+    // Improved calibration: close hands (large distance) = high volume
+    // Far hands (small distance) = low volume
+    const minDistance = 40;  // Very far hand (small appearance)
+    const maxDistance = 120; // Very close hand (large appearance)
+    
+    // Map distance to 0-1 volume (larger distance = closer to camera = higher volume)
+    const normalizedVolume = Math.max(0, Math.min(1, (distance - minDistance) / (maxDistance - minDistance)));
+    
+    return normalizedVolume;
+  }
+
+  function calculateHandDepthWithDistance(keypoints) {
+    if (!keypoints || keypoints.length < 21) return { depth: 0.5, distance: 0 };
+    
+    const wrist = keypoints[0];
+    const middleTip = keypoints[12];
+    
+    if (!wrist || !middleTip) return { depth: 0.5, distance: 0 };
+    
+    const distance = Math.sqrt(
+      Math.pow(middleTip.x - wrist.x, 2) + 
+      Math.pow(middleTip.y - wrist.y, 2)
+    );
+    
+    // Use dynamic calibration controls
+    const minDistance = parseFloat(ctrl.minDistance.value);  // Far hand (0% volume)
+    const maxDistance = parseFloat(ctrl.maxDistance.value);  // Close hand (100% volume)
+    
+    // Map distance to 0-1 volume (larger distance = closer to camera = higher volume)
+    const normalizedVolume = Math.max(0, Math.min(1, (distance - minDistance) / (maxDistance - minDistance)));
+    
+    return { depth: normalizedVolume, distance: distance };
+  }
+
+  function recognizeGesture(keypoints) {
+    if (!keypoints || keypoints.length < 21) return 'unknown';
+    
+    const index_tip = keypoints[8];
+    const middle_tip = keypoints[12];
+    const ring_tip = keypoints[16];
+    const pinky_tip = keypoints[20];
+    
+    const index_mcp = keypoints[5];
+    const middle_mcp = keypoints[9];
+    const ring_mcp = keypoints[13];
+    const pinky_mcp = keypoints[17];
+    
+    const indexUp = (index_mcp.y - index_tip.y) > 30;
+    const middleUp = (middle_mcp.y - middle_tip.y) > 30;
+    const ringUp = (ring_mcp.y - ring_tip.y) > 20;
+    const pinkyUp = (pinky_mcp.y - pinky_tip.y) > 20;
+    
+    const extendedFingers = [indexUp, middleUp, ringUp, pinkyUp].filter(Boolean).length;
+    
+    if (indexUp && middleUp && !ringUp && !pinkyUp) return 'peace';
+    if (extendedFingers <= 1) return 'fist';
+    if (extendedFingers >= 3) return 'open';
+    return 'partial';
+  }
+
+  // Smooth value transitions (unchanged)
+  class SmoothedValue {
+    constructor(initialValue = 0, smoothing = 0.15) {
+      this.value = initialValue;
+      this.target = initialValue;
+      this.smoothing = smoothing;
+    }
+    
+    update(newTarget, customSmoothing = null) {
+      this.target = newTarget;
+      const alpha = customSmoothing !== null ? customSmoothing : this.smoothing;
+      this.value = alpha * this.target + (1 - alpha) * this.value;
+      return this.value;
+    }
+  }
+
+  // LAYERED SOUND SYSTEM (simplified - no visual effects in sound layers)
+  let activeSounds = new Map();
+  let soundIdCounter = 0;
+  let masterGainNode;
+
+  class SoundLayer {
+    constructor(id, type, hand) {
+      this.id = id;
+      this.type = type;
+      this.hand = hand;
+      this.active = false;
+      this.sustained = false;
+      
+      // Visual properties for frozen representation
+      this.frozenPosition = null;
+      this.frozenColor = null;
+      this.frozenFrequency = null;
+      
+      this.params = {
+        pitch: new SmoothedValue(type === 'left' ? 440 : 400, 0.15),
+        lfoRate: new SmoothedValue(0, 0.15),
+        volume: new SmoothedValue(0, 0.15),
+        reverb: new SmoothedValue(0, 0.15)
+      };
+      
+      this.createAudioNodes();
+    }
+    
+    createAudioNodes() {
+      if (this.type === 'left') {
+        this.osc = audioCtx.createOscillator();
+        this.osc.type = ctrl.leftWaveform.value;
+        this.gain = audioCtx.createGain();
+        this.gain.gain.value = 0;
+        
+        this.lfo = audioCtx.createOscillator();
+        this.lfo.type = 'sine';
+        this.lfoGain = audioCtx.createGain();
+        this.lfoDepthGain = audioCtx.createGain();
+        
+        // FORMANT FILTERING CHAIN - COMMENTED OUT FOR NOW
+        /*
+        this.formant1 = audioCtx.createBiquadFilter();
+        this.formant1.type = 'bandpass';
+        this.formant1.Q.value = 10;
+        
+        this.formant2 = audioCtx.createBiquadFilter();
+        this.formant2.type = 'bandpass';
+        this.formant2.Q.value = 8;
+        
+        this.formant3 = audioCtx.createBiquadFilter();
+        this.formant3.type = 'bandpass';
+        this.formant3.Q.value = 6;
+        */
+        
+        // Connect simplified chain (no formants)
+        this.lfo.connect(this.lfoDepthGain);
+        this.lfoDepthGain.connect(this.lfoGain);
+        this.lfoGain.connect(this.osc.frequency);
+        
+        // Direct connection without formants
+        this.osc.connect(this.gain);
+        this.gain.connect(masterGainNode);
+        
+        this.lfo.start();
+        this.osc.start();
+        
+      } else if (this.type === 'right') {
+        this.noiseSource = audioCtx.createBufferSource();
+        this.noiseSource.buffer = whiteNoiseBuffer;
+        this.noiseSource.loop = true;
+        
+        this.bandpass = audioCtx.createBiquadFilter();
+        this.bandpass.type = 'bandpass';
+        this.bandpass.Q.value = 10;
+        
+        // FORMANT FILTERING FOR NOISE TOO - COMMENTED OUT FOR NOW
+        /*
+        this.formant1 = audioCtx.createBiquadFilter();
+        this.formant1.type = 'bandpass';
+        this.formant1.Q.value = 8;
+        
+        this.formant2 = audioCtx.createBiquadFilter();
+        this.formant2.type = 'bandpass';
+        this.formant2.Q.value = 6;
+        */
+        
+        this.gain = audioCtx.createGain();
+        this.gain.gain.value = 0;
+        
+        this.reverbGain = audioCtx.createGain();
+        this.dryGain = audioCtx.createGain();
+        
+        // Simplified connection without formants
+        this.noiseSource.connect(this.bandpass);
+        this.bandpass.connect(this.dryGain);
+        this.bandpass.connect(this.reverbGain);
+        this.reverbGain.connect(reverbNode);
+        
+        this.dryGain.connect(this.gain);
+        this.gain.connect(masterGainNode);
+        
+        this.noiseSource.start();
+      }
+      
+      debugLog(`✅ Created ${this.type} sound layer #${this.id} with formant filtering`);
+    }
+    
+    // Freeze the visual state when sustaining
+    freezeVisualState(hand) {
+      this.frozenPosition = {
+        x: hand.x,  // Use direct x position to match mirrored camera
+        y: hand.y
+      };
+      this.frozenFrequency = this.params.pitch.value;
+      this.frozenColor = pitchToColor(this.frozenFrequency, 0.8);
+      debugLog(`🧊 Frozen visual state for layer #${this.id} at (${this.frozenPosition.x}, ${this.frozenPosition.y})`);
+    }
+    
+    update(hand) {
+      if (!hand && !this.sustained) {
+        this.params.volume.update(0, 0.2);
+        this.gain.gain.setTargetAtTime(this.params.volume.value, audioCtx.currentTime, 0.05);
+        return;
+      }
+      
+      // If sustained (frozen), don't update parameters - keep them locked
+      if (this.sustained) {
+        // Keep the frozen parameters active, don't follow hand movement
+        if (this.type === 'left') {
+          this.osc.frequency.setValueAtTime(this.params.pitch.value, audioCtx.currentTime);
+          this.lfo.frequency.setValueAtTime(this.params.lfoRate.value, audioCtx.currentTime);
+          this.lfoDepthGain.gain.setTargetAtTime(ctrl.leftLfoDepth ? parseFloat(ctrl.leftLfoDepth.value) : 10, audioCtx.currentTime, 0.05);
+          this.gain.gain.setTargetAtTime(this.params.volume.value, audioCtx.currentTime, 0.05);
+          
+        } else if (this.type === 'right') {
+          this.bandpass.frequency.setValueAtTime(this.params.pitch.value, audioCtx.currentTime);
+          const reverbWet = (ctrl.rightReverbWet ? parseFloat(ctrl.rightReverbWet.value) : 0.5) * this.params.reverb.value;
+          this.reverbGain.gain.setTargetAtTime(reverbWet, audioCtx.currentTime, 0.05);
+          this.dryGain.gain.setTargetAtTime(1 - reverbWet, audioCtx.currentTime, 0.05);
+          this.gain.gain.setTargetAtTime(this.params.volume.value, audioCtx.currentTime, 0.05);
+        }
+        return;
+      }
+      
+      // Active sound - use chord system based on finger count and hand height
+      const lfoRate = hand.x / width * 20; // Fixed LFO range instead of ctrl.leftLfoRange
+      this.params.lfoRate.update(lfoRate);
+      
+      // Get chord root from hand height (Y position)
+      const rootNote = getRootNoteFromHeight(hand.y, height);
+      const chordNotes = chordDefinitions[rootNote];
+      
+      // Get chord note based on finger count (1-5 fingers = chord tones)
+      const fingerCount = Math.max(1, Math.min(5, hand.fingerCount || 1));
+      const noteFrequency = chordNotes[fingerCount - 1]; // Array is 0-indexed
+      
+      // Update to specific chord note (no more continuous pitch)
+      this.params.pitch.update(noteFrequency, 0.3); // Faster transition to chord tones
+      
+      const volume = hand.z * (ctrl.leftMaxGain ? parseFloat(ctrl.leftMaxGain.value) : 0.5);
+      this.params.volume.update(volume, 0.2);
+
+      if (this.type === 'left') {
+        this.osc.frequency.setValueAtTime(this.params.pitch.value, audioCtx.currentTime);
+        this.lfo.frequency.setValueAtTime(this.params.lfoRate.value, audioCtx.currentTime);
+        this.lfoDepthGain.gain.setTargetAtTime(ctrl.leftLfoDepth ? parseFloat(ctrl.leftLfoDepth.value) : 10, audioCtx.currentTime, 0.05);
+        this.gain.gain.setTargetAtTime(this.params.volume.value, audioCtx.currentTime, 0.05);
+        
+      } else if (this.type === 'right') {
+        // Right hand uses finger count for filter frequency too
+        const filterFreq = noteFrequency * 2; // Higher frequency for filtering
+        this.bandpass.frequency.setValueAtTime(filterFreq, audioCtx.currentTime);
+        
+        const reverbMix = hand.x / width;
+        this.params.reverb.update(reverbMix);
+        const reverbWet = (ctrl.rightReverbWet ? parseFloat(ctrl.rightReverbWet.value) : 0.5) * this.params.reverb.value;
+        this.reverbGain.gain.setTargetAtTime(reverbWet, audioCtx.currentTime, 0.05);
+        this.dryGain.gain.setTargetAtTime(1 - reverbWet, audioCtx.currentTime, 0.05);
+        this.gain.gain.setTargetAtTime(this.params.volume.value, audioCtx.currentTime, 0.05);
+      }
+    }
+    
+    destroy() {
+      debugLog(`🗑️ Destroying sound layer #${this.id}`);
+      
+      this.gain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.02);
+      
+      setTimeout(() => {
+        try {
+          if (this.osc) this.osc.stop();
+          if (this.lfo) this.lfo.stop();
+          if (this.noiseSource) this.noiseSource.stop();
+          
+          this.gain.disconnect();
+          if (this.lfoGain) this.lfoGain.disconnect();
+        } catch (e) {}
+      }, 50);
+    }
+  }
+
+  // Enhanced hand processing with gesture recognition (unchanged)
+  function processHands() {
+    if (!predictions || predictions.length === 0) {
+      return { left: null, right: null };
+    }
+
+    const hands = predictions.map(pred => {
+      if (!pred.keypoints || pred.keypoints.length === 0) return null;
+      
+      let sx = 0, sy = 0;
+      pred.keypoints.forEach(kp => { sx += kp.x; sy += kp.y; });
+      
+      // Scale coordinates from video resolution to canvas size
+      const rawX = sx / pred.keypoints.length;
+      const rawY = sy / pred.keypoints.length;
+      
+      // Get video actual dimensions for scaling
+      const videoWidth = video.videoWidth || 1280;
+      const videoHeight = video.videoHeight || 720;
+      
+      // Scale to canvas dimensions
+      const scaledX = (rawX / videoWidth) * width;
+      const scaledY = (rawY / videoHeight) * height;
+      
+      // Use new depth calculation with distance info
+      const depthInfo = calculateHandDepthWithDistance(pred.keypoints);
+      const fingerCount = countExtendedFingers(pred.keypoints);
+      
+      return { 
+        x: scaledX, 
+        y: scaledY,
+        z: depthInfo.depth,
+        distance: depthInfo.distance,
+        keypoints: pred.keypoints,
+        gesture: recognizeGesture(pred.keypoints),
+        fingerCount: fingerCount,
+        confidence: pred.confidence || 1.0,
+        handedness: pred.handedness || pred.label || 'Unknown'
+      };
+    }).filter(hand => hand !== null);
+
+    let left = null, right = null;
+
+    if (hands.length === 1) {
+      const hand = hands[0];
+      if (hand.handedness === 'Left') {
+        left = hand;
+      } else if (hand.handedness === 'Right') {
+        right = hand;
+      } else {
+        if (hand.x < width / 2) {
+          right = hand;
+        } else {
+          left = hand;
+        }
+      }
+    } else if (hands.length >= 2) {
+      hands.forEach(hand => {
+        if (hand.handedness === 'Left') {
+          left = hand;
+        } else if (hand.handedness === 'Right') {
+          right = hand;
+        }
+      });
+      
+      if (!left && !right) {
+        hands.sort((a, b) => a.x - b.x);
+        right = hands[0];
+        left = hands[hands.length - 1];
+      }
+    }
+
+    // Update distance debug display with finger counts
+    let debugText = '';
+    if (left) {
+      debugText += `LEFT: ${left.fingerCount} fingers → ${left.distance.toFixed(1)}px → ${(left.z * 100).toFixed(0)}% vol | `;
+    }
+    if (right) {
+      debugText += `RIGHT: ${right.fingerCount} fingers → ${right.distance.toFixed(1)}px → ${(right.z * 100).toFixed(0)}% vol`;
+    }
+    if (debugText) {
+      distanceDebug.textContent = debugText;
+    } else {
+      distanceDebug.textContent = 'Show hands to see finger counts and distances...';
+    }
+
+    // Check for head out of frame (silence command)
+    let headOutOfFrame = detectHeadOutOfFrame();
+    if (headOutOfFrame) {
+      distanceDebug.textContent += ' | 🚫 HEAD OUT OF FRAME - SILENCE!';
+    }
+
+    // Debug coordinate scaling (log occasionally)
+    if (frameCount % 120 === 0 && (left || right)) {
+      const videoWidth = video.videoWidth || 1280;
+      const videoHeight = video.videoHeight || 720;
+      debugLog(`Coordinate scaling: Video(${videoWidth}x${videoHeight}) → Canvas(${width}x${height})`);
+      
+      // Debug face coordinate scaling too if face is detected
+      if (faceDetections && faceDetections.length > 0 && faceDetections[0].keypoints) {
+        const face = faceDetections[0];
+        const firstPoint = face.keypoints[0];
+        if (firstPoint) {
+          const scaledX = (firstPoint.x / videoWidth) * width;
+          debugLog(`Face coordinate example: Raw(${firstPoint.x.toFixed(1)}, ${firstPoint.y.toFixed(1)}) → Scaled(${scaledX.toFixed(1)}, ${firstPoint.y.toFixed(1)})`);
+        }
+      }
+    }
+
+    return { left, right, headOutOfFrame };
+  }
+
+  // Audio setup (unchanged)
+  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  let whiteNoiseBuffer, reverbNode;
+
+  function createGlobalAudio() {
+    masterGainNode = audioCtx.createGain();
+    masterGainNode.connect(audioCtx.destination);
+    
+    const bufferSize = audioCtx.sampleRate * 2;
+    whiteNoiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+    const output = whiteNoiseBuffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      output[i] = Math.random() * 2 - 1;
+    }
+    
+    reverbNode = audioCtx.createConvolver();
+    const length = audioCtx.sampleRate * 2;
+    const impulse = audioCtx.createBuffer(2, length, audioCtx.sampleRate);
+    
+    for (let channel = 0; channel < 2; channel++) {
+      const channelData = impulse.getChannelData(channel);
+      for (let i = 0; i < length; i++) {
+        const n = length - i;
+        channelData[i] = (Math.random() * 2 - 1) * Math.pow(n / length, 0.7);
+      }
+    }
+    reverbNode.buffer = impulse;
+    reverbNode.connect(masterGainNode);
+    
+    debugLog('✅ Global audio nodes created');
+  }
+
+  // Gesture state tracking with debouncing
+  let gestureState = { left: 'none', right: 'none' };
+  let sustainedSounds = { left: null, right: null };
+  let lastGestureFrame = { left: 0, right: 0 }; // Frame-based debouncing
+  const GESTURE_DEBOUNCE_FRAMES = 30; // Wait 30 frames (~0.5 seconds at 60fps) between new sounds
+
+  function handleGestures(hands) {
+    let statusText = '';
+    let layerText = [];
+    
+    // Check for head out of frame first (silence all)
+    if (hands.headOutOfFrame) {
+      activeSounds.forEach(sound => sound.destroy());
+      activeSounds.clear();
+      sustainedSounds.left = null;
+      sustainedSounds.right = null;
+      layerText.push(`🚫 HEAD OUT OF FRAME: All sounds silenced!`);
+      debugLog(`🚫 Head out of frame detected: All sound layers destroyed`);
+      gestureFeedback.textContent = 'HEAD OUT OF FRAME - SILENCE!';
+      soundLayers.innerHTML = 'All sounds silenced - head out of frame';
+      return;
+    }
+    
+    ['left', 'right'].forEach(handType => {
+      const hand = hands[handType];
+      
+      if (!hand) {
+        gestureState[handType] = 'none';
+        return;
+      }
+      
+      const fingerCount = hand.fingerCount;
+      const rootNote = getRootNoteFromHeight(hand.y, height);
+      const chordNotes = chordDefinitions[rootNote];
+      const noteFrequency = chordNotes[fingerCount - 1] || 440;
+      
+      // Determine chord tone names (1st, 3rd, 5th, octave, 3rd)
+      const chordToneNames = ['Root', '3rd', '5th', 'Oct', '3rd'];
+      const chordToneName = chordToneNames[fingerCount - 1] || 'Root';
+      
+      statusText += `${handType.toUpperCase()}: ${fingerCount} fingers → ${rootNote} ${chordToneName} (${Math.round(noteFrequency)}Hz) | `;
+      
+      // NEW LAYERING LOGIC: Create sounds more deliberately
+      const prevState = gestureState[handType];
+      const currentState = `${fingerCount}-${rootNote}`;
+      const gesture = hand.gesture; // Get the traditional gesture too
+      
+      // Create new layer on peace sign (deliberate layering trigger) - with debouncing
+      if (gesture === 'peace' && !prevState.includes('peace') && 
+          (frameCount - lastGestureFrame[handType]) > GESTURE_DEBOUNCE_FRAMES) {
+        const newId = ++soundIdCounter;
+        const newSound = new SoundLayer(newId, handType, hand);
+        newSound.active = true;
+        activeSounds.set(newId, newSound);
+        gestureState[handType] = `${currentState}-peace`;
+        lastGestureFrame[handType] = frameCount; // Update debounce timestamp
+        layerText.push(`✌️ ${handType}: PEACE = NEW LAYER ${rootNote} ${chordToneName} (#${newId})`);
+        debugLog(`✌️ Peace gesture: New ${handType} sound layer #${newId} created`);
+        
+      // Only create new sound in specific cases - with debouncing:
+      } else if (fingerCount > 0 && (
+          prevState === 'none' ||           // First detection 
+          prevState === '0-sustain' ||      // Coming out of fist
+          prevState.startsWith('0-')        // Any fist state
+        )) {
+        // Add debouncing: only create new sound if state actually changed AND enough time passed
+        if (currentState !== prevState && 
+            (frameCount - lastGestureFrame[handType]) > GESTURE_DEBOUNCE_FRAMES) {
+          gestureState[handType] = currentState;
+          lastGestureFrame[handType] = frameCount; // Update debounce timestamp
+          
+          const newId = ++soundIdCounter;
+          const newSound = new SoundLayer(newId, handType, hand);
+          newSound.active = true;
+          activeSounds.set(newId, newSound);
+          layerText.push(`🆕 ${handType}: NEW ${rootNote} ${chordToneName} (#${newId})`);
+          debugLog(`🎵 New ${handType} sound layer #${newId} playing ${rootNote} ${chordToneName} (${Math.round(noteFrequency)}Hz)`);
+        } else if (currentState !== prevState) {
+          // State changed but debounce period hasn't elapsed - just update gesture state
+          gestureState[handType] = currentState;
+        }
+        
+      } else if (fingerCount > 0 && currentState !== prevState && !prevState.includes('peace')) {
+        // Update existing sound but don't create new one - with better state management
+        gestureState[handType] = currentState;
+        
+        // Find and update the most recent non-sustained sound for this hand
+        let recentSound = null;
+        let recentId = 0;
+        activeSounds.forEach((sound, id) => {
+          if (sound.type === handType && !sound.sustained && id > recentId) {
+            recentSound = sound;
+            recentId = id;
+          }
+        });
+        
+        if (recentSound) {
+          layerText.push(`🔄 ${handType}: UPDATE ${rootNote} ${chordToneName} (#${recentSound.id})`);
+        }
+        
+      } else if (fingerCount === 0) {
+        // Fist = sustain current sound
+        gestureState[handType] = '0-sustain';
+        
+        let latestSound = null;
+        let latestId = 0;
+        
+        activeSounds.forEach((sound, id) => {
+          if (sound.type === handType && id > latestId) {
+            latestSound = sound;
+            latestId = id;
+          }
+        });
+        
+        if (latestSound && !latestSound.sustained) {
+          latestSound.sustained = true;
+          latestSound.freezeVisualState(hand);
+          sustainedSounds[handType] = latestSound;
+          layerText.push(`✊ ${handType}: FROZEN #${latestSound.id} at ${Math.round(latestSound.params.pitch.value)}Hz`);
+          debugLog(`🧊 Frozen sound layer #${latestSound.id} for ${handType} hand`);
+        }
+      } else {
+        // Same state, just continue
+        gestureState[handType] = currentState;
+      }
+    });
+    
+    activeSounds.forEach((sound, id) => {
+      const hand = hands[sound.type];
+      sound.update(hand);
+      
+      if (!sound.sustained && sound.params.volume.value < 0.001) {
+        sound.destroy();
+        activeSounds.delete(id);
+      }
+    });
+    
+    gestureFeedback.textContent = statusText || 'Show hands to detect gestures...';
+    soundLayers.innerHTML = layerText.length > 0 ? layerText.join('<br>') : 
+      `Active layers: ${activeSounds.size} | Total created: ${soundIdCounter}`;
+  }
+
+  // Event listeners
+  startBtn.onclick = () => {
+    audioCtx.resume().then(() => {
+      createGlobalAudio();
+      startBtn.textContent = 'Audio & Effects Started';
+      startBtn.disabled = true;
+      debugLog('Complete audio and visual system initialized');
+    });
+  };
+
+  // Main collapse button event listener
+  mainCollapseBtn.onclick = toggleMainCollapse;
+
+  // Initialize main collapse state (collapsed on mobile by default)
+  function initializeMainCollapse() {
+    if (isMainCollapsed) {
+      const controls = document.getElementById('controls');
+      controls.classList.add('collapsed');
+      mainCollapseBtn.textContent = '▶';
+      debugLog('🎛️ Controls panel initialized as collapsed (mobile detected)');
+    }
+  }
+
+  // Main render loop with EDGE DETECTION EFFECTS
+  function render() {
+    frameCount++;
+    
+    // Draw video feed
+    if (webcamRunning) {
+      vctx.save(); 
+      vctx.scale(-1, 1); 
+      vctx.drawImage(video, -width, 0, width, height); 
+      vctx.restore();
+    }
+
+    // Clear overlay canvas
+    octx.clearRect(0, 0, width, height);
+    
+    // Draw edge detection motion tracking effect FIRST (background layer)
+    drawEdgeDetectionEffect();
+    
+    const hands = processHands();
+    
+    // Face detection for head-out-of-frame AND face mask effect
+    if (faceDetections && faceDetections.length > 0 && faceDetections[0].keypoints) {
+      const face = faceDetections[0];
+      
+      // Draw face landmarks as mask (white dots)
+      if (face && face.keypoints && face.keypoints.length > 0) {
+        octx.fillStyle = '#fff';
+        octx.strokeStyle = '#fff';
+        
+        // Get video dimensions for coordinate scaling
+        const videoWidth = video.videoWidth || 1280;
+        const videoHeight = video.videoHeight || 720;
+        
+        // Draw all landmarks as white dots for mask effect
+        face.keypoints.forEach((point, index) => {
+          // Scale coordinates from video resolution to canvas size
+          const scaledX = (point.x / videoWidth) * width;
+          const scaledY = (point.y / videoHeight) * height;
+          
+          // Face mask dots
+          const maskRadius = 15; // Fixed size for mask
+          const glowRadius = maskRadius + 5;
+          
+          octx.beginPath();
+          octx.arc(scaledX, scaledY, maskRadius, 0, 2 * Math.PI);
+          octx.fill();
+          
+          // Add subtle glow effect
+          octx.globalAlpha = 0.3;
+          octx.beginPath();
+          octx.arc(scaledX, scaledY, glowRadius, 0, 2 * Math.PI);
+          octx.fill();
+          octx.globalAlpha = 1.0;
+        });
+      }
+    }
+    
+    // Handle gesture-based sound control
+    if (masterGainNode) {
+      handleGestures(hands);
+    }
+    
+    // Update status
+    const leftDetected = hands.left !== null;
+    const rightDetected = hands.right !== null;
+    
+    if (leftDetected && rightDetected) {
+      handDetectionStatus.textContent = `Both hands detected - All systems active`;
+    } else if (leftDetected) {
+      handDetectionStatus.textContent = `Left hand: ${hands.left.gesture} gesture`;
+    } else if (rightDetected) {
+      handDetectionStatus.textContent = `Right hand: ${hands.right.gesture} gesture`;
+    } else {
+      handDetectionStatus.textContent = 'Show hands for gesture control';
+    }
+
+
+
+    // Simple hand visual feedback
+    ['left', 'right'].forEach(handType => {
+      const hand = hands[handType];
+      if (!hand) return;
+      
+      // Get pitch-based color for this hand
+      let frequency = 440;
+      activeSounds.forEach(sound => {
+        if (sound.type === handType) {
+          frequency = sound.params.pitch.value;
+        }
+      });
+      
+      const color = pitchToColor(frequency, 0.8);
+      const gestureEmoji = {
+        'open': '🤚',
+        'fist': '✊', 
+        'peace': '✌️',
+        'partial': '👋',
+        'unknown': '❓'
+      }[hand.gesture] || '❓';
+      
+      // Simple hand circle
+      const handSize = parseInt(ctrl.handGlow.value);
+      const glowIntensity = parseFloat(ctrl.effectIntensity.value);
+      
+      // Hand circle with simple glow
+      octx.strokeStyle = color;
+      octx.lineWidth = 3;
+      octx.beginPath();
+      octx.arc(hand.x, hand.y, handSize, 0, 2 * Math.PI);
+      octx.stroke();
+      
+      // Inner fill based on volume
+      const volume = hand.z * glowIntensity;
+      if (volume > 0.1) {
+        octx.fillStyle = pitchToColor(frequency, volume * 0.3);
+        octx.beginPath();
+        octx.arc(hand.x, hand.y, handSize * 0.7, 0, 2 * Math.PI);
+        octx.fill();
+      }
+      
+      // Gesture emoji
+      octx.fillStyle = color;
+      octx.font = 'bold 20px Arial';
+      octx.fillText(gestureEmoji, hand.x - 10, hand.y + 7);
+      
+      // Simple info text
+      octx.font = 'bold 11px Arial';
+      octx.fillStyle = color;
+      octx.fillText(`${handType.toUpperCase()}: ${Math.round(frequency)}Hz`, hand.x - 40, hand.y - 35);
+      octx.fillText(`Vol: ${(hand.z * 100).toFixed(0)}%`, hand.x - 40, hand.y - 22);
+    });
+
+    // Draw all frozen sound layer circles
+    drawFrozenLayers();
+
+    requestAnimationFrame(render);
+  }
+
+  // Initialize systems
+  initializePanels();
+  initializeMainCollapse(); // Initialize main collapse for mobile
+  debugLog('Starting edge detection render loop');
+  render();
+
+})().catch(error => {
+  console.error('❌ Fatal initialization error:', error);
+  alert('Failed to initialize application: ' + error.message);
+});
+</script>
+</body>
+</html>
