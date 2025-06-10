@@ -117,7 +117,7 @@
     <div class="status-indicator" id="model-status"></div>
   </div>
   
-  <button id="start-btn">Start Audio & Effects</button>
+
   
   <!-- System Info Panel -->
   <div class="panel-header" id="system-header">
@@ -307,7 +307,7 @@
   const video = document.getElementById('video');
   const vcanvas = document.getElementById('video-canvas'), vctx = vcanvas.getContext('2d');
   const ocanvas = document.getElementById('overlay-canvas'), octx = ocanvas.getContext('2d');
-  const startBtn = document.getElementById('start-btn');
+
   const modelStatus = document.getElementById('model-status');
   const handDetectionStatus = document.getElementById('hand-detection-status');
   const gestureFeedback = document.getElementById('gesture-feedback');
@@ -1420,15 +1420,32 @@
       `Active layers: ${activeSounds.size} | Total created: ${soundIdCounter}`;
   }
 
-  // Event listeners
-  startBtn.onclick = () => {
-    audioCtx.resume().then(() => {
-      createGlobalAudio();
-      startBtn.textContent = 'Audio & Effects Started';
-      startBtn.disabled = true;
-      debugLog('Complete audio and visual system initialized');
-    });
-  };
+  // Auto-start audio system
+  function initializeAudio() {
+    try {
+      audioCtx.resume().then(() => {
+        createGlobalAudio();
+        debugLog('🎵 Audio system auto-started successfully');
+        handDetectionStatus.textContent = 'Audio auto-started - ready to play!';
+      }).catch(error => {
+        debugLog('❌ Audio auto-start failed:', error);
+        handDetectionStatus.textContent = 'Audio failed to start - click anywhere to retry';
+        
+        // Add click-to-start fallback
+        document.addEventListener('click', function startAudioOnClick() {
+          audioCtx.resume().then(() => {
+            createGlobalAudio();
+            debugLog('🎵 Audio started on user interaction');
+            handDetectionStatus.textContent = 'Audio started - ready to play!';
+          });
+          document.removeEventListener('click', startAudioOnClick);
+        }, { once: true });
+      });
+    } catch (error) {
+      debugLog('❌ Audio initialization error:', error);
+      handDetectionStatus.textContent = 'Audio not available in this browser';
+    }
+  }
 
   // Main collapse button event listener
   mainCollapseBtn.onclick = toggleMainCollapse;
@@ -1482,9 +1499,9 @@
           const scaledX = (point.x / videoWidth) * width;
           const scaledY = (point.y / videoHeight) * height;
           
-          // Face mask dots
-          const maskRadius = 15; // Fixed size for mask
-          const glowRadius = maskRadius + 5;
+          // Face mask dots - smaller size
+          const maskRadius = 8; // Smaller fixed size for mask
+          const glowRadius = maskRadius + 3;
           
           octx.beginPath();
           octx.arc(scaledX, scaledY, maskRadius, 0, 2 * Math.PI);
@@ -1584,6 +1601,7 @@
   // Initialize systems
   initializePanels();
   initializeMainCollapse(); // Initialize main collapse for mobile
+  initializeAudio(); // Auto-start audio system
   debugLog('Starting edge detection render loop');
   render();
 
