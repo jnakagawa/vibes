@@ -766,20 +766,33 @@
     const thumbIP = 3; // Thumb interphalangeal joint
     
     let extendedCount = 0;
+    let debugInfo = [];
     
     // Check thumb (different logic - compare tip to IP joint)
-    const thumbExtended = keypoints[thumbTip].x > keypoints[thumbIP].x + 20; // Thumb pointing right
-    if (thumbExtended) extendedCount++;
+    const thumbDiff = keypoints[thumbTip].x - keypoints[thumbIP].x;
+    const thumbExtended = thumbDiff > 15; // Reduced threshold from 20 to 15
+    if (thumbExtended) {
+      extendedCount++;
+      debugInfo.push(`Thumb(${thumbDiff.toFixed(1)})`);
+    }
     
     // Check other fingers (compare tip Y to MCP Y - lower Y means higher on screen)
+    const fingerNames = ['Index', 'Middle', 'Ring', 'Pinky'];
     for (let i = 0; i < 4; i++) {
       const tipY = keypoints[fingerTips[i]].y;
       const mcpY = keypoints[fingerMCPs[i]].y;
+      const diff = mcpY - tipY;
       
-      // Finger is extended if tip is significantly above MCP
-      if (mcpY - tipY > 30) {
+      // Finger is extended if tip is significantly above MCP - reduced threshold
+      if (diff > 25) { // Reduced from 30 to 25
         extendedCount++;
+        debugInfo.push(`${fingerNames[i]}(${diff.toFixed(1)})`);
       }
+    }
+    
+    // Debug logging occasionally
+    if (frameCount % 60 === 0 && debugInfo.length > 0) {
+      debugLog(`🖐️ Finger detection: ${extendedCount} fingers - ${debugInfo.join(', ')}`);
     }
     
     return Math.min(extendedCount, 5); // Cap at 5 fingers
@@ -895,14 +908,34 @@
     if (!keypoints || keypoints.length < 21) return { depth: 0.5, distance: 0 };
     
     const wrist = keypoints[0];
-    const middleTip = keypoints[12];
     
-    if (!wrist || !middleTip) return { depth: 0.5, distance: 0 };
+    // Use multiple reference points for more robust distance calculation
+    // This way, curled fingers won't affect the depth detection
+    const fingerTips = [
+      keypoints[8],  // Index tip
+      keypoints[12], // Middle tip  
+      keypoints[16], // Ring tip
+      keypoints[20]  // Pinky tip
+    ];
     
-    const distance = Math.sqrt(
-      Math.pow(middleTip.x - wrist.x, 2) + 
-      Math.pow(middleTip.y - wrist.y, 2)
-    );
+    // Find the finger tip that's furthest from the wrist
+    let maxDistanceFromWrist = 0;
+    let bestTip = keypoints[12]; // Fallback to middle finger
+    
+    for (const tip of fingerTips) {
+      if (tip) {
+        const dist = Math.sqrt(
+          Math.pow(tip.x - wrist.x, 2) + 
+          Math.pow(tip.y - wrist.y, 2)
+        );
+        if (dist > maxDistanceFromWrist) {
+          maxDistanceFromWrist = dist;
+          bestTip = tip;
+        }
+      }
+    }
+    
+    const distance = maxDistanceFromWrist;
     
     // Use dynamic calibration controls
     const minDistance = parseFloat(ctrl.minDistance.value);  // Far hand (0% volume)
@@ -910,6 +943,11 @@
     
     // Map distance to 0-1 volume (larger distance = closer to camera = higher volume)
     const normalizedVolume = Math.max(0, Math.min(1, (distance - minDistance) / (maxDistance - minDistance)));
+    
+    // Debug logging occasionally
+    if (frameCount % 90 === 0) {
+      debugLog(`📏 Hand depth: distance=${distance.toFixed(1)}px, volume=${(normalizedVolume * 100).toFixed(0)}%`);
+    }
     
     return { depth: normalizedVolume, distance: distance };
   }
