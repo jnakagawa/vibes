@@ -1,0 +1,228 @@
+erDiagram
+
+%% ======================================================
+%% AffiliateProductLinks
+%% ======================================================
+AffiliateProductLinks {
+    productId STRING(256) PK
+    affiliateLinkId STRING(256) PK
+    url STRING(1024)
+    rewardValue FLOAT64
+    commission FLOAT64
+    price FLOAT64
+    image STRING(1024)
+    created INT64
+    updated INT64
+}
+
+%% ======================================================
+%% DATABASECHANGELOG
+%% ======================================================
+DATABASECHANGELOG {
+    id STRING(MAX) PK
+    author STRING(MAX) PK
+    filename STRING(MAX) PK
+    dateExecuted TIMESTAMP
+    orderExecuted INT64
+    execType STRING(MAX)
+    md5sum STRING(MAX)
+    description STRING(MAX)
+    comments STRING(MAX)
+    tag STRING(MAX)
+    liquibase STRING(MAX)
+    contexts STRING(MAX)
+    labels STRING(MAX)
+    deployment_id STRING(MAX)
+}
+
+%% ======================================================
+%% DATABASECHANGELOGLOCK
+%% ======================================================
+DATABASECHANGELOGLOCK {
+    id INT64 PK
+    locked BOOL
+    lockgranted TIMESTAMP
+    lockedby STRING(MAX)
+}
+
+%% ======================================================
+%% MerchantDashChangelog
+%% ======================================================
+MerchantDashChangelog {
+    changeId STRING(36) PK
+    merchantId STRING(256)
+    entityType STRING(50)
+    entityId STRING(256)
+    changedBy STRING(256)
+    changeType STRING(10)
+    changeData JSON
+    created INT64
+}
+
+%% ======================================================
+%% MerchantLabels
+%% ======================================================
+MerchantLabels {
+    merchantId STRING(256) PK
+    label STRING(256) PK
+    created INT64
+    updated INT64
+    SOURCE STRING(256)
+}
+
+%% ======================================================
+%% Merchants
+%% ======================================================
+Merchants {
+    merchantId STRING(256) PK
+    name STRING(1024)
+    url STRING(1024)
+    countryCode STRING(2)
+    created INT64
+    updated INT64
+    supported BOOL
+    priority INT64
+    exclusions STRING(MAX)
+    ugcDisabled BOOL
+    createdBy STRING(256)
+    exclusionSummary STRING(256)
+    metadata JSON
+}
+
+%% ======================================================
+%% AffiliateLinks (INTERLEAVED in Merchants)
+%% ======================================================
+AffiliateLinks {
+    merchantId STRING(256) PK
+    affiliateLinkId STRING(256) PK
+    url STRING(1024)
+    provider STRING(256)
+    category STRING(256)
+    weight INT64
+    created INT64
+    updated INT64
+    removed INT64
+    note STRING(1024)
+    createdBy STRING(256)
+}
+Merchants ||--|{ AffiliateLinks : "INTERLEAVE IN PARENT Merchants ON DELETE CASCADE"
+
+%% ======================================================
+%% AutomationParameters (INTERLEAVED in Merchants)
+%% ======================================================
+AutomationParameters {
+    merchantId STRING(256) PK
+    automationId STRING(256) PK
+    action JSON
+    triggers JSON
+    created INT64
+    updated INT64
+}
+Merchants ||--|{ AutomationParameters : "INTERLEAVE IN PARENT Merchants ON DELETE CASCADE"
+
+%% ======================================================
+%% CouponCrawlerSettings (INTERLEAVED in Merchants)
+%% ======================================================
+CouponCrawlerSettings {
+    merchantId STRING(256) PK
+    source STRING(256) PK
+    externalID STRING(256)
+    lastAttempt INT64
+    lastSuccess INT64
+    priority INT64
+}
+Merchants ||--|{ CouponCrawlerSettings : "INTERLEAVE IN PARENT Merchants ON DELETE CASCADE"
+
+%% ======================================================
+%% Coupons (INTERLEAVED in Merchants)
+%% ======================================================
+Coupons {
+    merchantId STRING(256) PK
+    couponId STRING(256) PK
+    code STRING(256)
+    description STRING(MAX)
+    created INT64
+    updated INT64
+    publishedExpiration INT64
+    lastSuccess INT64
+    appliedCount INT64
+    hidden BOOL
+    exclusive BOOL
+    doNotRemove BOOL
+    removeAt INT64
+    hiddenSource STRING(256)
+    banned BOOL
+    pinnedPriority INT64
+    enableAt INT64
+}
+Merchants ||--|{ Coupons : "INTERLEAVE IN PARENT Merchants ON DELETE CASCADE"
+
+%% ======================================================
+%% CouponSavings (INTERLEAVED in Coupons)
+%% ======================================================
+CouponSavings {
+    merchantId STRING(256) PK
+    couponId STRING(256) PK
+    uuid STRING(256) PK
+    savings INT64
+    timestamp INT64
+    rewardsValue FLOAT64
+    rewardsType STRING(50)
+}
+Coupons ||--|{ CouponSavings : "INTERLEAVE IN PARENT Coupons ON DELETE CASCADE"
+
+%% ======================================================
+%% CouponSources (INTERLEAVED in Coupons)
+%% ======================================================
+CouponSources {
+    merchantId STRING(256) PK
+    couponId STRING(256) PK
+    source STRING(256) PK
+}
+Coupons ||--|{ CouponSources : "INTERLEAVE IN PARENT Coupons ON DELETE CASCADE"
+
+%% ======================================================
+%% Descriptions (INTERLEAVED in Merchants)
+%% ======================================================
+Descriptions {
+    merchantId STRING(256) PK
+    locale STRING(3) PK
+    description STRING(MAX)
+    created INT64
+    updated INT64
+}
+Merchants ||--|{ Descriptions : "INTERLEAVE IN PARENT Merchants ON DELETE CASCADE"
+
+%% ======================================================
+%% ExternalIds (INTERLEAVED in Merchants)
+%% ======================================================
+ExternalIds {
+    merchantId STRING(256) PK
+    provider STRING(256) PK
+    externalId STRING(256) PK
+    created INT64
+    createdBy STRING(256)
+}
+Merchants ||--|{ ExternalIds : "INTERLEAVE IN PARENT Merchants ON DELETE CASCADE"
+
+%% ======================================================
+%% MerchantHierarchy (INTERLEAVED in Merchants)
+%% ======================================================
+MerchantHierarchy {
+    merchantId STRING(256) PK
+    childMerchantId STRING(256) PK
+    created INT64
+}
+Merchants ||--|{ MerchantHierarchy : "INTERLEAVE IN PARENT Merchants ON DELETE CASCADE"
+
+%% ======================================================
+%% PartialUrls (INTERLEAVED in Merchants)
+%% ======================================================
+PartialUrls {
+    merchantId STRING(256) PK
+    domain STRING(1024) PK
+    partialUrl STRING(1024) PK
+    created INT64
+    updated INT64
+}
+Merchants ||--|{ PartialUrls : "INTERLEAVE IN PARENT Merchants ON DELETE CASCADE"

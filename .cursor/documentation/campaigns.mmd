@@ -1,0 +1,188 @@
+erDiagram
+
+  Campaigns {
+    string campaignId PK
+    int budget
+    string state
+    int created
+    int updated
+    string merchantId
+    int priority
+    string fundedBy
+    string name
+    int startDate
+    int endDate
+    int boost
+  }
+
+  OfferGroups {
+    string campaignId PK
+    string offerGroupId PK
+    string name
+    string[] devices
+    string[] platforms
+    string[] extensions
+    int minBid
+    int maxBid
+    string bidType
+    string audienceLogic
+    int created
+    int updated
+    string[] keywordGroupIds
+    int saturation
+    int priority
+    int boost
+    string[] clients
+  }
+
+  Offers {
+    string campaignId PK
+    string offerGroupId PK
+    string offerId PK
+    string type
+    string name
+    string title
+    string content
+    string cta
+    string imageUrl
+    string clickUrl
+    int distribution
+    int created
+    int updated
+    string subtitle
+    json parameters
+  }
+
+  Placements {
+    string campaignId PK
+    string offerGroupId PK
+    string placementId PK
+    string template
+    string hostname
+    json match
+    int created
+    int updated
+    string placementHash
+  }
+
+  Audiences {
+    string audienceId PK
+    string name
+    string description
+    int retention
+    json cohorts
+    int created
+    int updated
+    int invalidated
+    bool forced
+    bool iab
+  }
+
+  AudienceRules {
+    string audienceRuleId PK
+    string type
+    string name
+    json parameters
+    int created
+    int updated
+    int invalidated
+    string description
+  }
+
+  Audience_AudienceRule {
+    string audienceId PK
+    string audienceRuleId PK
+    int created
+  }
+
+  OfferGroup_Audience {
+    string offerGroupId PK
+    string audienceId PK
+    int created
+  }
+
+  KeywordGroups {
+    string keywordGroupId PK
+    string name
+    string type
+    string hashValue
+    string keywordGroupsNameTokens
+    int updated
+  }
+
+  Keywords {
+    string keywordId PK
+    string keyword
+    string keywordGroupId
+    int updated
+    string type
+    string keywordTokens
+  }
+
+  CampaignBudgetEvents {
+    string campaignId PK
+    string requestId PK
+    string offerGroupId
+    string offerId
+    string dataId
+    int budgetUsedInMillipoints
+    int created
+  }
+
+  CampaignDashChangelog {
+    string changeId PK
+    string campaignId
+    string entityType
+    string entityId
+    string changedBy
+    string changeType
+    json changeData
+    int created
+  }
+
+  CampaignSearchProviders {
+    string hostname PK
+    string pathname PK
+    string queryParam
+    int created
+    int updated
+    string type
+    int deactivated
+  }
+
+  SiteSessionConfigs {
+    string hostname PK
+    int pathnameDepth
+    int created
+    int updated
+    int deactivated
+  }
+
+  PlacementTemplates {
+    string template PK
+    string description
+    json data
+    int created
+    int updated
+  }
+
+  %% Relationships
+  Campaigns ||--o{ OfferGroups : contains
+  Campaigns ||--o{ Offers : contains
+  Campaigns ||--o{ CampaignBudgetEvents : logs
+  Campaigns ||--o{ CampaignDashChangelog : changes
+
+  OfferGroups ||--o{ Placements : contains
+  OfferGroups ||--o{ OfferGroup_Audience : links
+  OfferGroups ||--o{ Offers : includes
+
+  Audiences ||--o{ Audience_AudienceRule : has
+  AudienceRules ||--o{ Audience_AudienceRule : defines
+
+  OfferGroup_Audience }o--|| Audiences : maps
+  OfferGroup_Audience }o--|| OfferGroups : maps
+
+  Keywords }o--|| KeywordGroups : belongs_to
+
+  CampaignSearchProviders ||--|| SiteSessionConfigs : shares_hostname
+  Placements ||--|| PlacementTemplates : uses

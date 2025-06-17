@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "mcp-server-bigquery": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@smithery/cli@latest",
+        "run",
+        "mcp-server-bigquery",
+        "--config",
+        "\"{\\\"gcpLocation\\\":\\\"us-central1\\\",\\\"gcpProjectId\\\":\\\"piedotorg-staging\\\"}\""
+      ]
+    }
+  }
+} 

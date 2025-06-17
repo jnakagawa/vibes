@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Dual-Sine Theremin AR Camera - Independent Hands</title>
+<style>
+  html, body { margin:0; padding:0; overflow:hidden; background:black; color:white; }
+  #controls {
+    position:absolute; top:10px; left:10px;
+    background:rgba(0,0,0,0.7); padding:10px; border-radius:8px;
+    font-family:sans-serif; z-index:5; max-width:320px;
+  }
+  #controls label { display:block; margin-top:8px; }
+  #start-btn { margin-top:8px; padding:6px 12px; }
+  canvas { position:absolute; top:0; left:0; width:100%; height:100%; }
+</style>
+</head>
+<body>
+<div id="controls">
+  <button id="start-btn">Start Audio</button>
+  <h3>Left Theremin (Sine)</h3>
+  <label>Min Pitch: <span id="leftMinPitchVal">220</span> Hz
+    <input type="range" id="leftMinPitch" min="50" max="1000" value="220">
+  </label>
+  <label>Max Pitch: <span id="leftMaxPitchVal">880</span> Hz
+    <input type="range" id="leftMaxPitch" min="500" max="3000" value="880">
+  </label>
+  <label>Max LFO Rate: <span id="leftMaxLFOVal">10</span> Hz
+    <input type="range" id="leftMaxLFO" min="0" max="30" value="10">
+  </label>
+  <label>Max Volume: <span id="leftMaxGainVal">0.3</span>
+    <input type="range" id="leftMaxGain" min="0" max="1" step="0.01" value="0.3">
+  </label>
+  <h3>Right Theremin (Sine)</h3>
+  <label>Min Pitch: <span id="rightMinPitchVal">220</span> Hz
+    <input type="range" id="rightMinPitch" min="50" max="1000" value="220">
+  </label>
+  <label>Max Pitch: <span id="rightMaxPitchVal">880</span> Hz
+    <input type="range" id="rightMaxPitch" min="500" max="3000" value="880">
+  </label>
+  <label>Max LFO Rate: <span id="rightMaxLFOVal">10</span> Hz
+    <input type="range" id="rightMaxLFO" min="0" max="30" value="10">
+  </label>
+  <label>Max Volume: <span id="rightMaxGainVal">0.3</span>
+    <input type="range" id="rightMaxGain" min="0" max="1" step="0.01" value="0.3">
+  </label>
+</div>
+<video id="video" autoplay playsinline style="display:none"></video>
+<canvas id="video-canvas"></canvas>
+<canvas id="overlay-canvas"></canvas>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/handpose@0.0.7/dist/handpose.min.js"></script>
+
+<script>
+(async ()=>{
+  // DOM elements
+  const video = document.getElementById('video');
+  const vcanvas = document.getElementById('video-canvas'), vctx = vcanvas.getContext('2d');
+  const ocanvas = document.getElementById('overlay-canvas'), octx = ocanvas.getContext('2d');
+  const startBtn = document.getElementById('start-btn');
+  // Controls binding
+  const ctrlIds = ['leftMinPitch','leftMaxPitch','leftMaxLFO','leftMaxGain',
+                   'rightMinPitch','rightMaxPitch','rightMaxLFO','rightMaxGain'];
+  const ctrl = {};
+  ctrlIds.forEach(id => ctrl[id] = document.getElementById(id));
+  function bind(id, spanId){
+    const inp = document.getElementById(id), span = document.getElementById(spanId);
+    span.innerText = inp.value;
+    inp.oninput = ()=>span.innerText = inp.value;
+  }
+  bind('leftMinPitch','leftMinPitchVal');
+  bind('leftMaxPitch','leftMaxPitchVal');
+  bind('leftMaxLFO','leftMaxLFOVal');
+  bind('leftMaxGain','leftMaxGainVal');
+  bind('rightMinPitch','rightMinPitchVal');
+  bind('rightMaxPitch','rightMaxPitchVal');
+  bind('rightMaxLFO','rightMaxLFOVal');
+  bind('rightMaxGain','rightMaxGainVal');
+
+  // Canvas sizing
+  let width = window.innerWidth, height = window.innerHeight;
+  [vcanvas, ocanvas].forEach(c=>{ c.width=width; c.height=height; });
+  window.addEventListener('resize',()=>{
+    width = window.innerWidth; height = window.innerHeight;
+    [vcanvas, ocanvas].forEach(c=>{ c.width=width; c.height=height; });
+  });
+
+  // Load model & start video
+  const model = await handpose.load();
+  const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+  video.srcObject = stream; await video.play();
+  let predictions = [];
+  async function detectHands(){
+    predictions = await model.estimateHands(video, true);
+    setTimeout(detectHands, 100);
+  }
+  detectHands();
+
+  // Audio context and oscillators
+  const audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+  let leftOsc, leftGain, leftLfo, leftLfoGain;
+  let rightOsc, rightGain, rightLfo, rightLfoGain;
+  function startAudio(){
+    // Left oscillator
+    leftOsc = audioCtx.createOscillator(); leftOsc.type='sine';
+    leftGain = audioCtx.createGain(); leftGain.gain.value = 0;
+    leftLfo = audioCtx.createOscillator(); leftLfo.type='triangle';
+    leftLfoGain = audioCtx.createGain(); leftLfoGain.gain.value = 0;
+    leftLfo.connect(leftLfoGain).connect(leftOsc.frequency);
+    leftOsc.connect(leftGain).connect(audioCtx.destination);
+    leftLfo.start(); leftOsc.start();
+    // Right oscillator
+    rightOsc = audioCtx.createOscillator(); rightOsc.type='sine';
+    rightGain = audioCtx.createGain(); rightGain.gain.value = 0;
+    rightLfo = audioCtx.createOscillator(); rightLfo.type='triangle';
+    rightLfoGain = audioCtx.createGain(); rightLfoGain.gain.value = 0;
+    rightLfo.connect(rightLfoGain).connect(rightOsc.frequency);
+    rightOsc.connect(rightGain).connect(audioCtx.destination);
+    rightLfo.start(); rightOsc.start();
+  }
+  startBtn.onclick = ()=>audioCtx.resume().then(startAudio);
+
+  // Edge detection
+  const off = document.createElement('canvas'), offctx = off.getContext('2d');
+  off.width = width; off.height = height;
+  let prevFrame = null;
+
+  function render(){
+    // Mirror video
+    vctx.save(); vctx.scale(-1,1); vctx.drawImage(video, -width, 0, width, height); vctx.restore();
+    // Edge detection overlay
+    offctx.drawImage(video, 0, 0, width, height);
+    const data = offctx.getImageData(0,0,width,height).data;
+    octx.clearRect(0,0,width,height);
+    if(prevFrame){
+      const step=30, threshold=60;
+      for(let y=0; y<height; y+=step){
+        for(let x=0; x<width; x+=step){
+          const i=(y*width + x)*4;
+          const diff = Math.abs(data[i]-prevFrame[i]) + Math.abs(data[i+1]-prevFrame[i+1]) + Math.abs(data[i+2]-prevFrame[i+2]);
+          if(diff > threshold){
+            const hue = (diff/765)*360;
+            octx.beginPath(); octx.arc(x,y,15,0,2*Math.PI);
+            octx.fillStyle = `hsla(${hue},100%,50%,0.7)`; octx.fill();
+          }
+        }
+      }
+    }
+    prevFrame = new Uint8ClampedArray(data);
+
+    // Map predictions to left/right by sorting x
+    const hands = predictions.map(pred => {
+      let sx=0, sy=0;
+      pred.landmarks.forEach(([x,y])=>{ sx+=x; sy+=y; });
+      return { x: sx/21, y: sy/21 };
+    });
+    let left = null, right = null;
+    if(hands.length === 1){
+      left = hands[0];
+    } else if(hands.length >= 2){
+      hands.sort((a,b)=>a.x - b.x);
+      left = hands[0];
+      right = hands[hands.length-1];
+    }
+
+    // Left hand controls
+    if(leftOsc){
+      if(left){
+        const minP = parseFloat(ctrl.leftMinPitch.value), maxP = parseFloat(ctrl.leftMaxPitch.value);
+        const freq = minP + (1-left.y/height)*(maxP-minP);
+        leftOsc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        const lfoRate = (left.x/width)*parseFloat(ctrl.leftMaxLFO.value);
+        leftLfo.frequency.setValueAtTime(lfoRate, audioCtx.currentTime);
+        const gainVal = parseFloat(ctrl.leftMaxGain.value)*(1-left.y/height);
+        leftGain.gain.setTargetAtTime(gainVal, audioCtx.currentTime, 0.05);
+        // Draw left marker
+        octx.strokeStyle='cyan'; octx.lineWidth=3;
+        octx.beginPath(); octx.arc(width-left.x, left.y,25,0,2*Math.PI); octx.stroke();
+      } else {
+        leftGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.05);
+      }
+    }
+
+    // Right hand controls
+    if(rightOsc){
+      if(right){
+        const minP = parseFloat(ctrl.rightMinPitch.value), maxP = parseFloat(ctrl.rightMaxPitch.value);
+        const freq = minP + (1-right.y/height)*(maxP-minP);
+        rightOsc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        const lfoRate = (right.x/width)*parseFloat(ctrl.rightMaxLFO.value);
+        rightLfo.frequency.setValueAtTime(lfoRate, audioCtx.currentTime);
+        const gainVal = parseFloat(ctrl.rightMaxGain.value)*(1-right.y/height);
+        rightGain.gain.setTargetAtTime(gainVal, audioCtx.currentTime, 0.05);
+        // Draw right marker
+        octx.strokeStyle='magenta'; octx.lineWidth=3;
+        octx.beginPath(); octx.arc(width-right.x, right.y,25,0,2*Math.PI); octx.stroke();
+      } else {
+        rightGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.05);
+      }
+    }
+
+    requestAnimationFrame(render);
+  }
+  render();
+})(); 
+</script>
+</body>
+</html>
