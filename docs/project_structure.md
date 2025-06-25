@@ -5,7 +5,7 @@ This document outlines the structure and organization of the Enhanced Hand-Track
 ## 📁 Directory Structure
 
 ```
-ar toy/
+vibes/
 ├── enhanced_hand_tracking_instrument.html    # Main application file
 ├── theremin_dual_sine_sorted.html           # Original version (legacy)
 ├── README.md                                 # Project documentation
