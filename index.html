@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AR Toy - Interactive Audio Synthesis</title>
+    <title>Vibes - Interactive Audio Synthesis</title>
     <style>
         body {
             font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
@@ -84,7 +84,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>AR Toy</h1>
+        <h1>Vibes</h1>
         <div class="subtitle">Interactive Audio Synthesis Collection</div>
         
         <div class="directory highlight">
@@ -117,7 +117,7 @@
         
         <div class="footer">
             🎶 Click any .html file to start playing • Hand-tracked synthesizers<br>
-            <em>Consolidated single-repo structure</em>
+            <em>Good vibes only ✨</em>
         </div>
     </div>
 
@@ -154,7 +154,7 @@
         // Fetch files from static JSON
         async function fetchFiles() {
             try {
-                console.log('🔍 Loading files from consolidated files.json...');
+                console.log('🔍 Loading Vibes collection from files.json...');
                 const response = await fetch('./files.json');
                 
                 if (!response.ok) {
@@ -162,7 +162,7 @@
                 }
                 
                 const data = await response.json();
-                console.log('📁 Consolidated files loaded:', data);
+                console.log('🎵 Vibes collection loaded:', data);
                 return data;
                 
             } catch (error) {
@@ -174,7 +174,7 @@
 
         // Fallback for when files.json doesn't exist
         async function fallbackDiscovery() {
-            console.log('🔍 Using fallback file discovery for consolidated structure...');
+            console.log('🔍 Using fallback file discovery for Vibes collection...');
             
             const patterns = {
                 synths: [
@@ -258,7 +258,7 @@
                 populateFileList(fileData.root || [], 'root', 'root-files');
                 
             } catch (error) {
-                console.error('❌ File discovery failed:', error);
+                console.error('❌ Vibes collection discovery failed:', error);
                 
                 // Show error message
                 ['synths-files', 'tools-files', 'docs-files', 'root-files'].forEach(id => {

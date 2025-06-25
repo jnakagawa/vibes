@@ -1,6 +1,6 @@
 # Deployment Guide
 
-This AR Toy collection uses a universal file discovery system that works on **any static hosting platform**.
+This Vibes collection uses a universal file discovery system that works on **any static hosting platform**.
 
 ## 🌐 How It Works
 
@@ -77,14 +77,14 @@ git commit -m "Update file list"
 ## 📁 File Structure
 
 ```
-ar-toy/
+vibes/
 ├── files.json              # Auto-generated file listings
 ├── index.html              # Main file browser
 ├── scripts/
 │   └── generate-file-list.js  # File discovery script
 ├── .github/workflows/
 │   └── build.yml           # Auto-update workflow
-├── vibes/                  # Synth collection
+├── synths/                 # Synth collection
 │   ├── *.html             # Individual synths
 │   └── ...
 └── package.json           # Build scripts
@@ -96,8 +96,9 @@ ar-toy/
 Edit `scripts/generate-file-list.js`:
 ```javascript
 const directories = {
-  root: '.',
-  vibes: './vibes',
+  synths: './synths',
+  tools: './tools',
+  docs: './docs',
   newdir: './new-directory'  // Add this
 };
 ```
@@ -115,10 +116,10 @@ const excludePatterns = [
 ## 🔍 Debug Information
 
 The browser console shows detailed logs:
-- `🔍 Loading files from files.json...` - Primary method
+- `🔍 Loading Vibes collection from files.json...` - Primary method
 - `🔄 Falling back to pattern-based discovery...` - Fallback active
-- `📁 Files loaded:` - Successful file discovery
-- `❌ File discovery failed:` - Complete failure
+- `🎵 Vibes collection loaded:` - Successful file discovery
+- `❌ Vibes collection discovery failed:` - Complete failure
 
 ## 🎯 Benefits
 

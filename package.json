@@ -1,5 +1,5 @@
 {
-  "name": "ar-toy",
+  "name": "vibes",
   "version": "1.0.0",
   "description": "Interactive audio synthesis collection powered by hand tracking",
   "scripts": {
@@ -7,7 +7,7 @@
     "dev": "npm run build && python -m http.server 8000",
     "serve": "python -m http.server 8000"
   },
-  "keywords": ["audio", "synthesis", "hand-tracking", "web-audio", "tensorflow"],
+  "keywords": ["audio", "synthesis", "hand-tracking", "web-audio", "tensorflow", "vibes"],
   "author": "",
   "license": "MIT",
   "devDependencies": {},

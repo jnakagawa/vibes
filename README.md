@@ -1,11 +1,11 @@
-# AR Toy
+# Vibes
 
 Interactive audio synthesis collection powered by hand tracking and web audio.
 
 ## 🎵 Consolidated Collection
 
 ```
-📁 AR Toy (Single Repository)
+📁 Vibes (Single Repository)
 ├── 🎵 synths/          # All interactive audio instruments
 │   ├── enhanced_theremin_gestures_v5_complete.html
 │   ├── enhanced_theremin_gestures_v4_psychedelic.html
@@ -36,4 +36,4 @@ Interactive audio synthesis collection powered by hand tracking and web audio.
 
 ---
 
-*Hand-tracked synthesizers • Real-time audio • Browser-based • Single consolidated repo* 
+*Hand-tracked synthesizers • Real-time audio • Browser-based • Good vibes only* 

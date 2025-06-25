@@ -62,7 +62,7 @@ function scanDirectory(dirPath) {
 }
 
 function generateFileList() {
-  console.log('🔍 Generating file list for consolidated repo...');
+  console.log('🎵 Generating file list for Vibes collection...');
   
   const result = {};
   
@@ -101,7 +101,7 @@ function generateFileList() {
   const jsonContent = JSON.stringify(result, null, 2);
   
   fs.writeFileSync(outputPath, jsonContent);
-  console.log(`✅ Generated ${outputPath} with consolidated file listings`);
+  console.log(`✅ Generated ${outputPath} with Vibes collection listings`);
   console.log(`📊 Total files: ${Object.values(result).flat().length}`);
   
   // Show summary

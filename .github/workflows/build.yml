@@ -1,4 +1,4 @@
-name: Auto-update File List
+name: Auto-update Vibes File List
 
 on:
   push:
@@ -21,9 +21,9 @@ jobs:
       with:
         node-version: '18'
     
-    - name: Generate file list
+    - name: Generate Vibes file list
       run: |
-        echo "🔍 Generating updated file list..."
+        echo "🎵 Generating updated Vibes collection file list..."
         node scripts/generate-file-list.js
         
     - name: Check for changes
@@ -43,7 +43,7 @@ jobs:
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
         git add files.json
-        git commit -m "Auto-update file list [skip ci]"
+        git commit -m "Auto-update Vibes file list [skip ci]"
         git push
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
