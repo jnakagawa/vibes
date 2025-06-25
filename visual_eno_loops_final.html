@@ -1,0 +1,232 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Visual Ambient Composer (Glow, Y=Interval)</title>
+  <meta charset="UTF-8">
+  <style>
+    body {
+      margin: 0;
+      background: #111;
+      overflow: hidden;
+      color: white;
+      font-family: 'Helvetica Neue', sans-serif;
+    }
+    canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+    .controls {
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 2;
+    }
+    .loop-knob {
+      position: absolute;
+      width: 80px;
+      padding: 6px;
+      background: rgba(0, 0, 0, 0.6);
+      border-radius: 8px;
+      text-align: center;
+      font-size: 12px;
+    }
+    .loop-knob input[type=range] {
+      width: 70px;
+    }
+    #startBtn, #stopBtn {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      padding: 10px 20px;
+      font-size: 16px;
+      border: none;
+      border-radius: 5px;
+      background-color: #556cd6;
+      color: white;
+      cursor: pointer;
+      z-index: 3;
+    }
+    #stopBtn {
+      left: 140px;
+      background-color: #c62828;
+    }
+  </style>
+</head>
+<body>
+  <button id="startBtn">Start</button>
+  <button id="stopBtn">Stop</button>
+  <canvas id="canvas"></canvas>
+  <div class="controls" id="controlPanel"></div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const controlPanel = document.getElementById('controlPanel');
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    let running = false;
+    let loopTimeouts = [];
+
+    const scale = [261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 493.88]; // C major scale
+
+    const loops = Array.from({ length: 5 }, (_, i) => ({
+      x: 100 + i * 150,
+      y: 200,
+      r: 30,
+      freq: scale[i % scale.length],
+      interval: 5000,
+      duration: 2,
+      dragging: false,
+      playing: false,
+      color: `hsl(${i * 70}, 70%, 60%)`,
+      knob: null
+    }));
+
+    function quantizeFreq(x) {
+      const index = Math.floor((x / canvas.width) * scale.length);
+      return scale[Math.max(0, Math.min(scale.length - 1, index))];
+    }
+
+    function mapYtoInterval(y) {
+      const minInterval = 1000;
+      const maxInterval = 15000;
+      return minInterval + ((y / canvas.height) * (maxInterval - minInterval));
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      loops.forEach(loop => {
+        const pct = (loop.interval - 1000) / (15000 - 1000);
+        const arcRadius = loop.r + 10;
+
+        if (loop.playing) {
+          ctx.shadowBlur = 20;
+          ctx.shadowColor = loop.color;
+        } else {
+          ctx.shadowBlur = 0;
+        }
+
+        // Draw arc for interval
+        ctx.beginPath();
+        ctx.strokeStyle = loop.color;
+        ctx.lineWidth = 3;
+        ctx.arc(loop.x, loop.y, arcRadius, 0, Math.PI * 2 * pct);
+        ctx.stroke();
+
+        // Draw blob
+        ctx.beginPath();
+        ctx.fillStyle = loop.color;
+        ctx.arc(loop.x, loop.y, loop.r, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.shadowBlur = 0;
+        ctx.shadowColor = "transparent";
+        ctx.fillStyle = '#fff';
+        ctx.font = '14px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(`${loop.freq.toFixed(0)}Hz`, loop.x, loop.y + 4);
+
+        if (loop.knob) {
+          loop.knob.style.left = (loop.x - 40) + 'px';
+          loop.knob.style.top = (loop.y + 50) + 'px';
+        }
+      });
+      requestAnimationFrame(draw);
+    }
+
+    function createKnobs() {
+      loops.forEach((loop, i) => {
+        const knob = document.createElement('div');
+        knob.className = 'loop-knob';
+        knob.innerHTML = `
+          <label>Dur<br><input type="range" min="0.2" max="5" step="0.1" value="${loop.duration}" 
+          oninput="loops[${i}].duration = parseFloat(this.value)"><br>
+          <span id="durationLabel${i}">${loop.duration.toFixed(1)}s</span></label>
+        `;
+        controlPanel.appendChild(knob);
+        loop.knob = knob;
+        const input = knob.querySelector('input');
+        input.addEventListener('input', () => {
+          document.getElementById(`durationLabel${i}`).textContent = parseFloat(input.value).toFixed(1) + 's';
+        });
+      });
+    }
+
+    canvas.addEventListener('mousedown', e => {
+      const x = e.clientX;
+      const y = e.clientY;
+      loops.forEach(loop => {
+        if (Math.hypot(loop.x - x, loop.y - y) < loop.r) {
+          loop.dragging = true;
+        }
+      });
+    });
+
+    canvas.addEventListener('mousemove', e => {
+      const x = e.clientX;
+      const y = e.clientY;
+      loops.forEach(loop => {
+        if (loop.dragging) {
+          loop.x = x;
+          loop.y = y;
+          loop.freq = quantizeFreq(x);
+          loop.interval = mapYtoInterval(y);
+        }
+      });
+    });
+
+    canvas.addEventListener('mouseup', () => {
+      loops.forEach(loop => loop.dragging = false);
+    });
+
+    function playLoop(index) {
+      const loop = loops[index];
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.value = loop.freq;
+      gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+
+      loop.playing = true;
+      osc.start();
+      osc.stop(audioCtx.currentTime + loop.duration);
+
+      setTimeout(() => {
+        loop.playing = false;
+      }, loop.duration * 1000);
+
+      loopTimeouts[index] = setTimeout(() => {
+        if (running) playLoop(index);
+      }, loop.interval);
+    }
+
+    function startAmbient() {
+      if (running) return;
+      running = true;
+      loops.forEach((_, index) => {
+        playLoop(index);
+      });
+    }
+
+    function stopAmbient() {
+      running = false;
+      loopTimeouts.forEach(timeout => clearTimeout(timeout));
+      loops.forEach(loop => loop.playing = false);
+    }
+
+    document.getElementById('startBtn').addEventListener('click', startAmbient);
+    document.getElementById('stopBtn').addEventListener('click', stopAmbient);
+
+    createKnobs();
+    draw();
+  </script>
+</body>
+</html>
