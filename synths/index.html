@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vibes - AI-Powered Hand-Tracking Theremins</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: white;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 40px;
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+        h1 {
+            text-align: center;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+        .subtitle {
+            text-align: center;
+            font-size: 1.2em;
+            margin-bottom: 40px;
+            opacity: 0.9;
+        }
+        .version-card {
+            background: rgba(255, 255, 255, 0.15);
+            padding: 30px;
+            margin: 20px 0;
+            border-radius: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: all 0.3s ease;
+        }
+        .version-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+        }
+        .version-title {
+            font-size: 1.5em;
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #FFE082;
+        }
+        .version-description {
+            margin-bottom: 20px;
+            line-height: 1.7;
+        }
+        .play-button {
+            display: inline-block;
+            background: linear-gradient(45deg, #FF6B6B, #FF8E8E);
+            color: white;
+            padding: 15px 30px;
+            text-decoration: none;
+            border-radius: 50px;
+            font-weight: bold;
+            font-size: 1.1em;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(255, 107, 107, 0.4);
+        }
+        .play-button:hover {
+            background: linear-gradient(45deg, #FF5252, #FF7979);
+            transform: scale(1.05);
+            box-shadow: 0 6px 20px rgba(255, 107, 107, 0.6);
+        }
+        .latest-badge {
+            background: #4CAF50;
+            color: white;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.8em;
+            margin-left: 10px;
+            display: inline-block;
+        }
+        .features {
+            list-style: none;
+            padding: 0;
+        }
+        .features li {
+            margin: 8px 0;
+            padding-left: 25px;
+            position: relative;
+        }
+        .features li:before {
+            content: "🎵";
+            position: absolute;
+            left: 0;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.2);
+            opacity: 0.8;
+        }
+        .github-link {
+            color: #FFE082;
+            text-decoration: none;
+        }
+        .github-link:hover {
+            text-decoration: underline;
+        }
+        .instructions {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 10px;
+            margin: 30px 0;
+            border-left: 4px solid #FFE082;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎵 Vibes</h1>
+        <p class="subtitle">AI-Powered Hand-Tracking Theremins</p>
+        
+        <div class="instructions">
+            <strong>🚀 Quick Start:</strong> Click a version below → Allow camera access → Click "Start Audio & Effects" → Move your hands to play!
+        </div>
+
+        <div class="version-card">
+            <div class="version-title">
+                Enhanced Theremin v5 Complete
+                <span class="latest-badge">Latest</span>
+            </div>
+            <div class="version-description">
+                The most advanced version featuring mobile-friendly design, fixed layer creation, face mask effects, and comprehensive gesture controls.
+            </div>
+            <ul class="features">
+                <li>Mobile-friendly collapsible interface</li>
+                <li>Fixed sound layer creation (no more bugs!)</li>
+                <li>Cool face mask effect with white dots</li>
+                <li>Musical scale system (Major, Minor, Pentatonic, etc.)</li>
+                <li>Advanced gesture controls (open hand, fist, peace sign)</li>
+                <li>Head-out-of-frame silence for safety</li>
+                <li>Edge detection visual effects</li>
+            </ul>
+            <a href="enhanced_theremin_gestures_v5_complete.html" class="play-button">🎹 Play v5 Complete</a>
+        </div>
+
+        <div class="version-card">
+            <div class="version-title">Enhanced Theremin v4 Psychedelic</div>
+            <div class="version-description">
+                Previous version with psychedelic visual effects and experimental mouth tracking features.
+            </div>
+            <ul class="features">
+                <li>Psychedelic visual effects</li>
+                <li>Mouth tracking and vowel detection</li>
+                <li>Basic gesture recognition</li>
+                <li>LFO modulation and white noise synthesis</li>
+            </ul>
+            <a href="enhanced_theremin_gestures_v4_psychedelic.html" class="play-button">🌈 Play v4 Psychedelic</a>
+        </div>
+
+        <div class="footer">
+            <p>
+                <strong>Browser Requirements:</strong> Chrome 80+, Firefox 75+, Safari 14+, Edge 80+<br>
+                Built with TensorFlow.js, ML5.js, and Web Audio API<br>
+                <a href="https://github.com/jnakagawa/vibes" class="github-link">View Source on GitHub</a>
+            </p>
+        </div>
+    </div>
+</body>
+</html> 

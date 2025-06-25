@@ -3,10 +3,11 @@
 const fs = require('fs');
 const path = require('path');
 
-// Directories to scan
+// Directories to scan in the consolidated structure
 const directories = {
-  root: '.',
-  vibes: './vibes'
+  synths: './synths',
+  tools: './tools',
+  docs: './docs'
 };
 
 // Files to exclude
@@ -17,6 +18,7 @@ const excludePatterns = [
   /^netlify$/,              // Netlify directory
   /^\.git$/,                // Git directory
   /^files\.json$/,          // The output file itself
+  /^\.DS_Store$/,           // macOS files
 ];
 
 function shouldExcludeFile(filename) {
@@ -38,14 +40,14 @@ function scanDirectory(dirPath) {
         const filePath = path.join(dirPath, file);
         const stats = fs.statSync(filePath);
         
-        // Only include actual files, not subdirectories (except vibes)
-        if (stats.isDirectory() && file !== 'vibes') {
+        // Only include actual files
+        if (stats.isDirectory()) {
           return null;
         }
         
         return {
           name: file,
-          isDirectory: stats.isDirectory(),
+          isDirectory: false,
           size: stats.size,
           modified: stats.mtime.toISOString(),
           extension: path.extname(file).toLowerCase()
@@ -60,7 +62,7 @@ function scanDirectory(dirPath) {
 }
 
 function generateFileList() {
-  console.log('🔍 Generating file list...');
+  console.log('🔍 Generating file list for consolidated repo...');
   
   const result = {};
   
@@ -70,19 +72,47 @@ function generateFileList() {
     console.log(`   Found ${result[dirName].length} files in ${dirName}/`);
   }
   
+  // Also scan root for important files
+  const rootFiles = [
+    'index.html',
+    'README.md', 
+    'LICENSE',
+    'DEPLOYMENT.md',
+    'package.json'
+  ].map(filename => {
+    if (fs.existsSync(filename)) {
+      const stats = fs.statSync(filename);
+      return {
+        name: filename,
+        isDirectory: false,
+        size: stats.size,
+        modified: stats.mtime.toISOString(),
+        extension: path.extname(filename).toLowerCase()
+      };
+    }
+    return null;
+  }).filter(Boolean);
+  
+  result.root = rootFiles;
+  console.log(`   Found ${rootFiles.length} files in root/`);
+  
   // Write to files.json
   const outputPath = 'files.json';
   const jsonContent = JSON.stringify(result, null, 2);
   
   fs.writeFileSync(outputPath, jsonContent);
-  console.log(`✅ Generated ${outputPath} with file listings`);
+  console.log(`✅ Generated ${outputPath} with consolidated file listings`);
   console.log(`📊 Total files: ${Object.values(result).flat().length}`);
   
   // Show summary
   console.log('\n📋 Summary:');
   for (const [dirName, files] of Object.entries(result)) {
-    const htmlFiles = files.filter(f => f.name.endsWith('.html'));
-    console.log(`   ${dirName}/: ${files.length} files (${htmlFiles.length} synths)`);
+    if (dirName === 'synths') {
+      const htmlFiles = files.filter(f => f.name.endsWith('.html'));
+      console.log(`   ${dirName}/: ${files.length} files (${htmlFiles.length} synths)`);
+    } else {
+      console.log(`   ${dirName}/: ${files.length} files`);
+    }
   }
 }
 

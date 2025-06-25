@@ -1,84 +1,5 @@
 {
-  "root": [
-    {
-      "name": "README.md",
-      "isDirectory": false,
-      "size": 839,
-      "modified": "2025-06-25T22:47:29.364Z",
-      "extension": ".md"
-    },
-    {
-      "name": "index.html",
-      "isDirectory": false,
-      "size": 8432,
-      "modified": "2025-06-25T23:00:48.379Z",
-      "extension": ".html"
-    },
-    {
-      "name": "package.json",
-      "isDirectory": false,
-      "size": 486,
-      "modified": "2025-06-25T22:58:57.555Z",
-      "extension": ".json"
-    },
-    {
-      "name": "project_structure.md",
-      "isDirectory": false,
-      "size": 6789,
-      "modified": "2025-05-29T05:48:00.717Z",
-      "extension": ".md"
-    },
-    {
-      "name": "prompt.py",
-      "isDirectory": false,
-      "size": 0,
-      "modified": "2025-06-17T04:20:36.205Z",
-      "extension": ".py"
-    },
-    {
-      "name": "theremin_dual_sine_sorted.html",
-      "isDirectory": false,
-      "size": 8707,
-      "modified": "2025-05-29T05:29:17.859Z",
-      "extension": ".html"
-    },
-    {
-      "name": "user_tasks.log",
-      "isDirectory": false,
-      "size": 285,
-      "modified": "2025-06-17T04:36:29.482Z",
-      "extension": ".log"
-    },
-    {
-      "name": "userinput.py",
-      "isDirectory": false,
-      "size": 30,
-      "modified": "2025-06-17T04:41:20.618Z",
-      "extension": ".py"
-    },
-    {
-      "name": "vibes",
-      "isDirectory": true,
-      "size": 480,
-      "modified": "2025-06-25T22:52:46.066Z",
-      "extension": ""
-    }
-  ],
-  "vibes": [
-    {
-      "name": "LICENSE",
-      "isDirectory": false,
-      "size": 35149,
-      "modified": "2025-06-10T05:30:35.625Z",
-      "extension": ""
-    },
-    {
-      "name": "README.md",
-      "isDirectory": false,
-      "size": 2879,
-      "modified": "2025-06-10T05:31:57.396Z",
-      "extension": ".md"
-    },
+  "synths": [
     {
       "name": "enhanced_theremin_gestures_v4_psychedelic.html",
       "isDirectory": false,
@@ -129,11 +50,11 @@
       "extension": ".html"
     },
     {
-      "name": "rebot.png",
+      "name": "theremin_dual_sine_sorted.html",
       "isDirectory": false,
-      "size": 1925676,
-      "modified": "2025-06-17T04:32:49.353Z",
-      "extension": ".png"
+      "size": 8707,
+      "modified": "2025-05-29T05:29:17.859Z",
+      "extension": ".html"
     },
     {
       "name": "visual_eno_loops_final.html",
@@ -148,6 +69,82 @@
       "size": 5716,
       "modified": "2025-06-17T05:56:51.319Z",
       "extension": ".html"
+    }
+  ],
+  "tools": [
+    {
+      "name": "prompt.py",
+      "isDirectory": false,
+      "size": 0,
+      "modified": "2025-06-17T04:20:36.205Z",
+      "extension": ".py"
+    },
+    {
+      "name": "userinput.py",
+      "isDirectory": false,
+      "size": 30,
+      "modified": "2025-06-17T04:41:20.618Z",
+      "extension": ".py"
+    }
+  ],
+  "docs": [
+    {
+      "name": "project_structure.md",
+      "isDirectory": false,
+      "size": 6789,
+      "modified": "2025-05-29T05:48:00.717Z",
+      "extension": ".md"
+    },
+    {
+      "name": "user_tasks.log",
+      "isDirectory": false,
+      "size": 285,
+      "modified": "2025-06-17T04:36:29.482Z",
+      "extension": ".log"
+    },
+    {
+      "name": "vibes-README.md",
+      "isDirectory": false,
+      "size": 2879,
+      "modified": "2025-06-10T05:31:57.396Z",
+      "extension": ".md"
+    }
+  ],
+  "root": [
+    {
+      "name": "index.html",
+      "isDirectory": false,
+      "size": 9670,
+      "modified": "2025-06-25T23:06:15.920Z",
+      "extension": ".html"
+    },
+    {
+      "name": "README.md",
+      "isDirectory": false,
+      "size": 839,
+      "modified": "2025-06-25T22:47:29.364Z",
+      "extension": ".md"
+    },
+    {
+      "name": "LICENSE",
+      "isDirectory": false,
+      "size": 35149,
+      "modified": "2025-06-10T05:30:35.625Z",
+      "extension": ""
+    },
+    {
+      "name": "DEPLOYMENT.md",
+      "isDirectory": false,
+      "size": 3188,
+      "modified": "2025-06-25T23:01:37.164Z",
+      "extension": ".md"
+    },
+    {
+      "name": "package.json",
+      "isDirectory": false,
+      "size": 486,
+      "modified": "2025-06-25T22:58:57.555Z",
+      "extension": ".json"
     }
   ]
 }
