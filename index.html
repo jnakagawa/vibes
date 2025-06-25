@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AR Toy - File Browser</title>
+    <style>
+        body {
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+            background: #000;
+            color: #0f0;
+            margin: 0;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #0ff;
+            margin-bottom: 10px;
+            font-size: 2em;
+        }
+        .subtitle {
+            color: #888;
+            margin-bottom: 30px;
+            font-style: italic;
+        }
+        .directory {
+            border: 1px solid #333;
+            background: #111;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        .dir-header {
+            color: #ff0;
+            font-weight: bold;
+            margin-bottom: 15px;
+            font-size: 1.1em;
+        }
+        .file-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        .file-item {
+            margin: 8px 0;
+            padding: 5px 0;
+        }
+        .file-item a {
+            color: #f0f;
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+        .file-item a:hover {
+            color: #0ff;
+            text-decoration: underline;
+        }
+        .file-icon {
+            margin-right: 8px;
+        }
+        .loading {
+            color: #888;
+            font-style: italic;
+        }
+        .error {
+            color: #f44;
+            font-style: italic;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            color: #666;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>AR Toy</h1>
+        <div class="subtitle">Interactive Audio Synthesis Collection</div>
+        
+        <div class="directory">
+            <div class="dir-header">📁 vibes/</div>
+            <ul class="file-list" id="vibes-files">
+                <li class="loading">🔍 Loading files...</li>
+            </ul>
+        </div>
+        
+        <div class="directory">
+            <div class="dir-header">📁 root/</div>
+            <ul class="file-list" id="root-files">
+                <li class="loading">🔍 Loading files...</li>
+            </ul>
+        </div>
+        
+        <div class="footer">
+            🎶 Click any .html file to start playing • Hand-tracked synthesizers
+        </div>
+    </div>
+
+    <script>
+        // Get file icon based on extension
+        function getFileIcon(filename) {
+            if (filename.endsWith('.html')) return '🎵';
+            if (filename.endsWith('.py')) return '🔧';
+            if (filename.endsWith('.md')) return '📄';
+            if (filename.endsWith('.log')) return '📋';
+            if (filename.endsWith('.png') || filename.endsWith('.jpg')) return '🖼️';
+            if (filename === 'LICENSE') return '📄';
+            return '📄';
+        }
+
+        // Create file list item
+        function createFileItem(file, directory) {
+            const li = document.createElement('li');
+            li.className = 'file-item';
+            const icon = getFileIcon(file.name);
+            
+            // Only make HTML files clickable
+            if (file.name.endsWith('.html')) {
+                const path = directory === 'vibes' ? `vibes/${file.name}` : file.name;
+                li.innerHTML = `<a href="${path}"><span class="file-icon">${icon}</span>${file.name}</a>`;
+            } else {
+                li.innerHTML = `<span style="color: #666;"><span class="file-icon">${icon}</span>${file.name}</span>`;
+            }
+            
+            return li;
+        }
+
+        // Fetch files from static JSON
+        async function fetchFiles() {
+            try {
+                console.log('🔍 Loading files from files.json...');
+                const response = await fetch('./files.json');
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                console.log('📁 Files loaded:', data);
+                return data;
+                
+            } catch (error) {
+                console.warn('⚠️ Static files.json failed:', error.message);
+                console.log('🔄 Falling back to pattern-based discovery...');
+                return await fallbackDiscovery();
+            }
+        }
+
+        // Fallback for when files.json doesn't exist
+        async function fallbackDiscovery() {
+            console.log('🔍 Using fallback file discovery...');
+            
+            const patterns = {
+                vibes: [
+                    'enhanced_theremin_gestures_v5_complete.html',
+                    'enhanced_theremin_gestures_v4_psychedelic.html',
+                    'fm_synth_v3.html',
+                    'fm_synth_v2.html',
+                    'fm_synth_v1.html',
+                    'visual_eno_loops_glow.html',
+                    'hrv_monitor.html',
+                    'index.html'
+                ],
+                root: [
+                    'theremin_dual_sine_sorted.html'
+                ]
+            };
+
+            const result = { vibes: [], root: [] };
+
+            for (const [dir, files] of Object.entries(patterns)) {
+                for (const filename of files) {
+                    try {
+                        const path = dir === 'vibes' ? `vibes/${filename}` : filename;
+                        const response = await fetch(path, { method: 'HEAD' });
+                        if (response.ok) {
+                            result[dir].push({ 
+                                name: filename, 
+                                isDirectory: false,
+                                size: 0,
+                                extension: filename.split('.').pop()
+                            });
+                        }
+                    } catch (e) {
+                        // File doesn't exist, skip
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        // Populate file list
+        function populateFileList(files, directory, containerId) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = '';
+
+            if (files && files.length > 0) {
+                // Sort files: HTML files first, then alphabetically
+                files.sort((a, b) => {
+                    const aIsHtml = a.name.endsWith('.html');
+                    const bIsHtml = b.name.endsWith('.html');
+                    
+                    if (aIsHtml && !bIsHtml) return -1;
+                    if (!aIsHtml && bIsHtml) return 1;
+                    return a.name.localeCompare(b.name);
+                });
+
+                files.forEach(file => {
+                    container.appendChild(createFileItem(file, directory));
+                });
+            } else {
+                const li = document.createElement('li');
+                li.className = 'error';
+                li.innerHTML = '📂 No files found';
+                container.appendChild(li);
+            }
+        }
+
+        // Initialize file discovery
+        async function initializeFileDiscovery() {
+            try {
+                const fileData = await fetchFiles();
+                
+                // Populate both directories
+                populateFileList(fileData.vibes || [], 'vibes', 'vibes-files');
+                populateFileList(fileData.root || [], 'root', 'root-files');
+                
+            } catch (error) {
+                console.error('❌ File discovery failed:', error);
+                
+                // Show error message
+                ['vibes-files', 'root-files'].forEach(id => {
+                    const container = document.getElementById(id);
+                    container.innerHTML = '<li class="error">❌ Failed to load files</li>';
+                });
+            }
+        }
+
+        // Start when page loads
+        window.addEventListener('load', initializeFileDiscovery);
+    </script>
+</body>
+</html> 

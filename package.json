@@ -1,0 +1,17 @@
+{
+  "name": "ar-toy",
+  "version": "1.0.0",
+  "description": "Interactive audio synthesis collection powered by hand tracking",
+  "scripts": {
+    "build": "node scripts/generate-file-list.js",
+    "dev": "npm run build && python -m http.server 8000",
+    "serve": "python -m http.server 8000"
+  },
+  "keywords": ["audio", "synthesis", "hand-tracking", "web-audio", "tensorflow"],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {},
+  "engines": {
+    "node": ">=14.0.0"
+  }
+} 

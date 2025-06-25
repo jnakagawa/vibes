@@ -1,0 +1,153 @@
+{
+  "root": [
+    {
+      "name": "README.md",
+      "isDirectory": false,
+      "size": 839,
+      "modified": "2025-06-25T22:47:29.364Z",
+      "extension": ".md"
+    },
+    {
+      "name": "index.html",
+      "isDirectory": false,
+      "size": 8432,
+      "modified": "2025-06-25T23:00:48.379Z",
+      "extension": ".html"
+    },
+    {
+      "name": "package.json",
+      "isDirectory": false,
+      "size": 486,
+      "modified": "2025-06-25T22:58:57.555Z",
+      "extension": ".json"
+    },
+    {
+      "name": "project_structure.md",
+      "isDirectory": false,
+      "size": 6789,
+      "modified": "2025-05-29T05:48:00.717Z",
+      "extension": ".md"
+    },
+    {
+      "name": "prompt.py",
+      "isDirectory": false,
+      "size": 0,
+      "modified": "2025-06-17T04:20:36.205Z",
+      "extension": ".py"
+    },
+    {
+      "name": "theremin_dual_sine_sorted.html",
+      "isDirectory": false,
+      "size": 8707,
+      "modified": "2025-05-29T05:29:17.859Z",
+      "extension": ".html"
+    },
+    {
+      "name": "user_tasks.log",
+      "isDirectory": false,
+      "size": 285,
+      "modified": "2025-06-17T04:36:29.482Z",
+      "extension": ".log"
+    },
+    {
+      "name": "userinput.py",
+      "isDirectory": false,
+      "size": 30,
+      "modified": "2025-06-17T04:41:20.618Z",
+      "extension": ".py"
+    },
+    {
+      "name": "vibes",
+      "isDirectory": true,
+      "size": 480,
+      "modified": "2025-06-25T22:52:46.066Z",
+      "extension": ""
+    }
+  ],
+  "vibes": [
+    {
+      "name": "LICENSE",
+      "isDirectory": false,
+      "size": 35149,
+      "modified": "2025-06-10T05:30:35.625Z",
+      "extension": ""
+    },
+    {
+      "name": "README.md",
+      "isDirectory": false,
+      "size": 2879,
+      "modified": "2025-06-10T05:31:57.396Z",
+      "extension": ".md"
+    },
+    {
+      "name": "enhanced_theremin_gestures_v4_psychedelic.html",
+      "isDirectory": false,
+      "size": 36638,
+      "modified": "2025-06-10T05:30:35.626Z",
+      "extension": ".html"
+    },
+    {
+      "name": "enhanced_theremin_gestures_v5_complete.html",
+      "isDirectory": false,
+      "size": 60526,
+      "modified": "2025-06-10T22:06:39.019Z",
+      "extension": ".html"
+    },
+    {
+      "name": "fm_synth_v1.html",
+      "isDirectory": false,
+      "size": 42222,
+      "modified": "2025-06-17T05:10:48.281Z",
+      "extension": ".html"
+    },
+    {
+      "name": "fm_synth_v2.html",
+      "isDirectory": false,
+      "size": 49116,
+      "modified": "2025-06-17T05:18:14.384Z",
+      "extension": ".html"
+    },
+    {
+      "name": "fm_synth_v3.html",
+      "isDirectory": false,
+      "size": 62150,
+      "modified": "2025-06-17T05:52:22.178Z",
+      "extension": ".html"
+    },
+    {
+      "name": "hrv_monitor.html",
+      "isDirectory": false,
+      "size": 16554,
+      "modified": "2025-06-10T22:09:58.822Z",
+      "extension": ".html"
+    },
+    {
+      "name": "index.html",
+      "isDirectory": false,
+      "size": 6157,
+      "modified": "2025-06-10T05:33:35.497Z",
+      "extension": ".html"
+    },
+    {
+      "name": "rebot.png",
+      "isDirectory": false,
+      "size": 1925676,
+      "modified": "2025-06-17T04:32:49.353Z",
+      "extension": ".png"
+    },
+    {
+      "name": "visual_eno_loops_final.html",
+      "isDirectory": false,
+      "size": 6186,
+      "modified": "2025-06-25T22:52:46.066Z",
+      "extension": ".html"
+    },
+    {
+      "name": "visual_eno_loops_glow.html",
+      "isDirectory": false,
+      "size": 5716,
+      "modified": "2025-06-17T05:56:51.319Z",
+      "extension": ".html"
+    }
+  ]
+}
