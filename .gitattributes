@@ -1,0 +1,2 @@
+# treat all .sqlx files as SQL for syntax highlighting
+*.sqlx linguist-language=SQL 
