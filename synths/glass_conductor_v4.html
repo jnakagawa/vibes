@@ -1,0 +1,955 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Glass Conductor v4 - Stable Minimalist Conducting</title>
+<style>
+  html, body { 
+    margin:0; padding:0; overflow:hidden; 
+    background: linear-gradient(135deg, #1a1a2e, #16213e, #0f3460);
+    color:white; font-family: 'Arial', sans-serif;
+  }
+  
+  .minimal-controls {
+    position: absolute; top: 20px; right: 20px;
+    background: rgba(0,0,0,0.3); padding: 15px; border-radius: 10px;
+    backdrop-filter: blur(10px); font-size: 14px; z-index: 10;
+  }
+  
+  .conducting-info {
+    position: absolute; top: 20px; left: 20px;
+    background: rgba(0,0,0,0.3); padding: 15px; border-radius: 10px;
+    backdrop-filter: blur(10px); max-width: 300px; font-size: 14px;
+  }
+  
+  .pattern-display {
+    position: absolute; bottom: 20px; left: 20px;
+    background: rgba(0,0,0,0.5); padding: 10px; border-radius: 8px;
+    font-family: 'Courier New', monospace; font-size: 12px;
+  }
+  
+  canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+  
+  button {
+    background: rgba(76, 175, 80, 0.2); border: 2px solid rgba(76, 175, 80, 0.5);
+    color: white; padding: 10px 20px; border-radius: 20px; cursor: pointer;
+    font-size: 14px; backdrop-filter: blur(10px); transition: all 0.3s ease;
+    margin: 5px 0;
+  }
+  
+  button:hover {
+    background: rgba(76, 175, 80, 0.3);
+    border-color: rgba(76, 175, 80, 0.7);
+  }
+  
+  select {
+    width: 100%; padding: 5px; margin: 5px 0; border-radius: 5px;
+    background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.3);
+  }
+  
+  .status-light {
+    display: inline-block; width: 12px; height: 12px; border-radius: 50%;
+    margin-right: 8px; background: #ff4444; transition: background 0.3s;
+  }
+  
+  .status-light.active { background: #44ff44; }
+</style>
+</head>
+<body>
+
+<div class="conducting-info">
+  <strong>🎼 Glass Conductor v4</strong><br/>
+  <div><span class="status-light" id="camera-status"></span>Camera & Hands</div>
+  <div><span class="status-light" id="audio-status"></span>Audio Engine</div>
+  <br/>
+  <strong>Conducting Gestures:</strong><br/>
+  • <strong>Left Hand (Lead):</strong> Woodwind arpeggios (Y=root, X=register)<br/>
+  • <strong>Right Hand (Accompany):</strong> Orchestral chords (Y=root, volume=dynamics)<br/>
+  • <strong>Interaction:</strong> Left leads, right follows with dense clusters<br/>
+  • <strong>Volume:</strong> Hand distance controls dynamics<br/>
+  <br/>
+  <div id="gesture-feedback">Show hands to conduct...</div>
+</div>
+
+<div class="minimal-controls">
+  <strong>🎛️ Glass Settings</strong><br/>
+  
+  <label>Scale:
+    <select id="scale-select">
+      <option value="dorian">C Dorian (Glass style)</option>
+      <option value="mixolydian">C Mixolydian</option>
+      <option value="aeolian">A Minor (natural)</option>
+      <option value="pentatonic">Pentatonic</option>
+    </select>
+  </label>
+  
+  <label>Tempo:
+    <select id="tempo-select">
+      <option value="120">Moderate (120 BPM)</option>
+      <option value="90">Slow (90 BPM)</option>
+      <option value="150">Fast (150 BPM)</option>
+    </select>
+  </label>
+  
+  <button id="start-btn">🎵 Start Conducting</button>
+  <button id="clear-btn">🗑️ Clear All</button>
+  
+  <div style="margin-top: 10px; font-size: 12px; color: #ccc;">
+    <div>Volume: <span id="volume-display">0%</span></div>
+    <div>Layers: <span id="layer-count">0</span></div>
+    <div>Pattern: <span id="current-pattern">None</span></div>
+  </div>
+</div>
+
+<div class="pattern-display" id="pattern-display">
+  Glass patterns will appear here...
+</div>
+
+<video id="video" autoplay playsinline style="display:none"></video>
+<canvas id="video-canvas"></canvas>
+<canvas id="overlay-canvas"></canvas>
+
+<script src="https://unpkg.com/ml5@latest/dist/ml5.min.js"></script>
+
+<script>
+(async () => {
+  // DEBUG LOGGING - Glass Conductor v4
+  function log(message, data = '') {
+    console.log(`[Glass-Conductor-v4] ${message}`, data);
+  }
+
+  log('🎼 Philip Glass Conductor v4 - Stable minimalist conducting');
+
+  // CANVAS SETUP
+  const video = document.getElementById('video');
+  const vcanvas = document.getElementById('video-canvas'), vctx = vcanvas.getContext('2d');
+  const ocanvas = document.getElementById('overlay-canvas'), octx = ocanvas.getContext('2d');
+  
+  let width, height;
+  
+  function resizeCanvases() {
+    width = window.innerWidth;
+    height = window.innerHeight;
+    [vcanvas, ocanvas].forEach(canvas => {
+      canvas.width = width;
+      canvas.height = height;
+    });
+  }
+  resizeCanvases();
+  window.addEventListener('resize', resizeCanvases);
+
+  // AUDIO SYSTEM - Stable and minimal
+  let audioCtx = null;
+  let masterGain = null;
+  let audioStarted = false;
+  
+  // Glass Scale Definitions
+  const scales = {
+    dorian: [261.63, 293.66, 311.13, 349.23, 392.00, 440.00, 466.16], // C Dorian
+    mixolydian: [261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 466.16], // C Mixolydian  
+    aeolian: [220.00, 246.94, 261.63, 293.66, 329.63, 349.23, 392.00], // A Natural Minor
+    pentatonic: [261.63, 293.66, 329.63, 392.00, 440.00] // C Pentatonic
+  };
+  let currentScale = scales.dorian;
+  
+  async function initAudio() {
+    if (audioStarted) return;
+    
+    try {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      
+      // Handle suspended state
+      if (audioCtx.state === 'suspended') {
+        await audioCtx.resume();
+      }
+      
+      masterGain = audioCtx.createGain();
+      masterGain.gain.value = 0.3;
+      masterGain.connect(audioCtx.destination);
+      
+      audioStarted = true;
+      document.getElementById('audio-status').classList.add('active');
+      log('✅ Audio system initialized');
+      
+    } catch (error) {
+      log('❌ Audio initialization failed:', error);
+    }
+  }
+
+  // SUPERDIRT-STYLE FM SYNTHESIZER - Based on TidalCycles SuperFM
+  class SuperFMSynth {
+    constructor(frequency, modRatio = 2, modIndex = 5) {
+      this.carrier = audioCtx.createOscillator();
+      this.modulator = audioCtx.createOscillator();
+      this.modGain = audioCtx.createGain();
+      this.outputGain = audioCtx.createGain();
+      this.filter = audioCtx.createBiquadFilter();
+      
+      // FM synthesis setup (TidalCycles SuperFM style)
+      this.carrier.frequency.value = frequency;
+      this.modulator.frequency.value = frequency * modRatio;
+      this.modGain.gain.value = modIndex * 50; // Fixed: much smaller modulation depth
+      
+      // Woodwind-like filtering
+      this.filter.type = 'lowpass';
+      this.filter.frequency.value = frequency * 4;
+      this.filter.Q.value = 2;
+      
+      // Connect FM synthesis chain
+      this.modulator.connect(this.modGain);
+      this.modGain.connect(this.carrier.frequency);
+      this.carrier.connect(this.filter);
+      this.filter.connect(this.outputGain);
+    }
+    
+    start(gain = 0.1, duration = 0.4) {
+      this.outputGain.gain.setValueAtTime(0, audioCtx.currentTime);
+      this.outputGain.gain.linearRampToValueAtTime(gain, audioCtx.currentTime + 0.05);
+      this.outputGain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+      
+      this.carrier.start();
+      this.modulator.start();
+      
+      setTimeout(() => {
+        try {
+          this.carrier.stop();
+          this.modulator.stop();
+        } catch(e) {}
+      }, duration * 1000 + 50);
+    }
+    
+    connect(destination) {
+      this.outputGain.connect(destination);
+    }
+  }
+  
+  // SUPERDIRT-STYLE PHYSICAL MODELING - Based on SuperMandolin
+  class SuperMandolinSynth {
+    constructor(frequency, sustain = 0.5, detune = 0) {
+      this.oscs = [];
+      this.gains = [];
+      this.outputGain = audioCtx.createGain();
+      
+      // Multi-oscillator physical modeling (mandolin-style)
+      const frequencies = [
+        frequency,
+        frequency * (1 + detune * 0.01),
+        frequency * 2,
+        frequency * 3.01 // Slight detune for realism
+      ];
+      
+      frequencies.forEach((freq, i) => {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        
+        osc.type = i === 0 ? 'sawtooth' : 'sine';
+        osc.frequency.value = freq;
+        
+        // Physical modeling envelope based on sustain parameter
+        const level = [0.8, 0.3, 0.2, 0.1][i] * sustain;
+        gain.gain.value = level;
+        
+        osc.connect(gain);
+        gain.connect(this.outputGain);
+        
+        this.oscs.push(osc);
+        this.gains.push(gain);
+      });
+    }
+    
+    start(velocity = 0.5) {
+      const level = velocity * 0.06;
+      this.outputGain.gain.setValueAtTime(0, audioCtx.currentTime);
+      this.outputGain.gain.linearRampToValueAtTime(level, audioCtx.currentTime + 0.1);
+      
+      this.oscs.forEach(osc => osc.start());
+    }
+    
+    stop() {
+      this.outputGain.gain.linearRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
+      setTimeout(() => {
+        this.oscs.forEach(osc => {
+          try { osc.stop(); } catch(e) {}
+        });
+      }, 350);
+    }
+    
+    connect(destination) {
+      this.outputGain.connect(destination);
+    }
+    
+    updateDynamics(velocity) {
+      const level = velocity * 0.06;
+      this.outputGain.gain.linearRampToValueAtTime(level, audioCtx.currentTime + 0.1);
+    }
+  }
+  
+  // WOODWIND ARPEGGIO SYSTEM - Using TidalCycles SuperFM
+  class WoodwindArpeggio {
+    constructor(id, rootNote, complexity = 1, register = 0.5) {
+      this.id = id;
+      this.rootNote = rootNote;
+      this.complexity = Math.max(1, Math.min(complexity, 7)); // 1-7 notes for longer arpeggios
+      this.register = register; // 0-1, affects octave and timbre
+      this.isPlaying = false;
+      this.currentStep = 0;
+      this.interval = null;
+      
+      this.generateArpeggio();
+      log(`🎷 Created woodwind arpeggio #${id}: ${this.notes.length} notes from ${rootNote.toFixed(1)}Hz`);
+    }
+    
+    generateArpeggio() {
+      const baseIndex = currentScale.findIndex(freq => Math.abs(freq - this.rootNote) < 10);
+      const startIndex = Math.max(0, baseIndex);
+      
+      // Glass additive arpeggio: 1, 1-2, 1-2-3, 1-2-3-4, etc.
+      this.notes = [];
+      for (let i = 0; i < this.complexity; i++) {
+        const scaleIndex = (startIndex + i) % currentScale.length;
+        let freq = currentScale[scaleIndex];
+        
+        // Apply register (octave shifting based on hand position)
+        const octaveShift = Math.floor(this.register * 2); // 0, 1, or 2 octaves up
+        freq *= Math.pow(2, octaveShift);
+        
+        this.notes.push(freq);
+      }
+      
+      // Glass-style cycling - different patterns
+      this.cycleLength = [3, 5, 4, 7, 6, 8, 9][this.complexity - 1] || 5;
+    }
+    
+    start(tempo = 120) {
+      if (this.isPlaying) this.stop();
+      
+      // Philip Glass style: faster, more driving rhythm
+      const intervalMs = (60 / tempo / 8) * 1000; // Even faster for Glass intensity
+      this.isPlaying = true;
+      this.currentStep = 0;
+      
+      this.interval = setInterval(() => {
+        this.playArpeggioNote();
+        this.currentStep = (this.currentStep + 1) % this.cycleLength;
+      }, intervalMs);
+      
+      log(`▶️ Started Glass-style arpeggio #${this.id} at ${tempo} BPM (${this.cycleLength} cycle)`);
+    }
+    
+    playArpeggioNote() {
+      if (!audioCtx || !masterGain) {
+        log(`❌ No audio context: audioCtx=${!!audioCtx}, masterGain=${!!masterGain}`);
+        return;
+      }
+      
+      // Play simple sine wave arpeggio - one note at a time
+      const noteIndex = this.currentStep % this.complexity;
+      const frequency = this.notes[noteIndex];
+      
+      log(`🎵 Playing arpeggio note: step=${this.currentStep}, noteIndex=${noteIndex}, freq=${frequency.toFixed(1)}Hz`);
+      
+      // Simple sine wave oscillator instead of complex FM
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      
+      osc.type = 'sine';
+      osc.frequency.value = frequency;
+      
+      gain.gain.setValueAtTime(0, audioCtx.currentTime);
+      gain.gain.linearRampToValueAtTime(0.1, audioCtx.currentTime + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
+      
+      osc.connect(gain);
+      gain.connect(masterGain);
+      
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.2);
+    }
+    
+    stop() {
+      if (this.interval) {
+        clearInterval(this.interval);
+        this.interval = null;
+      }
+      this.isPlaying = false;
+      log(`⏹️ Stopped woodwind arpeggio #${this.id}`);
+    }
+    
+    updateParameters(newComplexity, newRegister) {
+      const wasPlaying = this.isPlaying;
+      if (wasPlaying) this.stop();
+      
+      this.complexity = Math.max(1, Math.min(newComplexity, 7));
+      this.register = Math.max(0, Math.min(newRegister, 1));
+      this.generateArpeggio();
+      
+      if (wasPlaying) {
+        const tempo = parseInt(document.getElementById('tempo-select').value);
+        this.start(tempo);
+      }
+      
+      log(`🔄 Updated arpeggio #${this.id}: complexity=${this.complexity}, register=${this.register.toFixed(2)}`);
+    }
+  }
+  
+  // ORCHESTRAL CHORD SYSTEM - Using TidalCycles SuperMandolin
+  class OrchestralChord {
+    constructor(id, rootNote, voicing = 1, dynamics = 0.5) {
+      this.id = id;
+      this.rootNote = rootNote;
+      this.voicing = Math.max(1, Math.min(voicing, 5)); // 1-5 complexity levels
+      this.dynamics = dynamics; // 0-1 for orchestral swells
+      this.isPlaying = false;
+      this.oscillators = [];
+      this.gains = [];
+      
+      this.generateChord();
+      log(`🎺 Created orchestral chord #${id}: ${this.chordNotes.length} voices from ${rootNote.toFixed(1)}Hz`);
+    }
+    
+    generateChord() {
+      const baseIndex = currentScale.findIndex(freq => Math.abs(freq - this.rootNote) < 10);
+      const startIndex = Math.max(0, baseIndex);
+      
+      this.chordNotes = [];
+      
+      // Build orchestral chord voicings based on complexity
+      switch(this.voicing) {
+        case 1: // Simple triad
+          this.chordNotes = [0, 2, 4].map(interval => {
+            const index = (startIndex + interval) % currentScale.length;
+            return currentScale[index];
+          });
+          break;
+        case 2: // Seventh chord
+          this.chordNotes = [0, 2, 4, 6].map(interval => {
+            const index = (startIndex + interval) % currentScale.length;
+            return currentScale[index];
+          });
+          break;
+        case 3: // Extended harmony
+          this.chordNotes = [0, 2, 4, 6, 1].map(interval => {
+            const index = (startIndex + interval) % currentScale.length;
+            return currentScale[index];
+          });
+          break;
+        case 4: // Dense cluster
+          this.chordNotes = [0, 1, 2, 4, 5, 6].map(interval => {
+            const index = (startIndex + interval) % currentScale.length;
+            return currentScale[index];
+          });
+          break;
+        case 5: // Full orchestral spread
+          this.chordNotes = [0, 2, 4, 6, 1, 3, 5].map(interval => {
+            const index = (startIndex + interval) % currentScale.length;
+            let freq = currentScale[index];
+            // Spread across octaves for orchestral effect
+            if (interval > 4) freq *= 2;
+            if (interval > 6) freq *= 2;
+            return freq;
+          });
+          break;
+      }
+    }
+    
+    start() {
+      if (this.isPlaying) this.stop();
+      
+      this.isPlaying = true;
+      this.synths = [];
+      
+      // TidalCycles SuperMandolin synthesis for orchestral texture
+      this.chordNotes.forEach((freq, i) => {
+        const sustain = 0.8; // Rich sustain for orchestral sound
+        const detune = (Math.random() - 0.5) * 20; // Natural orchestral detune
+        
+        const mandolinSynth = new SuperMandolinSynth(freq, sustain, detune);
+        mandolinSynth.connect(masterGain);
+        mandolinSynth.start(this.dynamics);
+        
+        this.synths.push(mandolinSynth);
+      });
+      
+      this.isPlaying = true;
+      log(`▶️ Started orchestral chord #${this.id} with ${this.chordNotes.length} SuperMandolin voices`);
+    }
+    
+    updateDynamics(newDynamics) {
+      this.dynamics = Math.max(0, Math.min(newDynamics, 1));
+      
+      if (this.isPlaying && this.synths) {
+        this.synths.forEach(synth => {
+          synth.updateDynamics(this.dynamics);
+        });
+      }
+    }
+    
+    stop() {
+      if (this.synths && this.synths.length > 0) {
+        this.synths.forEach(synth => {
+          synth.stop();
+        });
+        this.synths = [];
+      }
+      
+      this.isPlaying = false;
+      log(`⏹️ Stopped orchestral chord #${this.id}`);
+    }
+    
+    updateVoicing(newVoicing) {
+      const wasPlaying = this.isPlaying;
+      if (wasPlaying) this.stop();
+      
+      this.voicing = Math.max(1, Math.min(newVoicing, 5));
+      this.generateChord();
+      
+      if (wasPlaying) {
+        setTimeout(() => this.start(), 100);
+      }
+      
+      log(`🔄 Updated chord #${this.id} voicing to ${this.voicing}`);
+    }
+  }
+
+  // PHILIP GLASS PATTERN MANAGEMENT
+  let activeArpeggios = new Map();
+  let activeChords = new Map();
+  let patternIdCounter = 0;
+  let glassVoices = []; // Multiple simultaneous arpeggio voices
+
+  function createArpeggio(rootNote, complexity, register) {
+    const id = ++patternIdCounter;
+    const arpeggio = new WoodwindArpeggio(id, rootNote, complexity, register);
+    activeArpeggios.set(id, arpeggio);
+    updateUI();
+    return arpeggio;
+  }
+
+  function createChord(rootNote, voicing, dynamics) {
+    const id = ++patternIdCounter;
+    const chord = new OrchestralChord(id, rootNote, voicing, dynamics);
+    activeChords.set(id, chord);
+    updateUI();
+    return chord;
+  }
+
+  function clearAllPatterns() {
+    activeArpeggios.forEach(arp => arp.stop());
+    activeChords.forEach(chord => chord.stop());
+    activeArpeggios.clear();
+    activeChords.clear();
+    updateUI();
+    log('🗑️ Cleared all orchestral patterns');
+  }
+
+  function updateUI() {
+    const totalPatterns = activeArpeggios.size + activeChords.size;
+    document.getElementById('layer-count').textContent = totalPatterns;
+    
+    if (totalPatterns > 0) {
+      const playingArps = Array.from(activeArpeggios.values()).filter(p => p.isPlaying).length;
+      const playingChords = Array.from(activeChords.values()).filter(p => p.isPlaying).length;
+      document.getElementById('current-pattern').textContent = `Arps: ${playingArps} | Chords: ${playingChords}`;
+      
+      let patternInfo = '';
+      if (activeArpeggios.size > 0) {
+        patternInfo += 'WOODWINDS:\n';
+        activeArpeggios.forEach(arp => {
+          patternInfo += `Arp ${arp.id}: ${arp.complexity} notes, reg ${arp.register.toFixed(1)} (${arp.isPlaying ? 'playing' : 'stopped'})\n`;
+        });
+      }
+      if (activeChords.size > 0) {
+        patternInfo += 'ORCHESTRA:\n';
+        activeChords.forEach(chord => {
+          patternInfo += `Chord ${chord.id}: voicing ${chord.voicing}, dyn ${chord.dynamics.toFixed(1)} (${chord.isPlaying ? 'playing' : 'stopped'})\n`;
+        });
+      }
+      document.getElementById('pattern-display').textContent = patternInfo;
+    } else {
+      document.getElementById('current-pattern').textContent = 'None';
+      document.getElementById('pattern-display').textContent = 'Show hands to conduct orchestra...';
+    }
+  }
+
+  // HAND DETECTION - Stable and simplified
+  let handpose = null;
+  let predictions = [];
+  let webcamRunning = false;
+
+  async function initCamera() {
+    log('🎥 Requesting camera access...');
+    
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { width: 640, height: 480, facingMode: "user" } 
+      });
+      video.srcObject = stream;
+      await video.play();
+      webcamRunning = true;
+      document.getElementById('camera-status').classList.add('active');
+      log('✅ Camera initialized');
+      
+      // Load hand detection
+      handpose = ml5.handPose({
+        flipHorizontal: true,
+        maxNumHands: 2,
+        runtime: 'mediapipe',
+        modelType: 'lite' // Use lite model for better performance
+      }, () => {
+        log('✅ Hand detection ready');
+        detectHands();
+      });
+      
+    } catch (error) {
+      log('❌ Camera access failed:', error);
+    }
+  }
+
+  async function detectHands() {
+    if (handpose && webcamRunning) {
+      try {
+        predictions = await handpose.detect(video);
+      } catch (error) {
+        predictions = [];
+      }
+    }
+    // Reduced detection frequency for stability
+    setTimeout(detectHands, 150);
+  }
+
+  // GESTURE PROCESSING - Stable conducting interface
+  let lastGestureTime = 0;
+  let gestureStabilityDelay = 500; // ms to wait before responding to changes
+  
+  function processHands() {
+    if (!predictions || predictions.length === 0) {
+      return { left: null, right: null };
+    }
+
+    const hands = predictions.map(pred => {
+      if (!pred.keypoints || pred.keypoints.length === 0) return null;
+      
+      // Get hand center
+      let sx = 0, sy = 0;
+      pred.keypoints.forEach(kp => { sx += kp.x; sy += kp.y; });
+      const x = (sx / pred.keypoints.length / 640) * width; // Scale to canvas
+      const y = (sy / pred.keypoints.length / 480) * height;
+      
+      // Simple distance calculation for volume
+      const wrist = pred.keypoints[0];
+      const middleTip = pred.keypoints[12];
+      const distance = Math.sqrt(
+        Math.pow(middleTip.x - wrist.x, 2) + 
+        Math.pow(middleTip.y - wrist.y, 2)
+      );
+      const volume = Math.max(0, Math.min(1, (distance - 20) / 100));
+      
+      return { 
+        x, y, volume,
+        handedness: pred.handedness || 'Unknown'
+      };
+    }).filter(hand => hand !== null);
+
+    // Assign hands based on position (more stable than handedness)
+    let left = null, right = null;
+    if (hands.length === 1) {
+      const hand = hands[0];
+      if (hand.x < width / 2) {
+        left = hand;
+      } else {
+        right = hand;
+      }
+    } else if (hands.length >= 2) {
+      hands.sort((a, b) => a.x - b.x);
+      left = hands[0];
+      right = hands[hands.length - 1];
+    }
+
+    return { left, right };
+  }
+
+  // PHILIP GLASS CONDUCTING LOGIC - Multiple voices, layered polyrhythms
+  let currentArpeggio = null;
+  let currentChord = null;
+  let leftHandActive = false;
+  let rightHandActive = false;
+  let glassVoiceCount = 1; // Number of simultaneous arpeggio voices (1-4)
+  
+  function handleConducting(hands) {
+    const { left, right } = hands;
+    
+    // Determine which hand is leading
+    const leftWasActive = leftHandActive;
+    const rightWasActive = rightHandActive;
+    leftHandActive = !!left;
+    rightHandActive = !!right;
+    
+    // Update volume display
+    const maxVolume = Math.max(left?.volume || 0, right?.volume || 0);
+    document.getElementById('volume-display').textContent = `${Math.round(maxVolume * 100)}%`;
+    
+    // LEFT HAND: Multiple Glass-Style Arpeggio Voices
+    if (left) {
+      const rootIndex = Math.floor((1 - left.y / height) * currentScale.length);
+      const rootNote = currentScale[rootIndex];
+      const register = left.x / width; // X position controls voice count (1-4)
+      glassVoiceCount = Math.max(1, Math.min(4, Math.floor(register * 4) + 1));
+      
+      log(`🎷 Left hand: y=${left.y.toFixed(0)}, voices=${glassVoiceCount}, rootNote=${rootNote.toFixed(1)}Hz`);
+      
+      // Create Glass-style interlocking voices
+      if (glassVoices.length !== glassVoiceCount || 
+          Math.abs((glassVoices[0]?.rootNote || 0) - rootNote) > 30) {
+        
+        // Stop all current voices
+        glassVoices.forEach(voice => voice.stop());
+        activeArpeggios.forEach(arp => arp.stop());
+        activeArpeggios.clear();
+        glassVoices = [];
+        
+        // Create new interlocking voice ensemble
+        const tempo = parseInt(document.getElementById('tempo-select').value);
+        for (let i = 0; i < glassVoiceCount; i++) {
+          const voiceRootNote = currentScale[(rootIndex + i * 2) % currentScale.length]; // Staggered intervals
+          const voiceRegister = 0.3 + (i * 0.2); // Spread across registers
+          const voiceComplexity = 3 + i; // Different pattern lengths
+          
+          const voice = createArpeggio(voiceRootNote, voiceComplexity, voiceRegister);
+          
+          // Polyrhythmic timing - each voice slightly different tempo
+          const polyrhythmicTempo = tempo * [1.0, 1.125, 0.875, 1.25][i]; // Different ratios
+          
+          // Stagger the starts for Glass-style phase relationships
+          setTimeout(() => {
+            voice.start(polyrhythmicTempo);
+          }, i * 100); // 100ms stagger
+          
+          glassVoices.push(voice);
+        }
+        
+        log(`🎼 Created ${glassVoiceCount} Glass voices with polyrhythmic layering`);
+      }
+    } else if (leftWasActive) {
+      // Left hand removed - fade out all voices
+      glassVoices.forEach(voice => voice.stop());
+      activeArpeggios.forEach(arp => arp.stop());
+      activeArpeggios.clear();
+      glassVoices = [];
+      currentArpeggio = null;
+    }
+    
+    // RIGHT HAND: Glass-Style Harmonic Progression - works independently
+    if (right) {
+      const harmonicPosition = (1 - right.y / height); // 0-1 from bottom to top
+      const orchestralDensity = right.x / width; // 0-1 from left to right
+      const dynamics = right.volume;
+      
+      // Glass harmonic progression based on Y position (more granular)
+      const progressionIndex = Math.floor(harmonicPosition * 7); // 0-6 for better range
+      const glassProgression = [
+        [0, 2, 4],           // i triad (bottom)
+        [0, 2, 4, 6],        // i7 
+        [1, 3, 5],           // ii triad  
+        [2, 4, 6],           // iii triad
+        [3, 5, 0],           // IV triad
+        [4, 6, 1],           // V triad
+        [5, 0, 2, 4]         // vi7 (top)
+      ];
+      
+      const currentProgression = glassProgression[progressionIndex] || glassProgression[0];
+      
+      // Single clean chord voice that changes smoothly
+      const voiceCount = 1; // Keep it simple - single voice harmonic progression
+      
+      log(`🎺 Glass Harmony: y=${right.y.toFixed(0)} (${harmonicPosition.toFixed(2)}), progression=${progressionIndex} [${currentProgression.join(',')}]`);
+      
+      // Create single harmonic voice that changes smoothly
+      const harmonicKey = `${progressionIndex}`;
+      if (!currentChord || currentChord.harmonicKey !== harmonicKey) {
+        
+        // Stop previous chord cleanly
+        if (currentChord) currentChord.stop();
+        activeChords.forEach(chord => chord.stop());
+        activeChords.clear();
+        
+        // Create single clean chord voice
+        const intervalIndex = currentProgression[0]; // Use root of progression
+        const chordRoot = currentScale[intervalIndex];
+        
+        // Create simple sine wave chord instead of complex SuperMandolin
+        const simpleChord = {
+          harmonicKey,
+          oscillators: [],
+          gains: [],
+          isPlaying: false,
+          
+          start() {
+            this.stop(); // Ensure clean start
+            this.oscillators = [];
+            this.gains = [];
+            
+            // Create simple triad (root, 3rd, 5th)
+            const chordNotes = [
+              chordRoot,                    // Root
+              chordRoot * 1.25,            // Major 3rd
+              chordRoot * 1.5              // Perfect 5th
+            ];
+            
+            chordNotes.forEach(freq => {
+              const osc = audioCtx.createOscillator();
+              const gain = audioCtx.createGain();
+              
+              osc.type = 'sine';
+              osc.frequency.value = freq;
+              
+              gain.gain.setValueAtTime(0, audioCtx.currentTime);
+              gain.gain.linearRampToValueAtTime(dynamics * 0.03, audioCtx.currentTime + 0.1);
+              
+              osc.connect(gain);
+              gain.connect(masterGain);
+              
+              osc.start();
+              
+              this.oscillators.push(osc);
+              this.gains.push(gain);
+            });
+            
+            this.isPlaying = true;
+          },
+          
+          stop() {
+            if (this.isPlaying) {
+              this.gains.forEach(gain => {
+                gain.gain.linearRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
+              });
+              
+              setTimeout(() => {
+                this.oscillators.forEach(osc => {
+                  try { osc.stop(); } catch(e) {}
+                });
+                this.oscillators = [];
+                this.gains = [];
+              }, 250);
+              
+              this.isPlaying = false;
+            }
+          },
+          
+          updateDynamics(newDynamics) {
+            if (this.isPlaying) {
+              this.gains.forEach(gain => {
+                gain.gain.linearRampToValueAtTime(newDynamics * 0.03, audioCtx.currentTime + 0.1);
+              });
+            }
+          }
+        };
+        
+        simpleChord.start();
+        currentChord = simpleChord;
+        
+        log(`🎼 Created clean Glass chord: ${intervalIndex} (${chordRoot.toFixed(1)}Hz triad)`);
+      }
+      
+      // Update dynamics of all active chords
+      activeChords.forEach(chord => {
+        if (chord.updateDynamics) chord.updateDynamics(dynamics);
+      });
+    } else if (currentChord && !right) {
+      // Right hand removed - fade out chords
+      currentChord.stop();
+      activeChords.forEach(chord => chord.stop());
+      activeChords.clear();
+      currentChord = null;
+    }
+    
+    // Update gesture feedback
+    let feedback = '';
+    if (left) {
+      const register = (left.x / width * 100).toFixed(0);
+      feedback += `🎷 GLASS VOICES: ${glassVoiceCount} voices, register ${register}% | `;
+    }
+    if (right) {
+      const harmonicPosition = ((1 - right.y / height) * 100).toFixed(0);
+      const orchestralDensity = (right.x / width * 100).toFixed(0);
+      feedback += `🎺 HARMONY: Position ${harmonicPosition}%, Density ${orchestralDensity}%`;
+    }
+    
+    // Add Philip Glass style feedback
+    if (leftHandActive && rightHandActive) {
+      feedback += ` | GLASS CONDUCTING: ${glassVoices.length} arpeggio voices + harmonic progression`;
+    } else if (leftHandActive) {
+      feedback += ` | Left hand only: Glass arpeggio voices`;
+    } else if (rightHandActive) {
+      feedback += ` | Right hand only: Harmonic progression`;
+    }
+    
+    document.getElementById('gesture-feedback').textContent = 
+      feedback || 'LEFT hand: Multiple Glass voices | RIGHT hand: Harmonic progression (either hand works alone)';
+  }
+
+  // RENDER LOOP
+  function render() {
+    // Draw video feed (mirrored)
+    if (webcamRunning) {
+      vctx.save();
+      vctx.scale(-1, 1);
+      vctx.drawImage(video, -width, 0, width, height);
+      vctx.restore();
+    }
+
+    // Clear overlay
+    octx.clearRect(0, 0, width, height);
+    
+    // Process hands and conduct
+    const hands = processHands();
+    handleConducting(hands);
+    
+    // Draw hands
+    ['left', 'right'].forEach(handType => {
+      const hand = hands[handType];
+      if (!hand) return;
+      
+      octx.fillStyle = handType === 'left' ? '#ff6b6b' : '#4ecdc4';
+      octx.globalAlpha = 0.8;
+      octx.beginPath();
+      octx.arc(hand.x, hand.y, 20 + hand.volume * 20, 0, 2 * Math.PI);
+      octx.fill();
+      octx.globalAlpha = 1;
+      
+      // Label
+      octx.fillStyle = 'white';
+      octx.font = 'bold 12px Arial';
+      octx.fillText(handType.toUpperCase(), hand.x - 15, hand.y - 30);
+    });
+    
+    requestAnimationFrame(render);
+  }
+
+  // EVENT HANDLERS
+  document.getElementById('start-btn').onclick = async () => {
+    if (!audioStarted) {
+      await initAudio();
+      await initCamera();
+    }
+    log('🎵 Conducting session started');
+  };
+
+  document.getElementById('clear-btn').onclick = clearAllPatterns;
+
+  document.getElementById('scale-select').onchange = (e) => {
+    currentScale = scales[e.target.value];
+    clearAllPatterns(); // Clear patterns when scale changes
+    log(`🎼 Scale changed to ${e.target.value}`);
+  };
+
+  // Initialize
+  log('🎼 Glass Conductor v4 ready - click Start to begin');
+  render();
+
+})().catch(error => {
+  console.error('❌ Fatal error:', error);
+});
+</script>
+</body>
+</html> 

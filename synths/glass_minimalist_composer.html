@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Philip Glass Minimalist Composer</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: linear-gradient(135deg, #1a1a2e, #16213e, #0f3460);
+      font-family: 'Arial', sans-serif;
+      overflow: hidden;
+      color: white;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: manipulation;
+    }
+
+    #canvas {
+      display: block;
+      cursor: grab;
+      background: transparent;
+      width: 100vw;
+      height: 100vh;
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+
+    .control-buttons {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      z-index: 1000;
+    }
+
+    .control-button {
+      background: rgba(255, 255, 255, 0.1);
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      color: white;
+      padding: 12px 20px;
+      border-radius: 25px;
+      cursor: pointer;
+      font-size: 16px;
+      backdrop-filter: blur(10px);
+      transition: all 0.3s ease;
+      text-align: center;
+      min-width: 120px;
+    }
+
+    .control-button:hover {
+      background: rgba(255, 255, 255, 0.2);
+      border-color: rgba(255, 255, 255, 0.5);
+      transform: translateY(-2px);
+    }
+
+    .control-button.loading {
+      background: rgba(255, 200, 0, 0.2);
+      border-color: rgba(255, 200, 0, 0.5);
+    }
+
+    .control-button.fade-out {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .add-button {
+      background: rgba(76, 175, 80, 0.2);
+      border-color: rgba(76, 175, 80, 0.5);
+    }
+
+    .add-button:hover {
+      background: rgba(76, 175, 80, 0.3);
+      border-color: rgba(76, 175, 80, 0.7);
+    }
+
+    .sequencer-count {
+      position: absolute;
+      top: 80px;
+      left: 20px;
+      background: rgba(0, 0, 0, 0.3);
+      padding: 8px 12px;
+      border-radius: 15px;
+      font-size: 12px;
+      backdrop-filter: blur(10px);
+    }
+
+    .glass-info {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      background: rgba(0, 0, 0, 0.3);
+      padding: 15px;
+      border-radius: 10px;
+      backdrop-filter: blur(10px);
+      font-size: 14px;
+      line-height: 1.4;
+      max-width: 300px;
+    }
+
+    .pattern-display {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      background: rgba(0, 0, 0, 0.5);
+      padding: 10px;
+      border-radius: 8px;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+    }
+
+    @media (max-width: 768px) {
+      .glass-info {
+        font-size: 12px;
+        max-width: 250px;
+        padding: 10px;
+      }
+      
+      .start-button {
+        padding: 10px 16px;
+        font-size: 14px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="glass-info">
+    <strong>🎼 Philip Glass Minimalist Composer</strong><br/>
+    • Drag circles to create repeating patterns<br/>
+    • Y-axis: Pitch (up = higher)<br/>
+    • X-axis: Pattern complexity (right = more notes)<br/>
+    • Additive process builds layers over time<br/>
+    • Each pattern runs in different cycles (polyrhythm)<br/>
+    • Click "Add Circle" to create more layers
+  </div>
+  
+  <div class="sequencer-count" id="sequencerCount">
+    Sequencers: 5
+  </div>
+  
+  <div class="control-buttons">
+    <button id="startButton" class="control-button">🎵 Start Glass</button>
+    <button id="addButton" class="control-button add-button">➕ Add Circle</button>
+  </div>
+  
+  <canvas id="canvas"></canvas>
+  
+  <div class="pattern-display" id="patternDisplay">
+    Patterns: Ready to compose...
+  </div>
+
+  <script>
+    console.log('🎼 Philip Glass Minimalist Composer - Starting...');
+    
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const patternDisplay = document.getElementById('patternDisplay');
+    
+    // Device pixel ratio for crisp displays
+    let devicePixelRatio = window.devicePixelRatio || 1;
+    let canvasRect = { width: 0, height: 0 };
+    
+    // Audio context - initialized after user gesture
+    let audioCtx = null;
+    let running = false;
+    let audioUnlocked = false;
+    let hasStarted = false;
+    let isMobileDevice = /Mobi|Android/i.test(navigator.userAgent);
+
+    // Glass-style note collections (modal scales)
+    const dorian = [261.63, 293.66, 311.13, 349.23, 392.00, 440.00, 466.16]; // C Dorian
+    const mixolydian = [261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 466.16]; // C Mixolydian
+    const scales = { dorian, mixolydian };
+    let currentScale = dorian;
+
+    // Pattern sequencers with Glass-style properties
+    const sequencers = Array.from({ length: 5 }, (_, i) => ({
+      x: 100 + i * 150,
+      y: 300,
+      r: 35,
+      notes: [currentScale[i % currentScale.length]], // Start with single note
+      cycle: [8, 5, 3, 7, 4][i], // Different cycle lengths for polyrhythm
+      phase: 0,
+      currentStep: 0,
+      playing: false,
+      dragging: false,
+      color: `hsl(${i * 72}, 70%, 60%)`,
+      interval: null,
+      additiveModeIncrement: 0, // Track additive process progress
+      baseCycle: [8, 5, 3, 7, 4][i], // Store original cycle for reference
+    }));
+
+    // Cycle lengths for Glass polyrhythm (expand as needed)
+    const glassCycles = [8, 5, 3, 7, 4, 6, 9, 2, 11, 10, 13, 12];
+
+    // Add new sequencer function
+    function addSequencer() {
+      const index = sequencers.length;
+      const newSequencer = {
+        x: canvasRect.width * 0.2 + Math.random() * canvasRect.width * 0.6, // Random position
+        y: canvasRect.height * 0.3 + Math.random() * canvasRect.height * 0.4,
+        r: isMobileDevice ? 25 : 35,
+        notes: [currentScale[index % currentScale.length]],
+        cycle: glassCycles[index % glassCycles.length], // Use expanded cycle array
+        phase: 0,
+        currentStep: 0,
+        playing: false,
+        dragging: false,
+        color: `hsl(${index * 31}, 70%, 60%)`, // Different hue calculation for more variety
+        interval: null,
+        additiveModeIncrement: 0,
+        baseCycle: glassCycles[index % glassCycles.length],
+      };
+      
+      sequencers.push(newSequencer);
+      updateSequencerNotes(index);
+      updateSequencerCount();
+      
+      console.log(`🎼 Added sequencer ${index + 1}: cycle=${newSequencer.cycle}, color=${newSequencer.color}`);
+      console.log(`🎼 Total sequencers: ${sequencers.length}`);
+      
+      // Auto-position all sequencers to avoid overlap
+      repositionSequencers();
+      
+      return newSequencer;
+    }
+
+    // Update sequencer count display
+    function updateSequencerCount() {
+      const countDisplay = document.getElementById('sequencerCount');
+      if (countDisplay) {
+        countDisplay.textContent = `Sequencers: ${sequencers.length}`;
+      }
+    }
+
+    // Reposition all sequencers to avoid overlap
+    function repositionSequencers() {
+      if (sequencers.length <= 8) {
+        // For reasonable numbers, use grid layout
+        const cols = Math.ceil(Math.sqrt(sequencers.length));
+        const rows = Math.ceil(sequencers.length / cols);
+        
+        sequencers.forEach((seq, i) => {
+          const col = i % cols;
+          const row = Math.floor(i / cols);
+          seq.x = (canvasRect.width / (cols + 1)) * (col + 1);
+          seq.y = (canvasRect.height / (rows + 1)) * (row + 1);
+        });
+      } else {
+        // For many sequencers, use more random but spaced positioning
+        sequencers.forEach((seq, i) => {
+          const angle = (i / sequencers.length) * Math.PI * 2;
+          const radius = Math.min(canvasRect.width, canvasRect.height) * 0.3;
+          const centerX = canvasRect.width * 0.5;
+          const centerY = canvasRect.height * 0.5;
+          
+          seq.x = centerX + radius * Math.cos(angle) + (Math.random() - 0.5) * 100;
+          seq.y = centerY + radius * Math.sin(angle) + (Math.random() - 0.5) * 100;
+          
+          // Keep within bounds
+          seq.x = Math.max(seq.r, Math.min(canvasRect.width - seq.r, seq.x));
+          seq.y = Math.max(seq.r, Math.min(canvasRect.height - seq.r, seq.y));
+        });
+      }
+      
+      console.log(`🎼 Repositioned ${sequencers.length} sequencers`);
+    }
+
+    // Philip Glass pattern generators
+    const glassPatterns = {
+      additive: (notes, stage) => {
+        // Classic Glass additive process
+        const pattern = notes.slice(0, Math.min(stage + 1, notes.length));
+        return pattern.concat(pattern).concat(pattern); // Repeat 3 times
+      },
+      
+      cycle: (notes, cycleLength) => {
+        // Create cycling pattern with specific length
+        const pattern = [];
+        for (let i = 0; i < cycleLength; i++) {
+          pattern.push(notes[i % notes.length]);
+        }
+        return pattern;
+      },
+      
+      phasing: (notes) => {
+        // Create pattern that phases against itself
+        const base = [notes[0], notes[1], notes[2] || notes[0]];
+        return base.concat(base.slice(1)).concat(base.slice(2));
+      }
+    };
+
+    // Initialize canvas with responsive sizing
+    function resizeCanvas() {
+      console.log('🎼 Starting canvas resize...');
+      
+      canvasRect.width = window.innerWidth;
+      canvasRect.height = window.innerHeight;
+      
+      canvas.width = canvasRect.width;
+      canvas.height = canvasRect.height;
+      canvas.style.width = canvasRect.width + 'px';
+      canvas.style.height = canvasRect.height + 'px';
+      
+      console.log(`🎼 Canvas dimensions set: ${canvasRect.width}x${canvasRect.height}`);
+      
+      // Position sequencers evenly across screen
+      sequencers.forEach((seq, i) => {
+        seq.x = (canvasRect.width / (sequencers.length + 1)) * (i + 1);
+        seq.y = canvasRect.height * 0.5;
+        seq.r = isMobileDevice ? 25 : 35;
+      });
+      
+      console.log(`🎼 Sequencers positioned. First sequencer: (${sequencers[0].x}, ${sequencers[0].y})`);
+      
+      // Update sequencer count display
+      updateSequencerCount();
+    }
+
+    // Audio initialization with mobile support
+    async function initializeAudio() {
+      console.log('🎵 Initializing Glass audio system...');
+      
+      try {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        console.log(`🎵 Audio context created: ${audioCtx.state}`);
+        
+        if (audioCtx.state === 'suspended') {
+          console.log('🎵 Audio context suspended, will resume on user interaction');
+        }
+        
+        return true;
+      } catch (error) {
+        console.error('❌ Audio initialization failed:', error);
+        return false;
+      }
+    }
+
+    // Unlock audio with comprehensive mobile support
+    async function unlockAudio() {
+      console.log('🎵 Attempting to unlock audio...');
+      
+      try {
+        if (audioCtx.state === 'suspended') {
+          await audioCtx.resume();
+          console.log('✅ Audio context resumed successfully');
+        }
+        
+        // Test with brief silent tone
+        const testOsc = audioCtx.createOscillator();
+        const testGain = audioCtx.createGain();
+        testGain.gain.value = 0;
+        testOsc.connect(testGain);
+        testGain.connect(audioCtx.destination);
+        testOsc.start();
+        testOsc.stop(audioCtx.currentTime + 0.01);
+        
+        audioUnlocked = true;
+        console.log('✅ Audio unlocked successfully');
+        return true;
+      } catch (error) {
+        console.error('❌ Audio unlock failed:', error);
+        return false;
+      }
+    }
+
+    // Play Glass-style pattern note
+    function playPatternNote(frequency, duration = 0.5, velocity = 0.1) {
+      if (!audioCtx || !audioUnlocked || audioCtx.state !== 'running') {
+        console.warn('⚠️ Audio not ready');
+        return;
+      }
+
+      try {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+
+        osc.type = 'triangle'; // Glass often used bright, clear tones
+        osc.frequency.setValueAtTime(frequency, audioCtx.currentTime);
+        
+        // Quick attack/decay envelope typical of Glass arpeggios
+        const startTime = audioCtx.currentTime;
+        const attackTime = 0.02; // Very quick attack
+        const releaseTime = duration * 0.3; // Gradual release
+        const sustainTime = duration - attackTime - releaseTime;
+        
+        gain.gain.setValueAtTime(0, startTime);
+        gain.gain.linearRampToValueAtTime(velocity, startTime + attackTime);
+        gain.gain.setValueAtTime(velocity * 0.7, startTime + attackTime + sustainTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+        
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(startTime);
+        osc.stop(startTime + duration);
+        
+      } catch (error) {
+        console.error('❌ Error playing note:', error);
+      }
+    }
+
+    // Start a Glass-style pattern sequencer
+    function startSequencer(index) {
+      if (!audioCtx || !audioUnlocked) return;
+      
+      const seq = sequencers[index];
+      if (seq.playing) return;
+      
+      seq.playing = true;
+      seq.currentStep = 0;
+      
+      console.log(`🎼 Starting Glass sequencer ${index}: ${seq.notes.length} notes, cycle: ${seq.cycle}`);
+      
+      const playStep = () => {
+        if (!seq.playing) return;
+        
+        // Calculate which note to play based on current pattern
+        const patternType = seq.x / canvasRect.width; // X controls pattern complexity
+        let currentPattern;
+        
+        if (patternType < 0.33) {
+          currentPattern = glassPatterns.cycle(seq.notes, seq.cycle);
+        } else if (patternType < 0.66) {
+          currentPattern = glassPatterns.additive(seq.notes, seq.additiveModeIncrement);
+        } else {
+          currentPattern = glassPatterns.phasing(seq.notes);
+        }
+        
+        const noteIndex = seq.currentStep % currentPattern.length;
+        const frequency = currentPattern[noteIndex];
+        
+        // Velocity based on Y position
+        const velocity = Math.max(0.05, (canvasRect.height - seq.y) / canvasRect.height * 0.2);
+        
+        playPatternNote(frequency, 0.4, velocity);
+        
+        seq.currentStep++;
+        
+        // Additive process: occasionally add notes
+        if (seq.currentStep % (seq.cycle * 4) === 0) {
+          seq.additiveModeIncrement = Math.min(seq.additiveModeIncrement + 1, currentScale.length - 1);
+          console.log(`🎵 Sequencer ${index} additive stage: ${seq.additiveModeIncrement + 1} notes`);
+        }
+        
+        // Schedule next step
+        const nextDelay = 150 + (seq.y / canvasRect.height) * 200; // Y controls tempo
+        seq.interval = setTimeout(playStep, nextDelay);
+      };
+      
+      // Start the pattern
+      playStep();
+    }
+
+    // Stop sequencer
+    function stopSequencer(index) {
+      const seq = sequencers[index];
+      seq.playing = false;
+      if (seq.interval) {
+        clearTimeout(seq.interval);
+        seq.interval = null;
+      }
+    }
+
+    // Update sequencer notes based on position
+    function updateSequencerNotes(index) {
+      const seq = sequencers[index];
+      
+      // Y position maps to pitch range (higher = higher pitch)
+      const pitchIndex = Math.floor((1 - seq.y / canvasRect.height) * currentScale.length);
+      const basePitch = currentScale[Math.max(0, Math.min(pitchIndex, currentScale.length - 1))];
+      
+      // X position controls how many notes in the pattern
+      const noteCount = Math.max(1, Math.floor((seq.x / canvasRect.width) * 5) + 1);
+      
+      // Build notes starting from base pitch
+      seq.notes = [];
+      for (let i = 0; i < noteCount; i++) {
+        const noteIndex = (pitchIndex + i) % currentScale.length;
+        seq.notes.push(currentScale[noteIndex]);
+      }
+      
+      console.log(`🎵 Sequencer ${index} updated: ${seq.notes.length} notes starting from ${basePitch.toFixed(1)}Hz`);
+    }
+
+    // Render the Glass composer interface
+    function render() {
+      if (!canvasRect.width || !canvasRect.height) {
+        console.log('⚠️ Canvas not ready yet, skipping render');
+        return;
+      }
+      
+      ctx.clearRect(0, 0, canvasRect.width, canvasRect.height);
+      
+      // Draw subtle background grid
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+      ctx.lineWidth = 1;
+      for (let x = 0; x < canvasRect.width; x += 50) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvasRect.height);
+        ctx.stroke();
+      }
+      for (let y = 0; y < canvasRect.height; y += 50) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvasRect.width, y);
+        ctx.stroke();
+      }
+      
+      // Draw sequencers
+      sequencers.forEach((seq, index) => {
+        // Debug: Ensure sequencer has valid position
+        if (!seq.x || !seq.y || !seq.r) {
+          console.log(`⚠️ Invalid sequencer ${index}: x=${seq.x}, y=${seq.y}, r=${seq.r}`);
+          return;
+        }
+        
+        // Main circle
+        ctx.fillStyle = seq.playing ? seq.color : seq.color;
+        ctx.beginPath();
+        ctx.arc(seq.x, seq.y, seq.r, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Rim (make it very visible for debugging)
+        ctx.strokeStyle = seq.playing ? 'yellow' : 'white';
+        ctx.lineWidth = seq.dragging ? 4 : 3;
+        ctx.stroke();
+        
+        // Pattern visualization
+        if (seq.playing) {
+          const steps = seq.cycle;
+          const stepAngle = (Math.PI * 2) / steps;
+          const currentAngle = (seq.currentStep % steps) * stepAngle - Math.PI / 2;
+          
+          // Draw progress arc
+          ctx.strokeStyle = 'white';
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.arc(seq.x, seq.y, seq.r - 8, -Math.PI / 2, currentAngle);
+          ctx.stroke();
+          
+          // Current step indicator
+          const indicatorX = seq.x + (seq.r - 8) * Math.cos(currentAngle);
+          const indicatorY = seq.y + (seq.r - 8) * Math.sin(currentAngle);
+          ctx.fillStyle = 'yellow';
+          ctx.beginPath();
+          ctx.arc(indicatorX, indicatorY, 3, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        
+        // Center label
+        ctx.fillStyle = seq.playing ? 'black' : 'white';
+        ctx.font = '12px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(`${index + 1}`, seq.x, seq.y + 4);
+        
+        // Note count indicator
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+        ctx.font = '10px Arial';
+        ctx.fillText(`${seq.notes.length}n`, seq.x, seq.y + seq.r + 15);
+      });
+      
+      // Update pattern display
+      updatePatternDisplay();
+    }
+
+    function updatePatternDisplay() {
+      const activePatterns = sequencers
+        .filter(seq => seq.playing)
+        .map((seq, i) => `P${sequencers.indexOf(seq) + 1}:${seq.notes.length}n/${seq.cycle}c`)
+        .join(' | ');
+      
+      patternDisplay.textContent = activePatterns || 'Patterns: Ready to compose...';
+    }
+
+    // Event handling
+    let draggedSequencer = null;
+    let lastPointer = { x: 0, y: 0 };
+
+    function getPointerPos(e) {
+      const rect = canvas.getBoundingClientRect();
+      const clientX = e.clientX ?? e.touches?.[0]?.clientX ?? 0;
+      const clientY = e.clientY ?? e.touches?.[0]?.clientY ?? 0;
+      return {
+        x: clientX - rect.left,
+        y: clientY - rect.top
+      };
+    }
+
+    function findSequencerAt(x, y) {
+      return sequencers.find(seq => {
+        const dx = x - seq.x;
+        const dy = y - seq.y;
+        return Math.sqrt(dx * dx + dy * dy) <= seq.r;
+      });
+    }
+
+    // Pointer event handlers
+    function handlePointerStart(e) {
+      e.preventDefault();
+      const pos = getPointerPos(e);
+      lastPointer = pos;
+      
+      const seq = findSequencerAt(pos.x, pos.y);
+      if (seq) {
+        draggedSequencer = seq;
+        seq.dragging = true;
+        
+        // Auto-start audio if not started
+        if (!hasStarted) {
+          startGlassComposer();
+        }
+        
+        // Toggle sequencer
+        const index = sequencers.indexOf(seq);
+        if (seq.playing) {
+          stopSequencer(index);
+        } else {
+          startSequencer(index);
+        }
+      }
+    }
+
+    function handlePointerMove(e) {
+      e.preventDefault();
+      const pos = getPointerPos(e);
+      
+      if (draggedSequencer) {
+        // Update position
+        draggedSequencer.x = Math.max(draggedSequencer.r, Math.min(canvasRect.width - draggedSequencer.r, pos.x));
+        draggedSequencer.y = Math.max(draggedSequencer.r, Math.min(canvasRect.height - draggedSequencer.r, pos.y));
+        
+        // Update notes based on new position
+        updateSequencerNotes(sequencers.indexOf(draggedSequencer));
+      }
+      
+      lastPointer = pos;
+    }
+
+    function handlePointerEnd(e) {
+      e.preventDefault();
+      
+      if (draggedSequencer) {
+        draggedSequencer.dragging = false;
+        draggedSequencer = null;
+      }
+    }
+
+    // Start the Glass composer
+    async function startGlassComposer() {
+      if (hasStarted) return;
+      
+      const startButton = document.getElementById('startButton');
+      startButton.textContent = '🎵 Starting...';
+      startButton.classList.add('loading');
+      
+      try {
+        if (!audioCtx) {
+          await initializeAudio();
+        }
+        
+        const unlocked = await unlockAudio();
+        if (!unlocked) {
+          throw new Error('Could not unlock audio');
+        }
+        
+        // Initialize all sequencer notes
+        sequencers.forEach((seq, index) => {
+          updateSequencerNotes(index);
+        });
+        
+        hasStarted = true;
+        running = true;
+        
+        // Fade out start button
+        startButton.classList.add('fade-out');
+        setTimeout(() => {
+          startButton.style.display = 'none';
+        }, 500);
+        
+        console.log('✅ Philip Glass Composer started successfully');
+        
+      } catch (error) {
+        console.error('❌ Failed to start Glass composer:', error);
+        startButton.textContent = '❌ Audio Error - Tap to retry';
+        startButton.classList.remove('loading');
+      }
+    }
+
+    // Event listeners
+    canvas.addEventListener('pointerdown', handlePointerStart);
+    canvas.addEventListener('pointermove', handlePointerMove);
+    canvas.addEventListener('pointerup', handlePointerEnd);
+    canvas.addEventListener('touchstart', handlePointerStart, { passive: false });
+    canvas.addEventListener('touchmove', handlePointerMove, { passive: false });
+    canvas.addEventListener('touchend', handlePointerEnd, { passive: false });
+
+    document.getElementById('startButton').addEventListener('click', startGlassComposer);
+    document.getElementById('addButton').addEventListener('click', () => {
+      console.log('🎼 Add Circle button clicked');
+      addSequencer();
+    });
+
+    // Initialize
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    // Animation loop
+    let frameCount = 0;
+    function animate() {
+      render();
+      frameCount++;
+      
+      if (frameCount === 1) {
+        console.log('🎼 First frame rendered!');
+        console.log(`🎼 Canvas context state: ${ctx ? 'OK' : 'MISSING'}`);
+        console.log(`🎼 Canvas rect: ${canvasRect.width}x${canvasRect.height}`);
+        console.log(`🎼 Sequencers: ${sequencers.length}`);
+      }
+      
+      requestAnimationFrame(animate);
+    }
+    
+    console.log('🎼 Philip Glass Minimalist Composer ready - starting animation...');
+    animate();
+  </script>
+</body>
+</html> 

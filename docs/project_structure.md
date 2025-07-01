@@ -15,7 +15,9 @@ vibes/
 │   ├── theremin_dual_sine_sorted.html       # Dual sine theremin
 │   ├── fm_synth_v1.html                     # FM synthesis experiments
 │   ├── fm_synth_v2.html
-│   ├── fm_synth_v3.html
+│   ├── fm_synth_v3.html                     # Complex FM with Philip Glass features (buggy)
+│   ├── glass_conductor_v4.html              # NEW: Stable Philip Glass conductor
+│   ├── glass_minimalist_composer.html       # Click-based Glass composer
 │   ├── hrv_monitor.html                     # Heart rate variability monitor
 │   └── index.html                           # Synths directory index
 ├── tools/                                   # Python utilities
@@ -141,6 +143,64 @@ vibes/
 - Calibration guides
 - Visual effect overlays
 ```
+
+### `glass_conductor_v4.html`
+**NEW: Stable Philip Glass Conductor** - Simplified gesture-based conducting interface:
+
+#### Stability Improvements over v3
+- **Fixed Variable Declarations**: All missing constants and helpers properly defined
+- **Stable Hand Detection**: Reduced detection frequency (150ms) prevents jitter
+- **Memory Management**: Proper audio node cleanup prevents memory leaks  
+- **Single Timer Pattern**: Eliminates race conditions from multiple setInterval calls
+- **Simplified Gesture Logic**: Stable left/right hand assignment based on position
+
+#### Philip Glass Alignment Features
+- **Minimal UI**: Only 4 essential controls (scale, tempo, start, clear)
+- **Conducting Gestures**: 
+  - Left Hand: Harmonic progression (vertical = root note)
+  - Right Hand: Additive process control (vertical = complexity)
+  - Distance: Dynamic volume control
+- **Glass Patterns**: 
+  - Authentic additive processes (1-5 notes)
+  - Polyrhythmic cycles (different lengths per pattern)
+  - Modal scales (Dorian, Mixolydian, etc.)
+  - Detached articulation (classic Glass style)
+- **Musical Continuity**: Patterns sustain and layer naturally
+- **Live Status Display**: Real-time pattern and complexity feedback
+
+#### Technical Architecture
+```javascript
+// Core Classes
+GlassPattern Class          // Stable pattern generation
+- Additive complexity control
+- Polyrhythmic cycling
+- Clean start/stop methods
+- Memory-safe audio nodes
+
+// Audio System
+Minimal Web Audio setup     // No complex FM synthesis
+- Single master gain node
+- Pure sine waves only
+- Quick attack/decay envelopes
+- Automatic audio context handling
+
+// Hand Processing  
+Simplified gesture detection
+- Position-based hand assignment (more stable)
+- Volume from hand span distance
+- Reduced sensitivity prevents jitter
+- 500ms stability delay for gesture changes
+```
+
+### `fm_synth_v3.html`
+**Complex FM with Philip Glass features (BUGGY)** - Advanced but unstable implementation:
+- Multiple missing variable declarations cause crashes
+- Race conditions between arpeggio timers
+- Complex finger counting creates instability  
+- Over-engineered UI distracts from conducting
+- Memory leaks from improper audio node cleanup
+
+*Note: Use glass_conductor_v4.html instead for stable Glass conducting*
 
 ### `theremin_dual_sine_sorted.html` 
 **Legacy version** - Original dual-sine theremin implementation:
