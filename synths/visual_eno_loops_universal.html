@@ -175,6 +175,7 @@
   
   <button id="startBtn">Start</button>
   <button id="stopBtn">Stop</button>
+  <button id="testBtn" style="position: fixed; top: 20px; left: 240px; min-width: 50px; min-height: 44px; padding: 10px 16px; font-size: 14px; border: none; border-radius: 8px; background-color: #4CAF50; color: white; cursor: pointer; z-index: 10;">Test</button>
   <canvas id="canvas"></canvas>
   <div class="controls" id="controlPanel"></div>
   
@@ -183,7 +184,9 @@
     • Drag circles to change pitch<br>
     • Y-position = loop interval<br>
     • Sliders = note duration<br>
-    <small>Arc shows interval timing</small>
+    • Test button = audio check<br>
+    <small>Arc shows interval timing<br>
+    Check console for debug info</small>
   </div>
 
   <script>
@@ -442,13 +445,32 @@
     // Initialize audio context after user gesture
     async function initAudio() {
       try {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        console.log(`🎵 Audio context created, state: ${audioCtx.state}`);
+        console.log('🎵 Initializing audio context...');
         
-        // Handle suspended audio context (common on mobile)
-        if (audioCtx.state === 'suspended') {
-          console.log('🔊 Resuming suspended audio context...');
-          await audioCtx.resume();
+        // Create audio context if not exists
+        if (!audioCtx) {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          console.log(`🎵 Audio context created, state: ${audioCtx.state}, sampleRate: ${audioCtx.sampleRate}`);
+        }
+        
+        // Always try to resume - iOS requires this even for new contexts
+        console.log(`🔊 Audio context state before resume: ${audioCtx.state}`);
+        await audioCtx.resume();
+        console.log(`🔊 Audio context state after resume: ${audioCtx.state}`);
+        
+        // Test audio with a brief silent note
+        try {
+          const testOsc = audioCtx.createOscillator();
+          const testGain = audioCtx.createGain();
+          testGain.gain.setValueAtTime(0.001, audioCtx.currentTime); // Very quiet test
+          testOsc.connect(testGain);
+          testGain.connect(audioCtx.destination);
+          testOsc.frequency.setValueAtTime(440, audioCtx.currentTime);
+          testOsc.start();
+          testOsc.stop(audioCtx.currentTime + 0.01);
+          console.log('🧪 Audio test successful');
+        } catch (testError) {
+          console.error('🧪 Audio test failed:', testError);
         }
         
         audioUnlocked = true;
@@ -457,48 +479,69 @@
         return true;
       } catch (error) {
         console.error('❌ Audio initialization failed:', error);
+        console.error('❌ Error details:', error.message, error.name);
         return false;
       }
     }
 
     function playLoop(index) {
+      console.log(`🎵 playLoop(${index}) called - audioCtx: ${!!audioCtx}, audioUnlocked: ${audioUnlocked}, running: ${running}`);
+      
       if (!audioCtx || !audioUnlocked) {
         console.warn('⚠️ Audio not initialized');
         return;
       }
       
+      if (audioCtx.state !== 'running') {
+        console.warn(`⚠️ Audio context not running, state: ${audioCtx.state}`);
+        return;
+      }
+      
       const loop = loops[index];
+      console.log(`🎵 Playing loop ${index}: freq=${loop.freq}Hz, duration=${loop.duration}s, interval=${loop.interval}ms`);
+      
       try {
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
 
         osc.type = 'sine';
-        osc.frequency.value = loop.freq;
-        gain.gain.setValueAtTime(0.15, audioCtx.currentTime); // Volume appropriate for both mobile and desktop
+        osc.frequency.setValueAtTime(loop.freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.2, audioCtx.currentTime); // Slightly louder for better mobile audio
+        
+        console.log(`🔊 Created oscillator: freq=${loop.freq}, gain=0.2, currentTime=${audioCtx.currentTime}`);
 
         osc.connect(gain);
         gain.connect(audioCtx.destination);
 
         loop.playing = true;
-        osc.start();
+        osc.start(audioCtx.currentTime);
         osc.stop(audioCtx.currentTime + loop.duration);
+        
+        console.log(`▶️ Oscillator started for loop ${index}`);
 
         setTimeout(() => {
           loop.playing = false;
+          console.log(`⏹️ Loop ${index} finished playing`);
         }, loop.duration * 1000);
 
         loopTimeouts[index] = setTimeout(() => {
-          if (running) playLoop(index);
+          if (running) {
+            console.log(`🔄 Scheduling next iteration for loop ${index}`);
+            playLoop(index);
+          }
         }, loop.interval);
         
       } catch (error) {
         console.error(`❌ Error playing loop ${index}:`, error);
+        console.error(`❌ Error details:`, error.message, error.name);
         loop.playing = false;
       }
     }
 
     async function startAmbient() {
       console.log('▶️ Start ambient requested');
+      console.log(`📱 User agent: ${navigator.userAgent}`);
+      console.log(`🌐 Protocol: ${location.protocol}, Host: ${location.host}`);
       
       if (running) {
         console.log('ℹ️ Already running');
@@ -507,30 +550,50 @@
       
       // Initialize audio if not done yet
       if (!audioUnlocked) {
+        console.log('🔓 Audio not unlocked, initializing...');
         const success = await initAudio();
         if (!success) {
+          console.error('❌ Failed to initialize audio, showing warning');
           audioWarning.style.display = 'block';
           return;
         }
       }
       
       // Double-check audio context state
-      if (audioCtx.state === 'suspended') {
+      console.log(`🔊 Audio context state check: ${audioCtx?.state}`);
+      if (audioCtx && audioCtx.state === 'suspended') {
         try {
+          console.log('🔊 Attempting to resume suspended context...');
           await audioCtx.resume();
-          console.log('🔊 Audio context resumed');
+          console.log(`🔊 Audio context resumed, new state: ${audioCtx.state}`);
         } catch (error) {
           console.error('❌ Failed to resume audio context:', error);
           return;
         }
       }
       
+      // Final validation
+      if (!audioCtx || audioCtx.state !== 'running') {
+        console.error(`❌ Audio context not ready: audioCtx=${!!audioCtx}, state=${audioCtx?.state}`);
+        audioWarning.innerHTML = `
+          <p>❌ Audio Context Issue</p>
+          <p><small>State: ${audioCtx?.state || 'null'}</small></p>
+          <p><small>Try refreshing and clicking Start again</small></p>
+        `;
+        audioWarning.style.display = 'block';
+        return;
+      }
+      
       running = true;
       console.log('🎵 Starting ambient loops...');
+      console.log(`🎵 Audio context ready: sampleRate=${audioCtx.sampleRate}, state=${audioCtx.state}`);
       
       loops.forEach((_, index) => {
+        console.log(`🎵 Starting loop ${index}`);
         playLoop(index);
       });
+      
+      console.log('✅ All loops started');
     }
 
     function stopAmbient() {
@@ -541,9 +604,61 @@
       loops.forEach(loop => loop.playing = false);
     }
 
-    // Event listeners
-    document.getElementById('startBtn').addEventListener('click', startAmbient);
-    document.getElementById('stopBtn').addEventListener('click', stopAmbient);
+    // Test audio function for debugging
+    async function testAudio() {
+      console.log('🧪 Test audio button clicked');
+      
+      try {
+        // Initialize audio if needed
+        if (!audioCtx) {
+          await initAudio();
+        }
+        
+        if (audioCtx.state === 'suspended') {
+          await audioCtx.resume();
+        }
+        
+        console.log(`🧪 Testing audio: state=${audioCtx.state}`);
+        
+        // Play a simple 440Hz tone for 0.5 seconds
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        
+        osc.frequency.setValueAtTime(440, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+        
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        
+        osc.start(audioCtx.currentTime);
+        osc.stop(audioCtx.currentTime + 0.5);
+        
+        console.log('🧪 Test tone played');
+        
+      } catch (error) {
+        console.error('🧪 Test audio failed:', error);
+      }
+    }
+
+    // Event listeners with enhanced error handling
+    document.getElementById('startBtn').addEventListener('click', async (e) => {
+      console.log('👆 Start button clicked');
+      e.preventDefault();
+      await startAmbient();
+    });
+    
+    document.getElementById('stopBtn').addEventListener('click', (e) => {
+      console.log('👆 Stop button clicked');
+      e.preventDefault();
+      stopAmbient();
+    });
+    
+    document.getElementById('testBtn').addEventListener('click', async (e) => {
+      console.log('👆 Test button clicked');
+      e.preventDefault();
+      await testAudio();
+    });
 
     // Handle resize and orientation change
     window.addEventListener('resize', handleResize);
@@ -552,9 +667,20 @@
       setTimeout(handleResize, 100);
     });
 
-    // Prevent scrolling and zooming on mobile
-    document.addEventListener('touchstart', e => e.preventDefault(), { passive: false });
-    document.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+    // Prevent scrolling and zooming on mobile, but allow button interactions
+    document.addEventListener('touchstart', e => {
+      // Don't prevent default on buttons to allow them to work
+      if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'INPUT') {
+        e.preventDefault();
+      }
+    }, { passive: false });
+    
+    document.addEventListener('touchmove', e => {
+      // Don't prevent default on control elements
+      if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'INPUT') {
+        e.preventDefault();
+      }
+    }, { passive: false });
     
     // Check if served over HTTPS
     if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
