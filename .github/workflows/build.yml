@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [ main ]
 
+# Add permissions for the GITHUB_TOKEN
+permissions:
+  contents: write
+  
 jobs:
   update-file-list:
     runs-on: ubuntu-latest
@@ -15,6 +19,8 @@ jobs:
       uses: actions/checkout@v4
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
+        # Fetch full history for proper git operations
+        fetch-depth: 0
     
     - name: Setup Node.js
       uses: actions/setup-node@v4
@@ -35,6 +41,7 @@ jobs:
         else
           echo "changed=true" >> $GITHUB_OUTPUT
           echo "✅ files.json has been updated"
+          git diff files.json
         fi
     
     - name: Commit updated file list
