@@ -4,63 +4,77 @@
       "name": "enhanced_theremin_gestures_v4_psychedelic.html",
       "isDirectory": false,
       "size": 36638,
-      "modified": "2025-07-01T04:59:20.015Z",
+      "modified": "2025-07-01T06:29:11.125Z",
       "extension": ".html"
     },
     {
       "name": "enhanced_theremin_gestures_v5_complete.html",
       "isDirectory": false,
       "size": 60526,
-      "modified": "2025-07-01T04:59:20.015Z",
+      "modified": "2025-07-01T06:29:11.126Z",
       "extension": ".html"
     },
     {
       "name": "fm_synth_v1.html",
       "isDirectory": false,
       "size": 42222,
-      "modified": "2025-07-01T04:59:20.015Z",
+      "modified": "2025-07-01T06:29:11.126Z",
       "extension": ".html"
     },
     {
       "name": "fm_synth_v2.html",
       "isDirectory": false,
       "size": 49116,
-      "modified": "2025-07-01T04:59:20.015Z",
+      "modified": "2025-07-01T06:29:11.126Z",
       "extension": ".html"
     },
     {
       "name": "fm_synth_v3.html",
       "isDirectory": false,
       "size": 62150,
-      "modified": "2025-07-01T04:59:20.015Z",
+      "modified": "2025-07-01T06:29:11.126Z",
+      "extension": ".html"
+    },
+    {
+      "name": "glass_conductor_v4.html",
+      "isDirectory": false,
+      "size": 32549,
+      "modified": "2025-07-01T06:29:11.126Z",
+      "extension": ".html"
+    },
+    {
+      "name": "glass_minimalist_composer.html",
+      "isDirectory": false,
+      "size": 23765,
+      "modified": "2025-07-01T06:29:11.126Z",
       "extension": ".html"
     },
     {
       "name": "hrv_monitor.html",
       "isDirectory": false,
       "size": 16554,
-      "modified": "2025-07-01T04:59:20.015Z",
+      "modified": "2025-07-01T06:29:11.126Z",
       "extension": ".html"
     },
     {
       "name": "index.html",
       "isDirectory": false,
-      "size": 8326,
-      "modified": "2025-07-01T04:59:20.015Z",
+      "size": 10563,
+      "modified": "2025-07-01T06:29:11.126Z",
       "extension": ".html"
     },
     {
       "name": "theremin_dual_sine_sorted.html",
       "isDirectory": false,
       "size": 8707,
-      "modified": "2025-07-01T04:59:20.015Z",
+      "modified": "2025-07-01T06:29:11.127Z",
       "extension": ".html"
     },
     {
       "name": "visual_eno_loops_universal.html",
       "isDirectory": false,
       "size": 26572,
-      "modified": "2025-07-01T04:59:20.016Z",
+      "modified": "2025-07-01T06:29:11.127Z",
       "extension": ".html"
     }
   ],
@@ -69,14 +83,14 @@
       "name": "prompt.py",
       "isDirectory": false,
       "size": 0,
-      "modified": "2025-07-01T04:59:20.016Z",
+      "modified": "2025-07-01T06:29:11.127Z",
       "extension": ".py"
     },
     {
       "name": "userinput.py",
       "isDirectory": false,
       "size": 30,
-      "modified": "2025-07-01T04:59:20.016Z",
+      "modified": "2025-07-01T06:29:11.127Z",
       "extension": ".py"
     }
   ],
@@ -84,22 +98,22 @@
     {
       "name": "project_structure.md",
       "isDirectory": false,
-      "size": 9439,
-      "modified": "2025-07-01T04:59:20.010Z",
+      "size": 11949,
+      "modified": "2025-07-01T06:29:11.121Z",
       "extension": ".md"
     },
     {
       "name": "user_tasks.log",
       "isDirectory": false,
       "size": 285,
-      "modified": "2025-07-01T04:59:20.010Z",
+      "modified": "2025-07-01T06:29:11.121Z",
       "extension": ".log"
     },
     {
       "name": "vibes-README.md",
       "isDirectory": false,
       "size": 2879,
-      "modified": "2025-07-01T04:59:20.010Z",
+      "modified": "2025-07-01T06:29:11.121Z",
       "extension": ".md"
     }
   ],
@@ -108,35 +122,35 @@
       "name": "index.html",
       "isDirectory": false,
       "size": 9655,
-      "modified": "2025-07-01T04:59:20.010Z",
+      "modified": "2025-07-01T06:29:11.121Z",
       "extension": ".html"
     },
     {
       "name": "README.md",
       "isDirectory": false,
       "size": 1237,
-      "modified": "2025-07-01T04:59:20.010Z",
+      "modified": "2025-07-01T06:29:11.121Z",
       "extension": ".md"
     },
     {
       "name": "LICENSE",
       "isDirectory": false,
       "size": 35149,
-      "modified": "2025-07-01T04:59:20.010Z",
+      "modified": "2025-07-01T06:29:11.121Z",
       "extension": ""
     },
     {
       "name": "DEPLOYMENT.md",
       "isDirectory": false,
       "size": 3247,
-      "modified": "2025-07-01T04:59:20.010Z",
+      "modified": "2025-07-01T06:29:11.120Z",
       "extension": ".md"
     },
     {
       "name": "package.json",
       "isDirectory": false,
       "size": 579,
-      "modified": "2025-07-01T04:59:20.010Z",
+      "modified": "2025-07-01T06:29:11.121Z",
       "extension": ".json"
     }
   ]
