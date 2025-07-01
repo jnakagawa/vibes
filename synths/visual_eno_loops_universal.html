@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Visual Ambient Composer (Universal)</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      margin: 0;
+      background: #111;
+      overflow: hidden;
+      color: white;
+      font-family: 'Helvetica Neue', sans-serif;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+    }
+    canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      display: block;
+    }
+    .controls {
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 2;
+    }
+    .loop-knob {
+      position: absolute;
+      min-width: 100px;
+      min-height: 60px;
+      padding: 8px;
+      background: rgba(0, 0, 0, 0.8);
+      border-radius: 12px;
+      text-align: center;
+      font-size: 14px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+    .loop-knob input[type=range] {
+      width: 80px;
+      height: 44px; /* Minimum touch target */
+      margin: 4px 0;
+    }
+    .loop-knob label {
+      display: block;
+      padding: 4px;
+    }
+    #startBtn, #stopBtn {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      min-width: 60px;
+      min-height: 44px; /* Minimum touch target */
+      padding: 12px 20px;
+      font-size: 16px;
+      border: none;
+      border-radius: 8px;
+      background-color: #556cd6;
+      color: white;
+      cursor: pointer;
+      z-index: 10;
+      touch-action: manipulation;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      transition: transform 0.1s ease;
+    }
+    #startBtn:active, #stopBtn:active {
+      transform: scale(0.95);
+    }
+    #stopBtn {
+      left: 120px;
+      background-color: #c62828;
+    }
+    
+    .audio-warning {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0,0,0,0.9);
+      color: white;
+      padding: 20px;
+      border-radius: 10px;
+      text-align: center;
+      z-index: 20;
+      max-width: 350px;
+      font-size: 14px;
+      display: none;
+    }
+    
+    .info-panel {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: rgba(0,0,0,0.8);
+      color: white;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      max-width: 250px;
+      z-index: 5;
+    }
+    
+    /* Desktop optimizations */
+    @media screen and (min-width: 1024px) {
+      .loop-knob {
+        min-width: 90px;
+        font-size: 13px;
+      }
+      .loop-knob input[type=range] {
+        width: 75px;
+      }
+      #startBtn, #stopBtn {
+        padding: 10px 18px;
+      }
+      .info-panel {
+        font-size: 13px;
+      }
+    }
+    
+    /* Mobile optimizations */
+    @media screen and (max-width: 480px) {
+      .loop-knob {
+        min-width: 80px;
+        min-height: 50px;
+        padding: 6px;
+        font-size: 12px;
+      }
+      .loop-knob input[type=range] {
+        width: 60px;
+      }
+      #startBtn, #stopBtn {
+        top: 10px;
+        padding: 10px 16px;
+        font-size: 14px;
+        min-width: 50px;
+      }
+      #stopBtn {
+        left: 90px;
+      }
+      .info-panel {
+        bottom: 10px;
+        right: 10px;
+        font-size: 11px;
+        max-width: 200px;
+      }
+    }
+    
+    @media screen and (orientation: landscape) and (max-height: 500px) {
+      #startBtn, #stopBtn {
+        top: 5px;
+        padding: 8px 12px;
+        font-size: 12px;
+      }
+      .loop-knob {
+        min-height: 40px;
+        font-size: 11px;
+      }
+      .info-panel {
+        bottom: 5px;
+        right: 5px;
+        font-size: 10px;
+        padding: 8px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="audio-warning" id="audioWarning">
+    <p>🎵 Audio requires user interaction</p>
+    <p><small>Tap Start to begin. Best experienced with headphones.</small></p>
+    <p><small>Note: Requires HTTPS for full functionality</small></p>
+  </div>
+  
+  <button id="startBtn">Start</button>
+  <button id="stopBtn">Stop</button>
+  <canvas id="canvas"></canvas>
+  <div class="controls" id="controlPanel"></div>
+  
+  <div class="info-panel">
+    <strong>Controls:</strong><br>
+    • Drag circles to change pitch<br>
+    • Y-position = loop interval<br>
+    • Sliders = note duration<br>
+    <small>Arc shows interval timing</small>
+  </div>
+
+  <script>
+    console.log('🎵 Visual Ambient Composer (Universal) - Starting...');
+    
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const controlPanel = document.getElementById('controlPanel');
+    const audioWarning = document.getElementById('audioWarning');
+    
+    // Device pixel ratio for crisp displays
+    let devicePixelRatio = window.devicePixelRatio || 1;
+    let canvasRect = { width: 0, height: 0 };
+    
+    // Audio context - initialized after user gesture
+    let audioCtx = null;
+    let running = false;
+    let loopTimeouts = [];
+    let audioUnlocked = false;
+
+    const scale = [261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 493.88]; // C major scale
+
+    // Initialize loops with responsive positioning
+    const loops = Array.from({ length: 5 }, (_, i) => ({
+      x: 100 + i * 150, // Will be adjusted on resize
+      y: 200,
+      r: 30, // Will be adjusted for mobile
+      freq: scale[i % scale.length],
+      interval: 5000, // Default interval, will be controlled by Y position
+      duration: 2,
+      dragging: false,
+      playing: false,
+      color: `hsl(${i * 70}, 70%, 60%)`,
+      knob: null,
+    }));
+
+    // High-DPI canvas setup
+    function setupCanvas() {
+      const rect = canvas.getBoundingClientRect();
+      canvasRect.width = window.innerWidth;
+      canvasRect.height = window.innerHeight;
+      
+      // Set actual size in memory (scaled up for DPI)
+      canvas.width = canvasRect.width * devicePixelRatio;
+      canvas.height = canvasRect.height * devicePixelRatio;
+      
+      // Set display size (CSS pixels)
+      canvas.style.width = canvasRect.width + 'px';
+      canvas.style.height = canvasRect.height + 'px';
+      
+      // Scale the drawing context so everything draws at the correct size
+      ctx.scale(devicePixelRatio, devicePixelRatio);
+      
+      console.log(`📱 Canvas setup: ${canvasRect.width}x${canvasRect.height}, DPR: ${devicePixelRatio}`);
+    }
+
+    // Handle window resize and orientation change
+    function handleResize() {
+      devicePixelRatio = window.devicePixelRatio || 1;
+      setupCanvas();
+      repositionLoops();
+      console.log('🔄 Window resized/rotated');
+    }
+    
+    // Reposition loops to fit new screen size and adjust for mobile
+    function repositionLoops() {
+      const isMobile = canvasRect.width < 768;
+      const spacing = isMobile ? 
+        Math.min(120, (canvasRect.width - 200) / (loops.length - 1)) : 
+        150;
+      
+      loops.forEach((loop, i) => {
+        // Adjust loop radius for mobile
+        loop.r = isMobile ? 25 : 30;
+        
+        // Position loops
+        loop.x = Math.max(100, 100 + i * spacing);
+        loop.y = Math.min(200, canvasRect.height * 0.3);
+        
+        // Ensure loops stay within bounds
+        if (loop.x + loop.r > canvasRect.width - 20) {
+          loop.x = canvasRect.width - loop.r - 20;
+        }
+        if (loop.y + loop.r > canvasRect.height - 100) {
+          loop.y = canvasRect.height - loop.r - 100;
+        }
+      });
+    }
+
+    function quantizeFreq(x) {
+      const index = Math.floor((x / canvasRect.width) * scale.length);
+      return scale[Math.max(0, Math.min(scale.length - 1, index))];
+    }
+    
+    // Map Y position to interval (desktop feature)
+    function mapYtoInterval(y) {
+      const minInterval = 1000;
+      const maxInterval = 15000;
+      return minInterval + ((y / canvasRect.height) * (maxInterval - minInterval));
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvasRect.width, canvasRect.height);
+      loops.forEach(loop => {
+        // Calculate interval from Y position
+        loop.interval = mapYtoInterval(loop.y);
+        
+        // Arc visualization showing interval timing (desktop feature)
+        const pct = (loop.interval - 1000) / (15000 - 1000);
+        const arcRadius = loop.r + 10;
+        
+        // Glow effect when playing
+        if (loop.playing) {
+          ctx.shadowBlur = 20;
+          ctx.shadowColor = loop.color;
+        } else {
+          ctx.shadowBlur = 0;
+        }
+        
+        // Draw arc for interval
+        ctx.beginPath();
+        ctx.strokeStyle = loop.color;
+        ctx.lineWidth = 3;
+        ctx.arc(loop.x, loop.y, arcRadius, 0, Math.PI * 2 * pct);
+        ctx.stroke();
+        
+        // Draw main circle
+        ctx.beginPath();
+        ctx.arc(loop.x, loop.y, loop.r, 0, Math.PI * 2);
+        ctx.fillStyle = loop.color;
+        ctx.fill();
+        
+        // Reset shadow for text
+        ctx.shadowBlur = 0;
+        ctx.shadowColor = "transparent";
+        ctx.fillStyle = '#fff';
+        ctx.font = `${canvasRect.width < 768 ? '12px' : '14px'} sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.fillText(`${loop.freq.toFixed(0)}Hz`, loop.x, loop.y + 3);
+
+        // Update knob position
+        if (loop.knob) {
+          const knobWidth = loop.knob.offsetWidth || 100;
+          const knobHeight = loop.knob.offsetHeight || 60;
+          loop.knob.style.left = Math.max(0, Math.min(canvasRect.width - knobWidth, loop.x - knobWidth/2)) + 'px';
+          loop.knob.style.top = Math.max(0, Math.min(canvasRect.height - knobHeight - 20, loop.y + 40)) + 'px';
+        }
+      });
+      requestAnimationFrame(draw);
+    }
+
+    function createKnobs() {
+      loops.forEach((loop, i) => {
+        const knob = document.createElement('div');
+        knob.className = 'loop-knob';
+        knob.innerHTML = `
+          <label>
+            Duration<br>
+            <input type="range" min="0.2" max="5" step="0.1" value="${loop.duration}" 
+                   data-loop="${i}" class="duration-slider"><br>
+            <span id="durationLabel${i}">${loop.duration.toFixed(1)}s</span>
+          </label>
+        `;
+        controlPanel.appendChild(knob);
+        loop.knob = knob;
+        
+        const input = knob.querySelector('.duration-slider');
+        input.addEventListener('input', (e) => {
+          const value = parseFloat(e.target.value);
+          loops[i].duration = value;
+          document.getElementById(`durationLabel${i}`).textContent = value.toFixed(1) + 's';
+        });
+      });
+    }
+
+    // Get coordinates from pointer event (works for mouse and touch)
+    function getEventCoords(e) {
+      const rect = canvas.getBoundingClientRect();
+      const clientX = e.clientX !== undefined ? e.clientX : e.touches?.[0]?.clientX || 0;
+      const clientY = e.clientY !== undefined ? e.clientY : e.touches?.[0]?.clientY || 0;
+      return {
+        x: clientX - rect.left,
+        y: clientY - rect.top
+      };
+    }
+
+    // Universal pointer events for touch and mouse support
+    canvas.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      const coords = getEventCoords(e);
+      console.log(`👆 Pointer down at ${coords.x}, ${coords.y}`);
+      
+      loops.forEach(loop => {
+        if (Math.hypot(loop.x - coords.x, loop.y - coords.y) < loop.r + 10) { // Slightly larger hit area
+          loop.dragging = true;
+          console.log(`🎯 Loop ${loops.indexOf(loop)} selected`);
+        }
+      });
+    });
+
+    canvas.addEventListener('pointermove', e => {
+      e.preventDefault();
+      const coords = getEventCoords(e);
+      
+      loops.forEach(loop => {
+        if (loop.dragging) {
+          // Keep loops within canvas bounds with proper margins
+          loop.x = Math.max(loop.r + 20, Math.min(canvasRect.width - loop.r - 20, coords.x));
+          loop.y = Math.max(loop.r + 80, Math.min(canvasRect.height - loop.r - 120, coords.y)); // Leave space for controls
+          loop.freq = quantizeFreq(loop.x);
+          // Interval is calculated from Y position in draw() function
+        }
+      });
+    });
+
+    canvas.addEventListener('pointerup', e => {
+      e.preventDefault();
+      console.log('👆 Pointer up');
+      loops.forEach(loop => loop.dragging = false);
+    });
+
+    // Fallback mouse events for older browsers
+    canvas.addEventListener('mousedown', e => {
+      if (!e.pointerId) { // Only if pointer events aren't supported
+        const coords = getEventCoords(e);
+        loops.forEach(loop => {
+          if (Math.hypot(loop.x - coords.x, loop.y - coords.y) < loop.r + 10) {
+            loop.dragging = true;
+          }
+        });
+      }
+    });
+
+    canvas.addEventListener('mousemove', e => {
+      if (!e.pointerId) { // Only if pointer events aren't supported
+        const coords = getEventCoords(e);
+        loops.forEach(loop => {
+          if (loop.dragging) {
+            loop.x = Math.max(loop.r + 20, Math.min(canvasRect.width - loop.r - 20, coords.x));
+            loop.y = Math.max(loop.r + 80, Math.min(canvasRect.height - loop.r - 120, coords.y));
+            loop.freq = quantizeFreq(loop.x);
+          }
+        });
+      }
+    });
+
+    canvas.addEventListener('mouseup', e => {
+      if (!e.pointerId) { // Only if pointer events aren't supported
+        loops.forEach(loop => loop.dragging = false);
+      }
+    });
+
+    // Prevent context menu on long press
+    canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+    // Initialize audio context after user gesture
+    async function initAudio() {
+      try {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        console.log(`🎵 Audio context created, state: ${audioCtx.state}`);
+        
+        // Handle suspended audio context (common on mobile)
+        if (audioCtx.state === 'suspended') {
+          console.log('🔊 Resuming suspended audio context...');
+          await audioCtx.resume();
+        }
+        
+        audioUnlocked = true;
+        audioWarning.style.display = 'none';
+        console.log('✅ Audio unlocked and ready');
+        return true;
+      } catch (error) {
+        console.error('❌ Audio initialization failed:', error);
+        return false;
+      }
+    }
+
+    function playLoop(index) {
+      if (!audioCtx || !audioUnlocked) {
+        console.warn('⚠️ Audio not initialized');
+        return;
+      }
+      
+      const loop = loops[index];
+      try {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.value = loop.freq;
+        gain.gain.setValueAtTime(0.15, audioCtx.currentTime); // Volume appropriate for both mobile and desktop
+
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        loop.playing = true;
+        osc.start();
+        osc.stop(audioCtx.currentTime + loop.duration);
+
+        setTimeout(() => {
+          loop.playing = false;
+        }, loop.duration * 1000);
+
+        loopTimeouts[index] = setTimeout(() => {
+          if (running) playLoop(index);
+        }, loop.interval);
+        
+      } catch (error) {
+        console.error(`❌ Error playing loop ${index}:`, error);
+        loop.playing = false;
+      }
+    }
+
+    async function startAmbient() {
+      console.log('▶️ Start ambient requested');
+      
+      if (running) {
+        console.log('ℹ️ Already running');
+        return;
+      }
+      
+      // Initialize audio if not done yet
+      if (!audioUnlocked) {
+        const success = await initAudio();
+        if (!success) {
+          audioWarning.style.display = 'block';
+          return;
+        }
+      }
+      
+      // Double-check audio context state
+      if (audioCtx.state === 'suspended') {
+        try {
+          await audioCtx.resume();
+          console.log('🔊 Audio context resumed');
+        } catch (error) {
+          console.error('❌ Failed to resume audio context:', error);
+          return;
+        }
+      }
+      
+      running = true;
+      console.log('🎵 Starting ambient loops...');
+      
+      loops.forEach((_, index) => {
+        playLoop(index);
+      });
+    }
+
+    function stopAmbient() {
+      console.log('⏹️ Stop ambient');
+      running = false;
+      loopTimeouts.forEach(timeout => clearTimeout(timeout));
+      loopTimeouts = [];
+      loops.forEach(loop => loop.playing = false);
+    }
+
+    // Event listeners
+    document.getElementById('startBtn').addEventListener('click', startAmbient);
+    document.getElementById('stopBtn').addEventListener('click', stopAmbient);
+
+    // Handle resize and orientation change
+    window.addEventListener('resize', handleResize);
+    window.addEventListener('orientationchange', () => {
+      // Small delay to ensure orientation change is complete
+      setTimeout(handleResize, 100);
+    });
+
+    // Prevent scrolling and zooming on mobile
+    document.addEventListener('touchstart', e => e.preventDefault(), { passive: false });
+    document.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+    
+    // Check if served over HTTPS
+    if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
+      console.warn('⚠️ Not served over HTTPS - Web Audio may have limitations');
+      audioWarning.innerHTML = `
+        <p>⚠️ HTTPS Required</p>
+        <p><small>For full audio functionality, serve over HTTPS</small></p>
+      `;
+      audioWarning.style.display = 'block';
+    }
+
+    // Initialize
+    setupCanvas();
+    createKnobs();
+    repositionLoops();
+    draw();
+    
+    console.log('✅ Visual Ambient Composer (Universal) initialized');
+    console.log('📱💻 Works on both mobile and desktop');
+    console.log('🎛️ Drag circles: X = pitch, Y = interval timing');
+    console.log('🎚️ Use sliders to adjust note duration');
+  </script>
+</body>
+</html> 
