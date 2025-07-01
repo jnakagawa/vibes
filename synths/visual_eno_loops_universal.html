@@ -185,7 +185,7 @@
     • X-position = loop speed (left = fast)<br>
     • Sliders = note duration<br>
     • Test button = audio check<br>
-    <small>5 octave range (35 notes)<br>
+    <small>2 octave range (14 notes)<br>
     Arc shows interval timing<br>
     Check console for debug info</small>
   </div>
@@ -208,19 +208,13 @@
     let loopTimeouts = [];
     let audioUnlocked = false;
 
-    // Extended C major scale across multiple octaves for wider range and granularity
+    // Two-octave C major scale for balanced range and precision
     const scale = [
-      // Octave 3
-      130.81, 146.83, 164.81, 174.61, 196.00, 220.00, 246.94,
       // Octave 4 (middle C)
       261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 493.88,
-      // Octave 5
-      523.25, 587.33, 659.25, 698.46, 783.99, 880.00, 987.77,
-      // Octave 6
-      1046.50, 1174.66, 1318.51, 1396.91, 1567.98, 1760.00, 1975.53,
-      // Octave 7 (high)
-      2093.00, 2349.32, 2637.02, 2793.83, 3135.96, 3520.00, 3951.07
-    ]; // 5 octaves of C major scale (35 notes total)
+      // Octave 5 
+      523.25, 587.33, 659.25, 698.46, 783.99, 880.00, 987.77
+    ]; // 2 octaves of C major scale (14 notes total)
 
     // Initialize loops with responsive positioning
     const loops = Array.from({ length: 5 }, (_, i) => ({
@@ -720,7 +714,7 @@
     console.log('✅ Visual Ambient Composer (Universal) initialized');
     console.log('📱💻 Works on both mobile and desktop');
     console.log('🎛️ Drag circles: Y = pitch (up = higher), X = interval timing (left = fast)');
-    console.log(`🎵 Extended pitch range: ${scale.length} notes across 5 octaves (${scale[0].toFixed(1)}Hz - ${scale[scale.length-1].toFixed(1)}Hz)`);
+    console.log(`🎵 Pitch range: ${scale.length} notes across 2 octaves (${scale[0].toFixed(1)}Hz - ${scale[scale.length-1].toFixed(1)}Hz)`);
     console.log('🎚️ Use sliders to adjust note duration');
   </script>
 </body>
