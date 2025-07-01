@@ -181,8 +181,8 @@
   
   <div class="info-panel">
     <strong>Controls:</strong><br>
-    • Drag circles to change pitch<br>
-    • Y-position = loop interval<br>
+    • Y-position = pitch (up = higher)<br>
+    • X-position = loop speed (left = fast)<br>
     • Sliders = note duration<br>
     • Test button = audio check<br>
     <small>Arc shows interval timing<br>
@@ -254,7 +254,7 @@
     // Reposition loops to fit new screen size and adjust for mobile
     function repositionLoops() {
       const isMobile = canvasRect.width < 768;
-      const spacing = isMobile ? 
+      const xSpacing = isMobile ? 
         Math.min(120, (canvasRect.width - 200) / (loops.length - 1)) : 
         150;
       
@@ -262,9 +262,10 @@
         // Adjust loop radius for mobile
         loop.r = isMobile ? 25 : 30;
         
-        // Position loops
-        loop.x = Math.max(100, 100 + i * spacing);
-        loop.y = Math.min(200, canvasRect.height * 0.3);
+        // Position loops with varied X (interval timing) and Y (pitch)
+        loop.x = Math.max(100, 100 + i * xSpacing);
+        // Stagger Y positions for different starting pitches (higher Y = lower pitch)
+        loop.y = Math.min(150 + i * 40, canvasRect.height * 0.7);
         
         // Ensure loops stay within bounds
         if (loop.x + loop.r > canvasRect.width - 20) {
@@ -276,25 +277,29 @@
       });
     }
 
-    function quantizeFreq(x) {
-      const index = Math.floor((x / canvasRect.width) * scale.length);
+    // Map Y position to frequency (higher = higher pitch)
+    function quantizeFreq(y) {
+      // Invert Y so top = high pitch, bottom = low pitch
+      const normalizedY = 1 - (y / canvasRect.height);
+      const index = Math.floor(normalizedY * scale.length);
       return scale[Math.max(0, Math.min(scale.length - 1, index))];
     }
     
-    // Map Y position to interval (desktop feature)
-    function mapYtoInterval(y) {
-      const minInterval = 1000;
-      const maxInterval = 15000;
-      return minInterval + ((y / canvasRect.height) * (maxInterval - minInterval));
+    // Map X position to interval (left = fast, right = slow)
+    function mapXtoInterval(x) {
+      const minInterval = 1000;  // Fast (left)
+      const maxInterval = 15000; // Slow (right)
+      return minInterval + ((x / canvasRect.width) * (maxInterval - minInterval));
     }
 
     function draw() {
       ctx.clearRect(0, 0, canvasRect.width, canvasRect.height);
       loops.forEach(loop => {
-        // Calculate interval from Y position
-        loop.interval = mapYtoInterval(loop.y);
+        // Calculate interval from X position and frequency from Y position
+        loop.interval = mapXtoInterval(loop.x);
+        loop.freq = quantizeFreq(loop.y);
         
-        // Arc visualization showing interval timing (desktop feature)
+        // Arc visualization showing interval timing
         const pct = (loop.interval - 1000) / (15000 - 1000);
         const arcRadius = loop.r + 10;
         
@@ -396,8 +401,7 @@
           // Keep loops within canvas bounds with proper margins
           loop.x = Math.max(loop.r + 20, Math.min(canvasRect.width - loop.r - 20, coords.x));
           loop.y = Math.max(loop.r + 80, Math.min(canvasRect.height - loop.r - 120, coords.y)); // Leave space for controls
-          loop.freq = quantizeFreq(loop.x);
-          // Interval is calculated from Y position in draw() function
+          // Frequency and interval are calculated from positions in draw() function
         }
       });
     });
@@ -427,7 +431,7 @@
           if (loop.dragging) {
             loop.x = Math.max(loop.r + 20, Math.min(canvasRect.width - loop.r - 20, coords.x));
             loop.y = Math.max(loop.r + 80, Math.min(canvasRect.height - loop.r - 120, coords.y));
-            loop.freq = quantizeFreq(loop.x);
+            // Frequency and interval are calculated from positions in draw() function
           }
         });
       }
@@ -700,7 +704,7 @@
     
     console.log('✅ Visual Ambient Composer (Universal) initialized');
     console.log('📱💻 Works on both mobile and desktop');
-    console.log('🎛️ Drag circles: X = pitch, Y = interval timing');
+    console.log('🎛️ Drag circles: Y = pitch (up = higher), X = interval timing (left = fast)');
     console.log('🎚️ Use sliders to adjust note duration');
   </script>
 </body>
