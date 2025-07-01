@@ -47,31 +47,7 @@
       display: block;
       padding: 4px;
     }
-    #startBtn, #stopBtn {
-      position: fixed;
-      top: 20px;
-      left: 20px;
-      min-width: 60px;
-      min-height: 44px; /* Minimum touch target */
-      padding: 12px 20px;
-      font-size: 16px;
-      border: none;
-      border-radius: 8px;
-      background-color: #556cd6;
-      color: white;
-      cursor: pointer;
-      z-index: 10;
-      touch-action: manipulation;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-      transition: transform 0.1s ease;
-    }
-    #startBtn:active, #stopBtn:active {
-      transform: scale(0.95);
-    }
-    #stopBtn {
-      left: 120px;
-      background-color: #c62828;
-    }
+
     
     .audio-warning {
       position: fixed;
@@ -89,18 +65,7 @@
       display: none;
     }
     
-    .info-panel {
-      position: fixed;
-      bottom: 20px;
-      right: 20px;
-      background: rgba(0,0,0,0.8);
-      color: white;
-      padding: 12px;
-      border-radius: 8px;
-      font-size: 12px;
-      max-width: 250px;
-      z-index: 5;
-    }
+
     
     /* Desktop optimizations */
     @media screen and (min-width: 1024px) {
@@ -110,12 +75,6 @@
       }
       .loop-knob input[type=range] {
         width: 75px;
-      }
-      #startBtn, #stopBtn {
-        padding: 10px 18px;
-      }
-      .info-panel {
-        font-size: 13px;
       }
     }
     
@@ -130,65 +89,25 @@
       .loop-knob input[type=range] {
         width: 60px;
       }
-      #startBtn, #stopBtn {
-        top: 10px;
-        padding: 10px 16px;
-        font-size: 14px;
-        min-width: 50px;
-      }
-      #stopBtn {
-        left: 90px;
-      }
-      .info-panel {
-        bottom: 10px;
-        right: 10px;
-        font-size: 11px;
-        max-width: 200px;
-      }
     }
     
     @media screen and (orientation: landscape) and (max-height: 500px) {
-      #startBtn, #stopBtn {
-        top: 5px;
-        padding: 8px 12px;
-        font-size: 12px;
-      }
       .loop-knob {
         min-height: 40px;
         font-size: 11px;
-      }
-      .info-panel {
-        bottom: 5px;
-        right: 5px;
-        font-size: 10px;
-        padding: 8px;
       }
     }
   </style>
 </head>
 <body>
-  <div class="audio-warning" id="audioWarning">
+  <div class="audio-warning" id="audioWarning" style="display: none;">
     <p>🎵 Audio requires user interaction</p>
-    <p><small>Tap Start to begin. Best experienced with headphones.</small></p>
+    <p><small>Tap anywhere to begin. Best experienced with headphones.</small></p>
     <p><small>Note: Requires HTTPS for full functionality</small></p>
   </div>
   
-  <button id="startBtn">Start</button>
-  <button id="stopBtn">Stop</button>
-  <button id="testBtn" style="position: fixed; top: 20px; left: 240px; min-width: 50px; min-height: 44px; padding: 10px 16px; font-size: 14px; border: none; border-radius: 8px; background-color: #4CAF50; color: white; cursor: pointer; z-index: 10;">Test</button>
   <canvas id="canvas"></canvas>
   <div class="controls" id="controlPanel"></div>
-  
-  <div class="info-panel">
-    <strong>Controls:</strong><br>
-    • Y-position = pitch (up = higher)<br>
-    • X-position = loop speed (left = fast)<br>
-    • Sliders = note duration<br>
-    • Test button = audio check<br>
-    <small>2 octave range (14 notes)<br>
-    Arc shows interval timing<br>
-    Check console for debug info</small>
-  </div>
 
   <script>
     console.log('🎵 Visual Ambient Composer (Universal) - Starting...');
@@ -207,6 +126,7 @@
     let running = false;
     let loopTimeouts = [];
     let audioUnlocked = false;
+    let hasStarted = false; // Track if ambient has been started
 
     // Two-octave C major scale for balanced range and precision
     const scale = [
@@ -388,10 +308,17 @@
     }
 
     // Universal pointer events for touch and mouse support
-    canvas.addEventListener('pointerdown', e => {
+    canvas.addEventListener('pointerdown', async e => {
       e.preventDefault();
       const coords = getEventCoords(e);
       console.log(`👆 Pointer down at ${coords.x}, ${coords.y}`);
+      
+      // Auto-start ambient on first interaction
+      if (!hasStarted) {
+        console.log('🎵 First interaction - starting ambient loops');
+        await startAmbient();
+        hasStarted = true;
+      }
       
       loops.forEach(loop => {
         if (Math.hypot(loop.x - coords.x, loop.y - coords.y) < loop.r + 10) { // Slightly larger hit area
@@ -422,9 +349,17 @@
     });
 
     // Fallback mouse events for older browsers
-    canvas.addEventListener('mousedown', e => {
+    canvas.addEventListener('mousedown', async e => {
       if (!e.pointerId) { // Only if pointer events aren't supported
         const coords = getEventCoords(e);
+        
+        // Auto-start ambient on first interaction
+        if (!hasStarted) {
+          console.log('🎵 First interaction (mouse) - starting ambient loops');
+          await startAmbient();
+          hasStarted = true;
+        }
+        
         loops.forEach(loop => {
           if (Math.hypot(loop.x - coords.x, loop.y - coords.y) < loop.r + 10) {
             loop.dragging = true;
@@ -591,7 +526,7 @@
         audioWarning.innerHTML = `
           <p>❌ Audio Context Issue</p>
           <p><small>State: ${audioCtx?.state || 'null'}</small></p>
-          <p><small>Try refreshing and clicking Start again</small></p>
+          <p><small>Try refreshing and tapping canvas again</small></p>
         `;
         audioWarning.style.display = 'block';
         return;
@@ -617,61 +552,7 @@
       loops.forEach(loop => loop.playing = false);
     }
 
-    // Test audio function for debugging
-    async function testAudio() {
-      console.log('🧪 Test audio button clicked');
-      
-      try {
-        // Initialize audio if needed
-        if (!audioCtx) {
-          await initAudio();
-        }
-        
-        if (audioCtx.state === 'suspended') {
-          await audioCtx.resume();
-        }
-        
-        console.log(`🧪 Testing audio: state=${audioCtx.state}`);
-        
-        // Play a simple 440Hz tone for 0.5 seconds
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        
-        osc.frequency.setValueAtTime(440, audioCtx.currentTime);
-        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
-        
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        
-        osc.start(audioCtx.currentTime);
-        osc.stop(audioCtx.currentTime + 0.5);
-        
-        console.log('🧪 Test tone played');
-        
-      } catch (error) {
-        console.error('🧪 Test audio failed:', error);
-      }
-    }
 
-    // Event listeners with enhanced error handling
-    document.getElementById('startBtn').addEventListener('click', async (e) => {
-      console.log('👆 Start button clicked');
-      e.preventDefault();
-      await startAmbient();
-    });
-    
-    document.getElementById('stopBtn').addEventListener('click', (e) => {
-      console.log('👆 Stop button clicked');
-      e.preventDefault();
-      stopAmbient();
-    });
-    
-    document.getElementById('testBtn').addEventListener('click', async (e) => {
-      console.log('👆 Test button clicked');
-      e.preventDefault();
-      await testAudio();
-    });
 
     // Handle resize and orientation change
     window.addEventListener('resize', handleResize);
@@ -701,6 +582,7 @@
       audioWarning.innerHTML = `
         <p>⚠️ HTTPS Required</p>
         <p><small>For full audio functionality, serve over HTTPS</small></p>
+        <p><small>Tap anywhere on canvas to start</small></p>
       `;
       audioWarning.style.display = 'block';
     }
@@ -713,6 +595,7 @@
     
     console.log('✅ Visual Ambient Composer (Universal) initialized');
     console.log('📱💻 Works on both mobile and desktop');
+    console.log('👆 Tap anywhere on canvas to begin ambient loops');
     console.log('🎛️ Drag circles: Y = pitch (up = higher), X = interval timing (left = fast)');
     console.log(`🎵 Pitch range: ${scale.length} notes across 2 octaves (${scale[0].toFixed(1)}Hz - ${scale[scale.length-1].toFixed(1)}Hz)`);
     console.log('🎚️ Use sliders to adjust note duration');
