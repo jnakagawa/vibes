@@ -1,21 +1,62 @@
-# Project Structure - Enhanced Hand-Tracking Instrument
+# Project Structure - Vibes Audio Synthesis Collection
 
-This document outlines the structure and organization of the Enhanced Hand-Tracking Instrument project.
+This document outlines the structure and organization of the Vibes audio synthesis collection.
 
 ## 📁 Directory Structure
 
 ```
 vibes/
-├── enhanced_hand_tracking_instrument.html    # Main application file
-├── theremin_dual_sine_sorted.html           # Original version (legacy)
-├── README.md                                 # Project documentation
-└── project_structure.md                     # This file
+├── synths/                                   # Audio synthesis instruments
+│   ├── visual_eno_loops_glow.html           # Visual ambient composer (desktop)
+│   ├── visual_eno_loops_glow_mobile.html    # Mobile-optimized ambient composer
+│   ├── visual_eno_loops_final.html          # Another ambient loop variant
+│   ├── enhanced_theremin_gestures_v4_psychedelic.html
+│   ├── enhanced_theremin_gestures_v5_complete.html
+│   ├── theremin_dual_sine_sorted.html       # Dual sine theremin
+│   ├── fm_synth_v1.html                     # FM synthesis experiments
+│   ├── fm_synth_v2.html
+│   ├── fm_synth_v3.html
+│   ├── hrv_monitor.html                     # Heart rate variability monitor
+│   └── index.html                           # Synths directory index
+├── tools/                                   # Python utilities
+│   ├── prompt.py                            # Prompt generation tool
+│   └── userinput.py                         # User input utilities
+├── docs/                                    # Documentation
+│   ├── project_structure.md                # This file
+│   ├── user_tasks.log                       # Task history
+│   └── vibes-README.md                      # Extended documentation
+├── scripts/                                 # Build scripts
+│   └── generate-file-list.js               # Auto-discovery system
+├── index.html                               # Main landing page
+├── files.json                              # Auto-generated file listing
+├── package.json                            # Node.js dependencies
+└── README.md                               # Project overview
 ```
 
 ## 📄 File Descriptions
 
-### `enhanced_hand_tracking_instrument.html`
-**Main application file** - Complete standalone HTML application containing:
+### `synths/visual_eno_loops_glow_mobile.html`
+**Mobile-optimized ambient composer** - Complete standalone HTML application with full mobile support:
+
+#### Mobile Enhancements
+- **Viewport Meta Tag**: Proper mobile viewport configuration
+- **High-DPI Canvas**: `window.devicePixelRatio` awareness for crisp Retina displays
+- **Pointer Events**: Touch and mouse support via `pointerdown`/`pointermove`/`pointerup`
+- **Web Audio Mobile**: Handles `audioCtx.state === 'suspended'` and user gesture requirements
+- **Responsive Design**: 44×44px minimum tap targets, adaptive layouts
+- **Touch-Friendly UI**: Enhanced sliders, buttons, and interactive elements
+- **HTTPS Detection**: Warns users about Web Audio limitations over HTTP
+
+#### Core Features
+- **Five Draggable Loops**: Touch/drag colored circles to change pitch
+- **Adjustable Timing**: Range sliders for loop interval control (1-15 seconds)
+- **Real-time Audio**: Web Audio API with sine wave oscillators
+- **Visual Feedback**: Glowing circles when loops are playing
+- **C Major Scale**: Quantized frequency mapping across screen width
+- **Responsive Layout**: Adapts to screen size and orientation changes
+
+### `synths/visual_eno_loops_glow.html`
+**Desktop ambient composer** - Original version optimized for mouse interaction:
 
 #### HTML Structure
 - **Controls Panel**: UI for all instrument parameters
