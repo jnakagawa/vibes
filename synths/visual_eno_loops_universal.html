@@ -127,6 +127,7 @@
     let loopTimeouts = [];
     let audioUnlocked = false;
     let hasStarted = false; // Track if ambient has been started
+    let isMobileDevice = /Mobi|Android/i.test(navigator.userAgent);
 
     // Two-octave C major scale for balanced range and precision
     const scale = [
@@ -307,25 +308,52 @@
       };
     }
 
-    // Universal pointer events for touch and mouse support
-    canvas.addEventListener('pointerdown', async e => {
-      e.preventDefault();
+    // Enhanced interaction handling for mobile compatibility
+    async function handleInteractionStart(e) {
       const coords = getEventCoords(e);
-      console.log(`👆 Pointer down at ${coords.x}, ${coords.y}`);
+      console.log(`👆 Interaction at ${coords.x}, ${coords.y} - Mobile: ${isMobileDevice}`);
       
-      // Auto-start ambient on first interaction
+      // Auto-start ambient on first interaction with enhanced mobile support
       if (!hasStarted) {
         console.log('🎵 First interaction - starting ambient loops');
-        await startAmbient();
-        hasStarted = true;
+        console.log(`📱 Device: ${navigator.userAgent}`);
+        
+        try {
+          await startAmbient();
+          hasStarted = true;
+          console.log('✅ Ambient started successfully');
+        } catch (error) {
+          console.error('❌ Failed to start ambient:', error);
+          // Show helpful message for mobile users
+          if (isMobileDevice) {
+            audioWarning.innerHTML = `
+              <p>🎵 Tap to Start Audio</p>
+              <p><small>Mobile browsers require explicit audio activation</small></p>
+              <button onclick="startAmbientManual()" style="
+                background: #556cd6; color: white; border: none; 
+                padding: 15px 25px; border-radius: 8px; font-size: 16px;
+                margin: 10px; cursor: pointer;">
+                🎵 Start Audio
+              </button>
+            `;
+            audioWarning.style.display = 'block';
+          }
+        }
       }
       
+      // Handle circle dragging
       loops.forEach(loop => {
-        if (Math.hypot(loop.x - coords.x, loop.y - coords.y) < loop.r + 10) { // Slightly larger hit area
+        if (Math.hypot(loop.x - coords.x, loop.y - coords.y) < loop.r + 10) {
           loop.dragging = true;
           console.log(`🎯 Loop ${loops.indexOf(loop)} selected`);
         }
       });
+    }
+
+    // Universal pointer events for touch and mouse support
+    canvas.addEventListener('pointerdown', async e => {
+      e.preventDefault();
+      await handleInteractionStart(e);
     });
 
     canvas.addEventListener('pointermove', e => {
@@ -348,23 +376,18 @@
       loops.forEach(loop => loop.dragging = false);
     });
 
+    // Enhanced touch events for mobile devices
+    canvas.addEventListener('touchstart', async e => {
+      e.preventDefault();
+      console.log('👆 Touch event detected');
+      await handleInteractionStart(e);
+    }, { passive: false });
+
     // Fallback mouse events for older browsers
     canvas.addEventListener('mousedown', async e => {
       if (!e.pointerId) { // Only if pointer events aren't supported
-        const coords = getEventCoords(e);
-        
-        // Auto-start ambient on first interaction
-        if (!hasStarted) {
-          console.log('🎵 First interaction (mouse) - starting ambient loops');
-          await startAmbient();
-          hasStarted = true;
-        }
-        
-        loops.forEach(loop => {
-          if (Math.hypot(loop.x - coords.x, loop.y - coords.y) < loop.r + 10) {
-            loop.dragging = true;
-          }
-        });
+        console.log('👆 Mouse event detected (fallback)');
+        await handleInteractionStart(e);
       }
     });
 
@@ -394,6 +417,7 @@
     async function initAudio() {
       try {
         console.log('🎵 Initializing audio context...');
+        console.log(`📱 Is mobile: ${isMobileDevice}, User agent: ${navigator.userAgent.substring(0, 50)}...`);
         
         // Create audio context if not exists
         if (!audioCtx) {
@@ -401,24 +425,36 @@
           console.log(`🎵 Audio context created, state: ${audioCtx.state}, sampleRate: ${audioCtx.sampleRate}`);
         }
         
-        // Always try to resume - iOS requires this even for new contexts
-        console.log(`🔊 Audio context state before resume: ${audioCtx.state}`);
-        await audioCtx.resume();
-        console.log(`🔊 Audio context state after resume: ${audioCtx.state}`);
+        // Mobile browsers often need multiple resume attempts
+        for (let attempt = 0; attempt < 3; attempt++) {
+          console.log(`🔊 Resume attempt ${attempt + 1}, state: ${audioCtx.state}`);
+          if (audioCtx.state === 'suspended') {
+            await audioCtx.resume();
+            await new Promise(resolve => setTimeout(resolve, 100)); // Brief delay
+          }
+          if (audioCtx.state === 'running') break;
+        }
         
-        // Test audio with a brief silent note
+        console.log(`🔊 Final audio context state: ${audioCtx.state}`);
+        
+        // Test audio with a brief audible note for mobile
         try {
           const testOsc = audioCtx.createOscillator();
           const testGain = audioCtx.createGain();
-          testGain.gain.setValueAtTime(0.001, audioCtx.currentTime); // Very quiet test
+          const volume = isMobileDevice ? 0.05 : 0.001; // Slightly louder for mobile test
+          testGain.gain.setValueAtTime(volume, audioCtx.currentTime);
           testOsc.connect(testGain);
           testGain.connect(audioCtx.destination);
           testOsc.frequency.setValueAtTime(440, audioCtx.currentTime);
           testOsc.start();
-          testOsc.stop(audioCtx.currentTime + 0.01);
+          testOsc.stop(audioCtx.currentTime + 0.1);
           console.log('🧪 Audio test successful');
         } catch (testError) {
           console.error('🧪 Audio test failed:', testError);
+        }
+        
+        if (audioCtx.state !== 'running') {
+          throw new Error(`Audio context state is ${audioCtx.state}, expected 'running'`);
         }
         
         audioUnlocked = true;
@@ -431,6 +467,24 @@
         return false;
       }
     }
+
+    // Manual start function for mobile fallback button
+    window.startAmbientManual = async function() {
+      console.log('🎵 Manual start requested (mobile fallback)');
+      try {
+        await startAmbient();
+        hasStarted = true;
+        audioWarning.style.display = 'none';
+        console.log('✅ Manual start successful');
+      } catch (error) {
+        console.error('❌ Manual start failed:', error);
+        audioWarning.innerHTML = `
+          <p>❌ Audio Failed</p>
+          <p><small>Error: ${error.message}</small></p>
+          <p><small>Try refreshing the page</small></p>
+        `;
+      }
+    };
 
     function playLoop(index) {
       console.log(`🎵 playLoop(${index}) called - audioCtx: ${!!audioCtx}, audioUnlocked: ${audioUnlocked}, running: ${running}`);
@@ -563,15 +617,15 @@
 
     // Prevent scrolling and zooming on mobile, but allow button interactions
     document.addEventListener('touchstart', e => {
-      // Don't prevent default on buttons to allow them to work
-      if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'INPUT') {
+      // Allow buttons, inputs, and the canvas for interaction
+      if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'INPUT' && e.target !== canvas) {
         e.preventDefault();
       }
     }, { passive: false });
     
     document.addEventListener('touchmove', e => {
-      // Don't prevent default on control elements
-      if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'INPUT') {
+      // Allow control elements and canvas dragging
+      if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'INPUT' && e.target !== canvas) {
         e.preventDefault();
       }
     }, { passive: false });
@@ -595,10 +649,20 @@
     
     console.log('✅ Visual Ambient Composer (Universal) initialized');
     console.log('📱💻 Works on both mobile and desktop');
+    console.log(`📱 Mobile device detected: ${isMobileDevice}`);
     console.log('👆 Tap anywhere on canvas to begin ambient loops');
     console.log('🎛️ Drag circles: Y = pitch (up = higher), X = interval timing (left = fast)');
     console.log(`🎵 Pitch range: ${scale.length} notes across 2 octaves (${scale[0].toFixed(1)}Hz - ${scale[scale.length-1].toFixed(1)}Hz)`);
     console.log('🎚️ Use sliders to adjust note duration');
+    
+    // Show initial guidance for mobile users
+    if (isMobileDevice && !hasStarted) {
+      setTimeout(() => {
+        if (!hasStarted) {
+          console.log('💡 Mobile user hint: Tap the canvas to start ambient loops');
+        }
+      }, 2000);
+    }
   </script>
 </body>
 </html> 
