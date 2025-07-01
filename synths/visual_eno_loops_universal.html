@@ -484,18 +484,24 @@
         
         console.log(`🔊 Final audio context state: ${audioCtx.state}`);
         
-        // Test audio with a brief audible note for mobile
+        // Test audio with a brief gentle tone for mobile
         try {
           const testOsc = audioCtx.createOscillator();
           const testGain = audioCtx.createGain();
-          const volume = isMobileDevice ? 0.05 : 0.001; // Slightly louder for mobile test
-          testGain.gain.setValueAtTime(volume, audioCtx.currentTime);
+          const testDuration = 0.3;
+          const testVolume = isMobileDevice ? 0.08 : 0.03; // Gentle test volume
+          
+          // Gentle test tone envelope
+          testGain.gain.setValueAtTime(0, audioCtx.currentTime);
+          testGain.gain.linearRampToValueAtTime(testVolume, audioCtx.currentTime + 0.05);
+          testGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + testDuration);
+          
           testOsc.connect(testGain);
           testGain.connect(audioCtx.destination);
           testOsc.frequency.setValueAtTime(440, audioCtx.currentTime);
           testOsc.start();
-          testOsc.stop(audioCtx.currentTime + 0.1);
-          console.log('🧪 Audio test successful');
+          testOsc.stop(audioCtx.currentTime + testDuration);
+          console.log('🧪 Audio test successful with gentle envelope');
         } catch (testError) {
           console.error('🧪 Audio test failed:', testError);
         }
@@ -578,18 +584,33 @@
 
         osc.type = 'sine';
         osc.frequency.setValueAtTime(loop.freq, audioCtx.currentTime);
-        gain.gain.setValueAtTime(0.2, audioCtx.currentTime); // Slightly louder for better mobile audio
         
-        console.log(`🔊 Created oscillator: freq=${loop.freq}, gain=0.2, currentTime=${audioCtx.currentTime}`);
+        // Gentle attack and release envelope for smooth ambient tones
+        const startTime = audioCtx.currentTime;
+        const attackTime = 0.1; // 100ms gentle fade-in (prevents clicks/pops)
+        const releaseTime = 0.2; // 200ms gentle fade-out (smooth decay)
+        const sustainTime = Math.max(0.1, loop.duration - attackTime - releaseTime); // Minimum sustain
+        const peakGain = 0.15; // Reduced volume for gentler, more ambient sound
+        
+        // Start at silence
+        gain.gain.setValueAtTime(0, startTime);
+        // Gentle attack (fade-in)
+        gain.gain.linearRampToValueAtTime(peakGain, startTime + attackTime);
+        // Sustain at peak level
+        gain.gain.setValueAtTime(peakGain, startTime + attackTime + sustainTime);
+        // Gentle release (fade-out)
+        gain.gain.linearRampToValueAtTime(0, startTime + attackTime + sustainTime + releaseTime);
+        
+        console.log(`🔊 Created oscillator with envelope: freq=${loop.freq}, attack=${attackTime}s, sustain=${sustainTime}s, release=${releaseTime}s`);
 
         osc.connect(gain);
         gain.connect(audioCtx.destination);
 
         loop.playing = true;
-        osc.start(audioCtx.currentTime);
-        osc.stop(audioCtx.currentTime + loop.duration);
+        osc.start(startTime);
+        osc.stop(startTime + loop.duration);
         
-        console.log(`▶️ Oscillator started for loop ${index}`);
+        console.log(`▶️ Oscillator started for loop ${index} with gentle envelope`);
 
         setTimeout(() => {
           loop.playing = false;
@@ -727,6 +748,7 @@
     console.log('🎛️ Drag circles: Y = pitch (up = higher), X = interval timing (left = fast)');
     console.log(`🎵 Pitch range: ${scale.length} notes across 2 octaves (${scale[0].toFixed(1)}Hz - ${scale[scale.length-1].toFixed(1)}Hz)`);
     console.log('🎚️ Use sliders to adjust note duration');
+    console.log('🌊 Gentle attack/release envelopes for smooth ambient tones');
     
     // Show initial guidance for mobile users
     if (isMobileDevice && !hasStarted) {
