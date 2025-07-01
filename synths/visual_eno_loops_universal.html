@@ -65,6 +65,45 @@
       display: none;
     }
     
+    .start-button {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: rgba(85, 108, 214, 0.9);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 12px;
+      cursor: pointer;
+      z-index: 15;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      transition: all 0.2s ease;
+      backdrop-filter: blur(5px);
+      min-width: 50px;
+      min-height: 32px;
+    }
+    
+    .start-button:hover {
+      background: rgba(85, 108, 214, 1);
+      transform: scale(1.05);
+    }
+    
+    .start-button:active {
+      transform: scale(0.95);
+    }
+    
+    .start-button.fade-out {
+      opacity: 0;
+      pointer-events: none;
+    }
+    
+    .start-button:disabled {
+      background: rgba(128, 128, 128, 0.6);
+      cursor: not-allowed;
+      transform: none !important;
+    }
+    
 
     
     /* Desktop optimizations */
@@ -89,6 +128,14 @@
       .loop-knob input[type=range] {
         width: 60px;
       }
+      .start-button {
+        top: 10px;
+        right: 10px;
+        padding: 6px 10px;
+        font-size: 11px;
+        min-width: 45px;
+        min-height: 30px;
+      }
     }
     
     @media screen and (orientation: landscape) and (max-height: 500px) {
@@ -105,6 +152,8 @@
     <p><small>Tap anywhere to begin. Best experienced with headphones.</small></p>
     <p><small>Note: Requires HTTPS for full functionality</small></p>
   </div>
+  
+  <button id="startButton" class="start-button">🎵 Start</button>
   
   <canvas id="canvas"></canvas>
   <div class="controls" id="controlPanel"></div>
@@ -321,23 +370,21 @@
         try {
           await startAmbient();
           hasStarted = true;
+          
+          // Hide the start button since auto-start worked
+          const startButton = document.getElementById('startButton');
+          if (startButton) {
+            startButton.classList.add('fade-out');
+            setTimeout(() => {
+              startButton.style.display = 'none';
+            }, 200);
+          }
+          
           console.log('✅ Ambient started successfully');
         } catch (error) {
           console.error('❌ Failed to start ambient:', error);
-          // Show helpful message for mobile users
-          if (isMobileDevice) {
-            audioWarning.innerHTML = `
-              <p>🎵 Tap to Start Audio</p>
-              <p><small>Mobile browsers require explicit audio activation</small></p>
-              <button onclick="startAmbientManual()" style="
-                background: #556cd6; color: white; border: none; 
-                padding: 15px 25px; border-radius: 8px; font-size: 16px;
-                margin: 10px; cursor: pointer;">
-                🎵 Start Audio
-              </button>
-            `;
-            audioWarning.style.display = 'block';
-          }
+          // The start button remains visible for manual activation
+          console.log('💡 Auto-start failed, start button available for manual activation');
         }
       }
       
@@ -468,23 +515,46 @@
       }
     }
 
-    // Manual start function for mobile fallback button
-    window.startAmbientManual = async function() {
-      console.log('🎵 Manual start requested (mobile fallback)');
+    // Manual start function for start button and mobile fallback
+    async function startAmbientManual() {
+      console.log('🎵 Manual start requested (start button)');
+      const startButton = document.getElementById('startButton');
+      
       try {
+        // Update button state
+        startButton.textContent = '⏳ Starting...';
+        startButton.disabled = true;
+        
         await startAmbient();
         hasStarted = true;
         audioWarning.style.display = 'none';
+        
+        // Hide the start button with fade out
+        startButton.classList.add('fade-out');
+        setTimeout(() => {
+          startButton.style.display = 'none';
+        }, 200);
+        
         console.log('✅ Manual start successful');
       } catch (error) {
         console.error('❌ Manual start failed:', error);
+        
+        // Reset button state
+        startButton.textContent = '🎵 Start';
+        startButton.disabled = false;
+        
+        // Show error
         audioWarning.innerHTML = `
           <p>❌ Audio Failed</p>
           <p><small>Error: ${error.message}</small></p>
-          <p><small>Try refreshing the page</small></p>
+          <p><small>Try clicking Start again</small></p>
         `;
+        audioWarning.style.display = 'block';
       }
-    };
+    }
+
+    // Expose for inline onclick and mobile fallback
+    window.startAmbientManual = startAmbientManual;
 
     function playLoop(index) {
       console.log(`🎵 playLoop(${index}) called - audioCtx: ${!!audioCtx}, audioUnlocked: ${audioUnlocked}, running: ${running}`);
@@ -608,6 +678,9 @@
 
 
 
+    // Start button event listener
+    document.getElementById('startButton').addEventListener('click', startAmbientManual);
+    
     // Handle resize and orientation change
     window.addEventListener('resize', handleResize);
     window.addEventListener('orientationchange', () => {
@@ -650,7 +723,7 @@
     console.log('✅ Visual Ambient Composer (Universal) initialized');
     console.log('📱💻 Works on both mobile and desktop');
     console.log(`📱 Mobile device detected: ${isMobileDevice}`);
-    console.log('👆 Tap anywhere on canvas to begin ambient loops');
+    console.log('👆 Tap canvas or Start button to begin ambient loops');
     console.log('🎛️ Drag circles: Y = pitch (up = higher), X = interval timing (left = fast)');
     console.log(`🎵 Pitch range: ${scale.length} notes across 2 octaves (${scale[0].toFixed(1)}Hz - ${scale[scale.length-1].toFixed(1)}Hz)`);
     console.log('🎚️ Use sliders to adjust note duration');
