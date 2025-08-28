@@ -50,6 +50,13 @@
       "extension": ".html"
     },
     {
+      "name": "hatsune_shingyo.html",
+      "isDirectory": false,
+      "size": 10036,
+      "modified": "2025-08-28T20:59:09.566Z",
+      "extension": ".html"
+    },
+    {
       "name": "hrv_monitor.html",
       "isDirectory": false,
       "size": 16554,
@@ -92,6 +99,13 @@
       "size": 30,
       "modified": "2025-08-28T04:30:16.676Z",
       "extension": ".py"
+    },
+    {
+      "name": "vocal.mp3",
+      "isDirectory": false,
+      "size": 4869577,
+      "modified": "2025-08-28T04:30:37.639Z",
+      "extension": ".mp3"
     }
   ],
   "docs": [
