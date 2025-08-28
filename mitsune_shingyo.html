@@ -14,6 +14,11 @@
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background-image: url('source/hatsunekannon.png');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
             color: white;
             height: 100vh;
             display: flex;
@@ -21,13 +26,30 @@
             justify-content: center;
             align-items: center;
             overflow: hidden;
+            position: relative;
+            --overlay-opacity: 0.5;
+        }
+        
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, var(--overlay-opacity));
+            z-index: 0;
+            transition: background 0.5s ease;
         }
 
         .container {
             text-align: center;
             padding: 20px;
             position: relative;
-            z-index: 1;
+            z-index: 10;
+            background: rgba(0,0,0,0.7);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
         }
 
         button {
@@ -52,8 +74,9 @@
             align-items: center;
             font-size: 50vh;
             font-weight: bold;
-            color: rgba(255,255,255,0.8);
-            z-index: -1;
+            color: rgba(255,255,255,0.6);
+            text-shadow: 0 0 40px rgba(0,0,0,0.5);
+            z-index: 2;
             pointer-events: none;
         }
 
@@ -61,6 +84,7 @@
             margin: 20px 0;
             font-size: 1.1rem;
         }
+
     </style>
 </head>
 <body>
@@ -160,6 +184,15 @@
             nextGrainTime = audioContext.currentTime + 0.1;
             lastUpdateTime = audioContext.currentTime;
             
+            // Hide the UI overlay completely
+            const container = document.querySelector('.container');
+            if (container) {
+                container.style.display = 'none';
+            }
+            
+            // Remove the dark overlay to show background image clearly
+            document.body.style.setProperty('--overlay-opacity', '0');
+            
             // Start grain scheduling and position tracking
             scheduleLoop();
             updateLoop();
@@ -168,6 +201,15 @@
         function stopAudio() {
             isPlaying = false;
             document.getElementById('character').textContent = '';
+            
+            // Show the UI overlay again
+            const container = document.querySelector('.container');
+            if (container) {
+                container.style.display = 'block';
+            }
+            
+            // Restore the dark overlay
+            document.body.style.setProperty('--overlay-opacity', '0.5');
         }
 
         function scheduleLoop() {
