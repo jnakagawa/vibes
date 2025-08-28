@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Pitch Preserved Audio</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+
+        .container {
+            text-align: center;
+            padding: 20px;
+            position: relative;
+            z-index: 1;
+        }
+
+        button {
+            background: rgba(255,255,255,0.2);
+            border: 2px solid rgba(255,255,255,0.3);
+            color: white;
+            padding: 20px 40px;
+            font-size: 1.2rem;
+            border-radius: 50px;
+            cursor: pointer;
+            margin: 10px;
+        }
+
+        #character {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 50vh;
+            font-weight: bold;
+            color: rgba(255,255,255,0.8);
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        .info {
+            margin: 20px 0;
+            font-size: 1.1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Pitch Preserved Audio</h1>
+        <button onclick="startAudio()">START</button>
+        <button onclick="stopAudio()">STOP</button>
+        <div class="info">Speed: <span id="speed">1.0</span>x</div>
+        <div class="info">Tilt phone: face down = slow, face up = fast</div>
+    </div>
+    
+    <div id="character"></div>
+
+    <script>
+        let audioContext;
+        let audioBuffer;
+        let gainNode;
+        let isPlaying = false;
+        let speed = 1.0;
+        let playbackPosition = 0;
+        let lastUpdateTime = 0;
+        
+        // Granular synthesis parameters
+        let grainSize = 0.1; // 100ms grains
+        let overlap = 0.5; // 50% overlap
+        let nextGrainTime = 0;
+        
+        const hanyaText = '觀自在菩薩行深般若波羅密多時照見五蘊皆空度一切苦厄舍利子色不異空空不異色色即是空空即是色受想行識亦復如是舍利子是諸法空相不生不滅不垢不淨不增不減是故空中無色無受想行識無眼耳鼻舌身意無色聲香味觸法無眼界乃至無意識界無無明亦無無明盡乃至無老死亦無老死盡無苦集滅道無智亦無得以無所得故菩提薩埵依般若波羅密多故心無罣礙無罣礙故無有恐怖遠離顛倒夢想究竟涅槃三世諸佛依般若波羅密多故得阿耨多羅三藐三菩提故知般若波羅密多是大神咒是大明咒是無上咒是無等等咒能除一切苦真實不虛故說般若波羅密多咒即說咒曰揭諦揭諦波羅揭諦波羅僧揭諦菩提薩婆訶摩訶般若波羅密多';
+
+        async function loadAudio() {
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                
+                gainNode = audioContext.createGain();
+                gainNode.gain.value = 0.5;
+                gainNode.connect(audioContext.destination);
+                
+                const response = await fetch('tools/vocal.mp3');
+                const arrayBuffer = await response.arrayBuffer();
+                audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                
+                console.log('Audio loaded successfully, duration:', audioBuffer.duration);
+            } catch (error) {
+                console.error('Failed to load audio:', error);
+            }
+        }
+
+        function createGrain() {
+            if (!isPlaying || !audioBuffer) return;
+            
+            const now = audioContext.currentTime;
+            
+            // Only create grain if it's time
+            if (nextGrainTime <= now) {
+                const grain = audioContext.createBufferSource();
+                grain.buffer = audioBuffer;
+                grain.playbackRate.value = 0.8; // Fixed pitch - 20% lower
+                
+                // Envelope for smooth grain
+                const env = audioContext.createGain();
+                const startTime = Math.max(now, nextGrainTime);
+                
+                // Smooth envelope
+                env.gain.setValueAtTime(0, startTime);
+                env.gain.linearRampToValueAtTime(0.3, startTime + 0.01);
+                env.gain.setValueAtTime(0.3, startTime + grainSize - 0.01);
+                env.gain.linearRampToValueAtTime(0, startTime + grainSize);
+                
+                grain.connect(env);
+                env.connect(gainNode);
+                
+                // Start grain at current position
+                const offset = playbackPosition % audioBuffer.duration;
+                try {
+                    grain.start(startTime, offset, grainSize);
+                } catch (e) {
+                    // Skip if error
+                }
+                
+                // Schedule next grain
+                const grainSpacing = grainSize * (1 - overlap) / speed;
+                nextGrainTime = startTime + grainSpacing;
+            }
+        }
+
+        async function startAudio() {
+            if (!audioBuffer) {
+                await loadAudio();
+            }
+            
+            if (audioContext.state === 'suspended') {
+                await audioContext.resume();
+            }
+
+            isPlaying = true;
+            playbackPosition = 0;
+            nextGrainTime = audioContext.currentTime + 0.1;
+            lastUpdateTime = audioContext.currentTime;
+            
+            // Start grain scheduling and position tracking
+            scheduleLoop();
+            updateLoop();
+        }
+
+        function stopAudio() {
+            isPlaying = false;
+            document.getElementById('character').textContent = '';
+        }
+
+        function scheduleLoop() {
+            if (!isPlaying) return;
+            
+            // Create grains as needed
+            for (let i = 0; i < 3; i++) {
+                createGrain();
+            }
+            
+            // Continue scheduling
+            setTimeout(scheduleLoop, 20);
+        }
+
+        function updateLoop() {
+            if (!isPlaying || !audioBuffer) return;
+
+            const now = audioContext.currentTime;
+            const deltaTime = now - lastUpdateTime;
+            
+            // Update playback position based on current speed
+            playbackPosition += deltaTime * speed;
+            
+            // Wrap around for looping
+            if (playbackPosition >= audioBuffer.duration) {
+                playbackPosition = playbackPosition % audioBuffer.duration;
+            }
+            
+            lastUpdateTime = now;
+
+            // Update character display
+            const progress = playbackPosition / audioBuffer.duration;
+            const charIndex = Math.floor(progress * hanyaText.length);
+            document.getElementById('character').textContent = hanyaText[charIndex] || '';
+
+            // Update speed display
+            document.getElementById('speed').textContent = speed.toFixed(2);
+
+            // Continue loop
+            requestAnimationFrame(updateLoop);
+        }
+
+        // Initialize
+        loadAudio();
+
+        // Accelerometer control
+        if (window.DeviceMotionEvent) {
+            window.addEventListener('devicemotion', (event) => {
+                if (!event.accelerationIncludingGravity || !isPlaying) return;
+                
+                const z = event.accelerationIncludingGravity.z || 0;
+                
+                // Map Z axis: face down (+10) = 0.1x, face up (-10) = 100x
+                let normalizedZ = (z + 10) / 20;
+                normalizedZ = Math.max(0, Math.min(1, normalizedZ));
+                normalizedZ = 1 - normalizedZ; // Invert
+                
+                // Exponential scale
+                const minSpeed = 0.1;
+                const maxSpeed = 100;
+                speed = minSpeed * Math.pow(maxSpeed / minSpeed, normalizedZ);
+            });
+        }
+    </script>
+</body>
+</html>
