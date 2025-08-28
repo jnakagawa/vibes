@@ -178,6 +178,19 @@
             if (audioContext.state === 'suspended') {
                 await audioContext.resume();
             }
+            
+            // Request accelerometer permission on iOS 13+
+            if (typeof DeviceMotionEvent !== 'undefined' && 
+                typeof DeviceMotionEvent.requestPermission === 'function') {
+                try {
+                    const permission = await DeviceMotionEvent.requestPermission();
+                    if (permission !== 'granted') {
+                        console.log('Motion permission denied');
+                    }
+                } catch (e) {
+                    console.error('Motion permission error:', e);
+                }
+            }
 
             isPlaying = true;
             playbackPosition = 0;
