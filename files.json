@@ -4,84 +4,84 @@
       "name": "enhanced_theremin_gestures_v4_psychedelic.html",
       "isDirectory": false,
       "size": 36638,
-      "modified": "2025-08-28T04:30:16.674Z",
+      "modified": "2025-08-28T21:08:53.371Z",
       "extension": ".html"
     },
     {
       "name": "enhanced_theremin_gestures_v5_complete.html",
       "isDirectory": false,
       "size": 60526,
-      "modified": "2025-08-28T04:30:16.675Z",
+      "modified": "2025-08-28T21:08:53.371Z",
       "extension": ".html"
     },
     {
       "name": "fm_synth_v1.html",
       "isDirectory": false,
       "size": 42222,
-      "modified": "2025-08-28T04:30:16.675Z",
+      "modified": "2025-08-28T21:08:53.371Z",
       "extension": ".html"
     },
     {
       "name": "fm_synth_v2.html",
       "isDirectory": false,
       "size": 49116,
-      "modified": "2025-08-28T04:30:16.675Z",
+      "modified": "2025-08-28T21:08:53.371Z",
       "extension": ".html"
     },
     {
       "name": "fm_synth_v3.html",
       "isDirectory": false,
       "size": 62150,
-      "modified": "2025-08-28T04:30:16.675Z",
+      "modified": "2025-08-28T21:08:53.371Z",
       "extension": ".html"
     },
     {
       "name": "glass_conductor_v4.html",
       "isDirectory": false,
       "size": 32549,
-      "modified": "2025-08-28T04:30:16.675Z",
+      "modified": "2025-08-28T21:08:53.371Z",
       "extension": ".html"
     },
     {
       "name": "glass_minimalist_composer.html",
       "isDirectory": false,
       "size": 23765,
-      "modified": "2025-08-28T04:30:16.675Z",
+      "modified": "2025-08-28T21:08:53.371Z",
       "extension": ".html"
     },
     {
       "name": "hatsune_shingyo.html",
       "isDirectory": false,
       "size": 10036,
-      "modified": "2025-08-28T20:59:09.566Z",
+      "modified": "2025-08-28T21:08:53.372Z",
       "extension": ".html"
     },
     {
       "name": "hrv_monitor.html",
       "isDirectory": false,
       "size": 16554,
-      "modified": "2025-08-28T04:30:16.675Z",
+      "modified": "2025-08-28T21:08:53.372Z",
       "extension": ".html"
     },
     {
       "name": "index.html",
       "isDirectory": false,
       "size": 10563,
-      "modified": "2025-08-28T04:30:16.676Z",
+      "modified": "2025-08-28T21:08:53.372Z",
       "extension": ".html"
     },
     {
       "name": "theremin_dual_sine_sorted.html",
       "isDirectory": false,
       "size": 8707,
-      "modified": "2025-08-28T04:30:16.676Z",
+      "modified": "2025-08-28T21:08:53.372Z",
       "extension": ".html"
     },
     {
       "name": "visual_eno_loops_universal.html",
       "isDirectory": false,
       "size": 26572,
-      "modified": "2025-08-28T04:30:16.676Z",
+      "modified": "2025-08-28T21:08:53.372Z",
       "extension": ".html"
     }
   ],
@@ -90,21 +90,21 @@
       "name": "prompt.py",
       "isDirectory": false,
       "size": 0,
-      "modified": "2025-08-28T04:30:16.676Z",
+      "modified": "2025-08-28T21:08:53.372Z",
       "extension": ".py"
     },
     {
       "name": "userinput.py",
       "isDirectory": false,
       "size": 30,
-      "modified": "2025-08-28T04:30:16.676Z",
+      "modified": "2025-08-28T21:08:53.372Z",
       "extension": ".py"
     },
     {
       "name": "vocal.mp3",
       "isDirectory": false,
       "size": 4869577,
-      "modified": "2025-08-28T04:30:37.639Z",
+      "modified": "2025-08-28T21:08:53.392Z",
       "extension": ".mp3"
     }
   ],
@@ -113,21 +113,21 @@
       "name": "project_structure.md",
       "isDirectory": false,
       "size": 11949,
-      "modified": "2025-08-28T04:30:16.670Z",
+      "modified": "2025-08-28T21:08:53.356Z",
       "extension": ".md"
     },
     {
       "name": "user_tasks.log",
       "isDirectory": false,
       "size": 285,
-      "modified": "2025-08-28T04:30:16.670Z",
+      "modified": "2025-08-28T21:08:53.357Z",
       "extension": ".log"
     },
     {
       "name": "vibes-README.md",
       "isDirectory": false,
       "size": 2879,
-      "modified": "2025-08-28T04:30:16.670Z",
+      "modified": "2025-08-28T21:08:53.357Z",
       "extension": ".md"
     }
   ],
@@ -136,35 +136,35 @@
       "name": "index.html",
       "isDirectory": false,
       "size": 9655,
-      "modified": "2025-08-28T04:30:16.670Z",
+      "modified": "2025-08-28T21:08:53.357Z",
       "extension": ".html"
     },
     {
       "name": "README.md",
       "isDirectory": false,
       "size": 1237,
-      "modified": "2025-08-28T04:30:16.669Z",
+      "modified": "2025-08-28T21:08:53.356Z",
       "extension": ".md"
     },
     {
       "name": "LICENSE",
       "isDirectory": false,
       "size": 35149,
-      "modified": "2025-08-28T04:30:16.669Z",
+      "modified": "2025-08-28T21:08:53.356Z",
       "extension": ""
     },
     {
       "name": "DEPLOYMENT.md",
       "isDirectory": false,
       "size": 3247,
-      "modified": "2025-08-28T04:30:16.669Z",
+      "modified": "2025-08-28T21:08:53.356Z",
       "extension": ".md"
     },
     {
       "name": "package.json",
       "isDirectory": false,
       "size": 579,
-      "modified": "2025-08-28T04:30:16.670Z",
+      "modified": "2025-08-28T21:08:53.357Z",
       "extension": ".json"
     }
   ]
