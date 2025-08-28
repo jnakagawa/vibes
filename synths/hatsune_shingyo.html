@@ -91,9 +91,6 @@
     <div class="container">
         <h1>Hatsune Shingyo</h1>
         <button onclick="startAudio()">START</button>
-        <button onclick="stopAudio()">STOP</button>
-        <div class="info">Speed: <span id="speed">1.0</span>x</div>
-        <div class="info">Tilt phone: face down = slow, face up = fast</div>
     </div>
     
     <div id="character"></div>
@@ -171,6 +168,19 @@
         }
 
         async function startAudio() {
+            // Request motion permission first
+            if (typeof DeviceMotionEvent.requestPermission === 'function') {
+                try {
+                    const permission = await DeviceMotionEvent.requestPermission();
+                    if (permission !== 'granted') {
+                        alert('Motion permission is needed for accelerometer control');
+                        return;
+                    }
+                } catch (error) {
+                    console.error('Motion permission error:', error);
+                }
+            }
+            
             if (!audioBuffer) {
                 await loadAudio();
             }
@@ -258,22 +268,39 @@
             const charIndex = Math.floor(progress * hanyaText.length);
             document.getElementById('character').textContent = hanyaText[charIndex] || '';
 
-            // Update speed display
-            document.getElementById('speed').textContent = speed.toFixed(2);
 
             // Continue loop
             requestAnimationFrame(updateLoop);
         }
 
+        // Request motion permission
+        function requestMotion() {
+            if (typeof DeviceMotionEvent.requestPermission === 'function') {
+                DeviceMotionEvent.requestPermission().then(permission => {
+                    if (permission === 'granted') {
+                        alert('Motion permission granted!');
+                    } else {
+                        alert('Motion permission denied');
+                    }
+                });
+            } else {
+                alert('DeviceMotionEvent.requestPermission not available - should work automatically');
+            }
+        }
+
         // Initialize
         loadAudio();
 
-        // Accelerometer control
+        // Accelerometer control with debugging
         if (window.DeviceMotionEvent) {
+            console.log('DeviceMotionEvent supported');
             window.addEventListener('devicemotion', (event) => {
-                if (!event.accelerationIncludingGravity || !isPlaying) return;
+                const z = (event.accelerationIncludingGravity && event.accelerationIncludingGravity.z) || 0;
+                const x = (event.accelerationIncludingGravity && event.accelerationIncludingGravity.x) || 0;
+                const y = (event.accelerationIncludingGravity && event.accelerationIncludingGravity.y) || 0;
                 
-                const z = event.accelerationIncludingGravity.z || 0;
+                
+                if (!isPlaying) return;
                 
                 // Map Z axis: face down (+10) = 0.1x, face up (-10) = 100x
                 let normalizedZ = (z + 10) / 20;
@@ -285,6 +312,8 @@
                 const maxSpeed = 100;
                 speed = minSpeed * Math.pow(maxSpeed / minSpeed, normalizedZ);
             });
+        } else {
+            console.log('DeviceMotionEvent NOT supported');
         }
     </script>
 </body>
