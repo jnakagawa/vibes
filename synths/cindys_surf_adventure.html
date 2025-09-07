@@ -128,9 +128,23 @@
         </div>
         <div id="startScreen">
             <h1>🏄‍♀️ Cindy's Surf Adventure 🌊</h1>
-            <p style="margin-bottom: 20px;">Tap/Click to jump and flip!<br>Hold to keep flipping!<br>Time your landing!</p>
+            <p style="margin-bottom: 20px;">Tap/Click to jump and flip!<br>Hold to keep flipping!<br>Time your landing!<br><small>🔊 Audio enabled</small></p>
             <button onclick="startGame()">Start Surfing!</button>
         </div>
+        
+        <!-- HTML5 Audio Elements -->
+        <audio id="bgm" loop>
+            <source src="../source/bgm.mp3" type="audio/mpeg">
+        </audio>
+        <audio id="jump">
+            <source src="../source/jump.mp3" type="audio/mpeg">
+        </audio>
+        <audio id="hooray">
+            <source src="../source/hooray.mp3" type="audio/mpeg">
+        </audio>
+        <audio id="wipeout">
+            <source src="../source/wipeout.mp3" type="audio/mpeg">
+        </audio>
     </div>
 
     <script>
@@ -189,6 +203,24 @@
                 large: new Image()
             }
         };
+        
+        // HTML5 Audio - simple and reliable
+        const bgmAudio = document.getElementById('bgm');
+        const jumpAudio = document.getElementById('jump');
+        const hoorayAudio = document.getElementById('hooray');
+        const wipeoutAudio = document.getElementById('wipeout');
+        
+        // Set volumes
+        bgmAudio.volume = 0.6;
+        jumpAudio.volume = 0.5;
+        hoorayAudio.volume = 0.7;
+        wipeoutAudio.volume = 0.8;
+        
+        // Play sound function
+        function playSound(audioElement) {
+            audioElement.currentTime = 0;
+            audioElement.play().catch(e => console.log('Audio play failed:', e));
+        }
         
         // Controls
         let isPressed = false;
@@ -261,7 +293,7 @@
                 player.isJumping = true;
                 
                 // Check what wave we're on
-                let jumpPower = -10; // Base jump for flat water
+                let jumpPower = -6; // Minimal jump for flat water (barely off water)
                 for (let wave of waves) {
                     if (player.x >= wave.x && player.x <= wave.x + wave.width) {
                         // On a wave - scale jump based on wave type
@@ -273,6 +305,9 @@
                 
                 player.velocityY = jumpPower;
                 player.spriteIndex = 3; // Jump sprite
+                
+                // Play jump sound
+                playSound(jumpAudio);
             } else if (!player.isFlipping) {
                 // Start flipping
                 player.isFlipping = true;
@@ -372,26 +407,42 @@
                     } else {
                         message = `${player.flipCount}x FLIP! +${score}`;
                     }
+                    
+                    // Play hooray sound for successful landing
+                    playSound(hoorayAudio);
                 } else if (rotationMod < 90 || rotationMod > 270) {
                     score = 70 * player.flipCount;
                     message = `Sketchy ${player.flipCount}x! +${score}`;
+                    
+                    // Play hooray sound for sketchy but successful landing too
+                    playSound(hoorayAudio);
                 } else {
                     // Wipeout!
                     player.isWipedOut = true;
-                    gameState.wipeoutTimer = 5000;
-                    message = "WIPEOUT!";
+                    gameState.wipeoutTimer = 3000; // Reduced from 5000 to 3000 (3 seconds)
+                    score = -10; // Penalty for wipeout
+                    message = "WIPEOUT! -10";
                     player.spriteIndex = 5; // Wipeout sprite
+                    
+                    // Play wipeout sound
+                    playSound(wipeoutAudio);
                 }
             } else if (!isCleanLanding) {
                 // No flips and bad landing = wipeout
                 player.isWipedOut = true;
-                gameState.wipeoutTimer = 5000;
-                message = "WIPEOUT!";
+                gameState.wipeoutTimer = 3000; // Reduced from 5000 to 3000 (3 seconds)
+                score = -10; // Penalty for wipeout
+                message = "WIPEOUT! -10";
                 player.spriteIndex = 5;
+                
+                // Play wipeout sound
+                playSound(wipeoutAudio);
             }
             
-            if (score > 0) {
+            if (score !== 0) { // Update for both positive and negative scores
                 gameState.score += score;
+                // Don't let score go below 0
+                if (gameState.score < 0) gameState.score = 0;
                 updateScore();
             }
             
@@ -594,6 +645,10 @@
         function startGame() {
             document.getElementById('startScreen').classList.add('hidden');
             
+            // Start background music
+            bgmAudio.currentTime = 0;
+            bgmAudio.play().catch(e => console.log('BGM play failed:', e));
+            
             // Reset game state
             gameState.running = true;
             gameState.score = 0;
@@ -618,6 +673,9 @@
         
         function endGame() {
             gameState.running = false;
+            
+            // Stop background music
+            bgmAudio.pause();
             
             const startScreen = document.getElementById('startScreen');
             startScreen.classList.remove('hidden');
