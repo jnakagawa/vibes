@@ -26,7 +26,7 @@
             position: relative;
             width: 100%;
             max-width: 800px;
-            aspect-ratio: 16/9;
+            aspect-ratio: 4/3;
         }
         
         canvas {
@@ -137,9 +137,9 @@
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         
-        // Set canvas resolution
+        // Set canvas resolution (increased height for higher jumps)
         canvas.width = 800;
-        canvas.height = 450;
+        canvas.height = 600;
         
         // Game state
         let gameState = {
@@ -153,8 +153,8 @@
         // Player state
         const player = {
             x: 200,
-            y: 250,
-            baseY: 250,
+            y: 400,
+            baseY: 400,
             velocityY: 0,
             rotation: 0,
             rotationSpeed: 0,
@@ -180,11 +180,14 @@
             frames: []
         };
         
-        // Wave sprite data
+        // Wave sprite data - separate images for each size
         const waveSprites = {
-            loaded: false,
-            image: new Image(),
-            frames: []
+            loaded: 0, // Track how many sprites are loaded
+            images: {
+                small: new Image(),
+                medium: new Image(),
+                large: new Image()
+            }
         };
         
         // Controls
@@ -211,35 +214,36 @@
                 }
             };
             
-            // Load wave sprites
-            waveSprites.image.src = '../source/wavesprites.png';
-            waveSprites.image.onload = () => {
-                waveSprites.loaded = true;
-                // 3 wave types (small, medium, large) in a horizontal layout
-                // Image is 1536x1024, so each wave is 512x1024
-                const waveWidth = 512;
-                const waveHeight = 1024;
-                for (let i = 0; i < 3; i++) {
-                    waveSprites.frames.push({
-                        x: i * waveWidth,
-                        y: 0,
-                        width: waveWidth,
-                        height: waveHeight
-                    });
-                }
-            };
+            // Load wave sprites - individual images
+            const waveTypes = ['small', 'medium', 'large'];
+            const waveFiles = ['wavesprite_s.png', 'wavesprite_m.png', 'wavesprite_l.png'];
+            
+            waveTypes.forEach((type, index) => {
+                waveSprites.images[type].src = `../source/${waveFiles[index]}`;
+                waveSprites.images[type].onload = () => {
+                    waveSprites.loaded++;
+                };
+            });
         }
         
         // Wave generation
         function generateWave() {
             const waveType = Math.floor(Math.random() * 3); // 0=small, 1=medium, 2=large
+            
+            // Set dimensions based on actual sprite sizes
+            const waveConfigs = [
+                { width: 100, height: 60 },  // small: 285x171
+                { width: 140, height: 90 },  // medium: 403x258
+                { width: 200, height: 120 }  // large: 613x371
+            ];
+            
+            const config = waveConfigs[waveType];
             const wave = {
                 x: canvas.width + Math.random() * 200,
                 type: waveType,
-                width: 120 + waveType * 40, // Small=120, Medium=160, Large=200
-                height: 60 + waveType * 30, // Small=60, Medium=90, Large=120
-                speed: 4 - waveType * 0.5, // Larger waves move slower
-                spriteScale: 0.15 + waveType * 0.05 // Scale sprite to fit
+                width: config.width,
+                height: config.height,
+                speed: 4 - waveType * 0.5 // Larger waves move slower
             };
             
             waves.push(wave);
@@ -253,14 +257,26 @@
             isPressed = true;
             
             if (!player.isJumping) {
-                // Jump
+                // Jump - velocity based on wave under player
                 player.isJumping = true;
-                player.velocityY = -12;
+                
+                // Check what wave we're on
+                let jumpPower = -10; // Base jump for flat water
+                for (let wave of waves) {
+                    if (player.x >= wave.x && player.x <= wave.x + wave.width) {
+                        // On a wave - scale jump based on wave type
+                        const wavePowers = [-12, -14, -16]; // small, medium, large
+                        jumpPower = wavePowers[wave.type];
+                        break;
+                    }
+                }
+                
+                player.velocityY = jumpPower;
                 player.spriteIndex = 3; // Jump sprite
             } else if (!player.isFlipping) {
                 // Start flipping
                 player.isFlipping = true;
-                player.rotationSpeed = 8;
+                player.rotationSpeed = 12; // Increased from 8 for faster rotations
             }
         }
         
@@ -275,7 +291,7 @@
         }
         
         // Game mechanics
-        function updatePlayer(deltaTime) {
+        function updatePlayer(deltaTime, timeScale = 1) {
             if (player.isWipedOut) {
                 gameState.wipeoutTimer -= deltaTime;
                 if (gameState.wipeoutTimer <= 0) {
@@ -284,14 +300,14 @@
                 return;
             }
             
-            // Apply gravity
+            // Apply gravity (reduced for more air time)
             if (player.isJumping) {
-                player.velocityY += 0.6;
-                player.y += player.velocityY;
+                player.velocityY += 0.4 * timeScale; // Frame-rate independent gravity
+                player.y += player.velocityY * timeScale;
                 
                 // Rotation for flips
                 if (player.isFlipping && isPressed) {
-                    player.rotation += player.rotationSpeed;
+                    player.rotation += player.rotationSpeed * timeScale;
                     
                     // Count complete flips
                     if (Math.abs(player.rotation) >= 360) {
@@ -313,7 +329,7 @@
                 
                 // Animate surfing sprites
                 player.animTimer += deltaTime;
-                if (player.animTimer > 100) {
+                if (player.animTimer > 150) { // Slightly slower animation for better visibility
                     player.animTimer = 0;
                     player.spriteIndex = (player.spriteIndex + 1) % 3;
                 }
@@ -321,13 +337,14 @@
         }
         
         function getWaveHeightAt(x) {
-            let baseHeight = canvas.height - 150;
+            let baseHeight = canvas.height - 200;
             
             for (let wave of waves) {
                 if (x >= wave.x && x <= wave.x + wave.width) {
                     const relativeX = x - wave.x;
                     const angle = (relativeX / wave.width) * Math.PI;
-                    return baseHeight - Math.sin(angle) * wave.height * 0.4;
+                    // Peak is at the center of the wave
+                    return baseHeight - Math.sin(angle) * wave.height * 0.7;
                 }
             }
             
@@ -346,23 +363,31 @@
             const rotationMod = Math.abs(player.rotation % 360);
             const isCleanLanding = rotationMod < 30 || rotationMod > 330;
             
-            if (isCleanLanding) {
-                score = 100;
-                if (player.flipCount > 0) {
-                    score *= (player.flipCount + 1);
-                    message = `${player.flipCount}x FLIP! +${score}`;
+            // Only score if there were flips
+            if (player.flipCount > 0) {
+                if (isCleanLanding) {
+                    score = 100 * player.flipCount;
+                    if (player.flipCount === 1) {
+                        message = `FLIP! +${score}`;
+                    } else {
+                        message = `${player.flipCount}x FLIP! +${score}`;
+                    }
+                } else if (rotationMod < 90 || rotationMod > 270) {
+                    score = 70 * player.flipCount;
+                    message = `Sketchy ${player.flipCount}x! +${score}`;
                 } else {
-                    message = `Clean! +${score}`;
+                    // Wipeout!
+                    player.isWipedOut = true;
+                    gameState.wipeoutTimer = 5000;
+                    message = "WIPEOUT!";
+                    player.spriteIndex = 5; // Wipeout sprite
                 }
-            } else if (rotationMod < 90 || rotationMod > 270) {
-                score = 70;
-                message = `Sketchy! +${score}`;
-            } else {
-                // Wipeout!
+            } else if (!isCleanLanding) {
+                // No flips and bad landing = wipeout
                 player.isWipedOut = true;
                 gameState.wipeoutTimer = 5000;
                 message = "WIPEOUT!";
-                player.spriteIndex = 5; // Wipeout sprite
+                player.spriteIndex = 5;
             }
             
             if (score > 0) {
@@ -370,7 +395,10 @@
                 updateScore();
             }
             
-            showScorePopup(player.x, player.y - 50, message);
+            // Only show popup if there's a message (flips or wipeout)
+            if (message) {
+                showScorePopup(player.x, player.y - 50, message);
+            }
             
             // Reset flip state
             player.rotation = 0;
@@ -414,26 +442,28 @@
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             
             // Draw ocean gradient
-            const gradient = ctx.createLinearGradient(0, canvas.height - 200, 0, canvas.height);
+            const gradient = ctx.createLinearGradient(0, canvas.height - 250, 0, canvas.height);
             gradient.addColorStop(0, 'rgba(70, 130, 180, 0.6)');
             gradient.addColorStop(0.5, 'rgba(100, 149, 237, 0.8)');
             gradient.addColorStop(1, 'rgba(65, 105, 225, 1)');
             ctx.fillStyle = gradient;
-            ctx.fillRect(0, canvas.height - 200, canvas.width, 200);
+            ctx.fillRect(0, canvas.height - 250, canvas.width, 250);
             
             // Draw waves using sprites
-            if (waveSprites.loaded) {
+            if (waveSprites.loaded === 3) { // All 3 sprites loaded
                 for (let wave of waves) {
-                    const frame = waveSprites.frames[wave.type];
-                    if (frame) {
-                        const drawWidth = wave.width;
-                        const drawHeight = wave.height * 2; // Make waves taller for visual impact
-                        const waveY = canvas.height - 150 - wave.height;
+                    const waveTypeNames = ['small', 'medium', 'large'];
+                    const waveImage = waveSprites.images[waveTypeNames[wave.type]];
+                    
+                    if (waveImage && waveImage.complete) {
+                        // Position wave at water level
+                        const waterLevel = canvas.height - 200;
+                        const waveY = waterLevel - wave.height;
                         
+                        // Draw the wave sprite maintaining aspect ratio
                         ctx.drawImage(
-                            waveSprites.image,
-                            frame.x, frame.y, frame.width, frame.height,
-                            wave.x, waveY, drawWidth, drawHeight
+                            waveImage,
+                            wave.x, waveY, wave.width, wave.height
                         );
                     }
                 }
@@ -444,7 +474,7 @@
                 
                 for (let wave of waves) {
                     ctx.beginPath();
-                    const waveY = canvas.height - 150;
+                    const waveY = canvas.height - 200;
                     const angle = Math.PI;
                     for (let i = 0; i <= wave.width; i += 10) {
                         const x = wave.x + i;
@@ -519,24 +549,29 @@
             const deltaTime = currentTime - gameState.lastTime;
             gameState.lastTime = currentTime;
             
-            // Update waves
-            waveOffset += 3;
+            // Target 60 FPS - normalize deltaTime to maintain consistent speed
+            const targetDelta = 1000 / 60; // 16.67ms for 60fps
+            const timeScale = deltaTime / targetDelta;
+            
+            // Update waves with frame-rate independent movement
+            const waveScrollSpeed = 3 * timeScale;
+            waveOffset += waveScrollSpeed;
             for (let i = waves.length - 1; i >= 0; i--) {
-                waves[i].x -= waves[i].speed;
+                waves[i].x -= waves[i].speed * timeScale;
                 if (waves[i].x + waves[i].width < 0) {
                     waves.splice(i, 1);
                 }
             }
             
             // Generate new waves
-            nextWaveDistance -= 3;
+            nextWaveDistance -= waveScrollSpeed;
             if (nextWaveDistance <= 0) {
                 generateWave();
                 nextWaveDistance = 200 + Math.random() * 300;
             }
             
             // Update game
-            updatePlayer(deltaTime);
+            updatePlayer(deltaTime, timeScale);
             render();
             
             requestAnimationFrame(gameLoop);
