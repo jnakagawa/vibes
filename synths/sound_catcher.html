@@ -765,7 +765,8 @@
             const numLayersWithAudio = layers.filter(l => l.audioBuffer).length;
             if (numLayersWithAudio === 0) return;
 
-            const layerHeight = Math.max(120, Math.floor(containerHeight / numLayersWithAudio));
+            // Lower minimum height to fit 5 layers
+            const layerHeight = Math.max(80, Math.floor(containerHeight / numLayersWithAudio));
 
             layerDivs.forEach((div, idx) => {
                 const canvasContainer = div.querySelector('.layer-canvas-container');
@@ -1045,16 +1046,16 @@
             const freqBins = data[0].length;
 
             // 3D perspective parameters
-            const perspective = 800; // Perspective strength
-            const angleX = 15; // Slight tilt to see depth
-            const scale = 0.9; // Overall scale
-            const amplitudeScale = 60; // How far amplitude extends in Z
+            const perspective = 600; // Perspective strength
+            const angleX = -30; // Tilt away from viewer (negative = top recedes)
+            const scale = 0.85; // Scaled down to fit with tilt
+            const amplitudeScale = 50; // How far amplitude extends in Z
 
-            // Calculate center point
+            // Calculate center point (centered to fit within bounds)
             const centerX = width / 2;
-            const centerY = height / 2;
+            const centerY = height * 0.5; // Centered vertically
 
-            // Pre-calculate rotation (just X-axis tilt to see 3D effect)
+            // Pre-calculate rotation (X-axis tilt away from viewer)
             const radX = (angleX * Math.PI) / 180;
             const cosX = Math.cos(radX);
             const sinX = Math.sin(radX);
@@ -1062,7 +1063,7 @@
             // Project 3D point to 2D with perspective
             // x = time (horizontal), y = frequency (vertical), z = amplitude (depth)
             function project3D(x, y, z) {
-                // Apply X-axis rotation (tilt forward to see depth)
+                // Apply X-axis rotation (tilt back - top away, bottom closer)
                 const rotatedY = y * cosX - z * sinX;
                 const rotatedZ = y * sinX + z * cosX;
 
@@ -1076,7 +1077,7 @@
 
             // Mesh dimensions (5% to 95% = 90% width)
             const meshWidth = width * 0.9;
-            const meshHeight = height * 0.6;
+            const meshHeight = height * 0.7; // Taller mesh for better visualization
 
             // Draw mesh from back to front for proper occlusion
             for (let f = freqBins - 1; f >= 0; f--) {
@@ -1553,11 +1554,10 @@
             container.innerHTML = '';
             layers = [];
 
-            // Create fresh empty layer
-            createLayer();
-
+            // Don't create empty layer - recording will create layers as needed
             document.getElementById('modal-overlay').classList.remove('active');
             updateToolbarState();
+            updateDebugLayerInfo();
         });
 
         // Window resize handler
