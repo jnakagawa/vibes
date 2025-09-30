@@ -104,13 +104,14 @@
 
         .selection-handle {
             position: absolute;
-            top: 0;
-            bottom: 0;
-            width: 3px;
+            top: 20%;
+            bottom: 20%;
+            width: 4px;
             background: #00ffff;
             cursor: ew-resize;
             pointer-events: auto;
             z-index: 10;
+            box-shadow: 0 0 6px rgba(0, 255, 255, 0.8);
         }
 
         .selection-handle::before {
@@ -120,8 +121,23 @@
             left: 50%;
             transform: translate(-50%, -50%);
             width: 44px;
-            height: 44px;
+            height: 60px;
             background: transparent;
+            pointer-events: auto;
+        }
+
+        .selection-handle::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 16px;
+            height: 16px;
+            background: #000;
+            border: 2px solid #00ffff;
+            border-radius: 50%;
+            box-shadow: 0 0 8px rgba(0, 255, 255, 0.6);
         }
 
         .selection-dim {
@@ -379,6 +395,9 @@
             <div class="debug-line">🔍 Debug Info</div>
             <div class="debug-line" id="debug-mic">Mic: waiting</div>
             <div class="debug-line" id="debug-orientation">Orient: waiting</div>
+            <div class="debug-line" id="debug-layers">Layers: 0/5</div>
+            <div class="debug-line" id="debug-rendered">Rendered: 0</div>
+            <div class="debug-line" id="debug-spectrogram">Spectro: --</div>
             <div class="debug-line" id="debug-beta">β: --</div>
             <div class="debug-line" id="debug-gamma">γ: --</div>
             <div class="debug-line" id="debug-speed">Speed: 1.0x</div>
@@ -402,10 +421,6 @@
             <button class="toolbar-button" id="play-btn" disabled>
                 <div class="button-icon">▶</div>
                 <div class="button-label">Play</div>
-            </button>
-            <button class="toolbar-button" id="add-layer-btn" disabled>
-                <div class="button-icon">+</div>
-                <div class="button-label">Add Layer</div>
             </button>
             <button class="toolbar-button" id="nuke-btn" disabled>
                 <div class="button-icon">✕</div>
@@ -590,7 +605,10 @@
         // ============================================================================
 
         function createLayer(audioBuffer = null) {
+            console.log(`createLayer called: current layers=${layers.length}, max=${MAX_LAYERS}, hasAudio=${!!audioBuffer}`);
+
             if (layers.length >= MAX_LAYERS) {
+                console.log(`Blocked: Maximum ${MAX_LAYERS} layers reached`);
                 alert(`Maximum ${MAX_LAYERS} layers reached`);
                 return null;
             }
@@ -607,17 +625,33 @@
             };
 
             layers.push(layer);
+            console.log(`Layer created with ID ${layer.id}, total layers now: ${layers.length}`);
+
             renderLayer(layer, layerIndex);
             updateToolbarState();
             adjustLayerHeights(); // Resize all layers to fit
+            updateDebugLayerInfo();
 
             return layer;
         }
 
+        function updateDebugLayerInfo() {
+            const numLayers = layers.length;
+            const numWithAudio = layers.filter(l => l.audioBuffer).length;
+            const numRendered = document.querySelectorAll('.layer').length;
+
+            document.getElementById('debug-layers').textContent = `Layers: ${numLayers}/5 (${numWithAudio} w/audio)`;
+            document.getElementById('debug-rendered').textContent = `Rendered: ${numRendered}`;
+        }
+
         function renderLayer(layer, index) {
             // Only render layers that have audio
-            if (!layer.audioBuffer) return;
+            if (!layer.audioBuffer) {
+                console.log(`renderLayer: skipping layer ${layer.id} (no audio buffer)`);
+                return;
+            }
 
+            console.log(`renderLayer: rendering layer ${layer.id} at index ${index}`);
             const container = document.getElementById('layers-container');
             const layerDiv = document.createElement('div');
             layerDiv.className = 'layer';
@@ -640,21 +674,25 @@
                 const dimLeft = document.createElement('div');
                 dimLeft.className = 'selection-dim';
                 dimLeft.style.left = '0';
-                dimLeft.style.width = '0%';
+                dimLeft.style.width = '5%';
 
                 const dimRight = document.createElement('div');
                 dimRight.className = 'selection-dim';
-                dimRight.style.right = '0';
-                dimRight.style.width = '0%';
+                dimRight.style.left = '95%';
+                dimRight.style.width = '5%';
+
+                // Position handles at edges of spectrogram mesh (5% to 95% width)
+                const meshStart = 5;
+                const meshEnd = 95;
 
                 const handleStart = document.createElement('div');
                 handleStart.className = 'selection-handle';
-                handleStart.style.left = '0%';
+                handleStart.style.left = `${meshStart}%`;
                 handleStart.dataset.handle = 'start';
 
                 const handleEnd = document.createElement('div');
                 handleEnd.className = 'selection-handle';
-                handleEnd.style.left = '100%';
+                handleEnd.style.left = `${meshEnd}%`;
                 handleEnd.dataset.handle = 'end';
 
                 selectionOverlay.appendChild(dimLeft);
@@ -663,6 +701,9 @@
                 selectionOverlay.appendChild(handleEnd);
 
                 setupSelectionHandles(layer, selectionOverlay);
+
+                // Initialize selection UI to match current selection values
+                updateSelectionUI(layer, selectionOverlay);
             }
 
             canvasContainer.appendChild(selectionOverlay);
@@ -748,6 +789,8 @@
                     activeHandle = handle;
                     startX = e.touches[0].clientX;
                     startValue = handle.dataset.handle === 'start' ? layer.selection.start : layer.selection.end;
+                    document.getElementById('debug-spectrogram').textContent = `Drag: ${handle.dataset.handle}`;
+                    console.log(`Touch start on ${handle.dataset.handle} handle`);
                 }, { passive: false });
             });
 
@@ -757,14 +800,21 @@
                 e.stopPropagation();
 
                 const rect = overlay.getBoundingClientRect();
-                const deltaX = e.touches[0].clientX - startX;
-                const deltaPercent = deltaX / rect.width;
-                const newValue = Math.max(0, Math.min(1, startValue + deltaPercent));
+                const currentX = e.touches[0].clientX;
+
+                // Calculate position relative to mesh area (5% to 95%)
+                const meshStart = 0.05;
+                const meshWidth = 0.9;
+                const relativeX = (currentX - rect.left) / rect.width;
+                const meshRelativeX = (relativeX - meshStart) / meshWidth;
+                const clampedValue = Math.max(0, Math.min(1, meshRelativeX));
 
                 if (activeHandle.dataset.handle === 'start') {
-                    layer.selection.start = Math.min(newValue, layer.selection.end - 0.01);
+                    layer.selection.start = Math.min(clampedValue, layer.selection.end - 0.01);
+                    document.getElementById('debug-spectrogram').textContent = `Start: ${layer.selection.start.toFixed(2)}`;
                 } else {
-                    layer.selection.end = Math.max(newValue, layer.selection.start + 0.01);
+                    layer.selection.end = Math.max(clampedValue, layer.selection.start + 0.01);
+                    document.getElementById('debug-spectrogram').textContent = `End: ${layer.selection.end.toFixed(2)}`;
                 }
 
                 updateSelectionUI(layer, overlay);
@@ -775,6 +825,12 @@
                     e.preventDefault();
                     e.stopPropagation();
                     activeHandle = null;
+
+                    // If playing, restart playback with new selection
+                    if (isPlaying) {
+                        stopPlayback();
+                        startPlayback();
+                    }
                 }
             }, { passive: false });
         }
@@ -785,13 +841,33 @@
             const handleStart = overlay.querySelector('[data-handle="start"]');
             const handleEnd = overlay.querySelector('[data-handle="end"]');
 
-            const startPercent = layer.selection.start * 100;
-            const endPercent = layer.selection.end * 100;
+            if (!handleStart || !handleEnd) {
+                console.error('Selection handles not found in overlay!');
+                return;
+            }
 
-            dimLeft.style.width = `${startPercent}%`;
-            dimRight.style.width = `${100 - endPercent}%`;
+            // Map selection (0-1) to mesh range (5%-95%)
+            const meshStart = 5;
+            const meshWidth = 90; // 95% - 5%
+            const startPercent = meshStart + (layer.selection.start * meshWidth);
+            const endPercent = meshStart + (layer.selection.end * meshWidth);
+
+            // Update dim overlays (if they exist)
+            if (dimLeft) {
+                dimLeft.style.left = '0';
+                dimLeft.style.width = `${startPercent}%`;
+            }
+
+            if (dimRight) {
+                dimRight.style.left = `${endPercent}%`;
+                dimRight.style.width = `${100 - endPercent}%`;
+            }
+
+            // Update handles
             handleStart.style.left = `${startPercent}%`;
             handleEnd.style.left = `${endPercent}%`;
+
+            console.log(`Updated handles: start=${startPercent.toFixed(1)}%, end=${endPercent.toFixed(1)}%`);
         }
 
         function reRecordLayer(layer) {
@@ -872,12 +948,22 @@
                 } else {
                     // Add new layer with audio
                     createLayer(audioBuffer);
+
+                    // Auto-start or restart playback to include new layer
+                    if (isPlaying) {
+                        stopPlayback();
+                        startPlayback();
+                    } else {
+                        startPlayback();
+                    }
                 }
 
                 updateToolbarState();
+                updateDebugLayerInfo();
                 console.log('Recording processed successfully');
             } catch (error) {
                 console.error('Failed to process recording:', error);
+                alert(`Recording failed: ${error.message}`);
             }
         }
 
@@ -896,9 +982,11 @@
 
             if (!layer.audioBuffer) {
                 console.log('Cannot draw spectrogram: no audio buffer');
+                document.getElementById('debug-spectrogram').textContent = 'Spectro: no buffer';
                 return;
             }
 
+            document.getElementById('debug-spectrogram').textContent = `Spectro: drawing ${width}x${height}`;
             console.log(`Drawing spectrogram: ${width}x${height}, duration: ${layer.audioBuffer.duration}s`);
 
             // Calculate frequency range bins
@@ -934,6 +1022,8 @@
 
             // Draw 3D mesh
             draw3DSpectrogram(ctx, spectrogramData, width, height);
+
+            document.getElementById('debug-spectrogram').textContent = `Spectro: ✓ ${timeSteps}x${freqBins}`;
         }
 
         function draw3DSpectrogram(ctx, data, width, height) {
@@ -972,8 +1062,8 @@
                 return { x: screenX, y: screenY, z: rotatedZ };
             }
 
-            // Mesh dimensions
-            const meshWidth = width * 0.7;
+            // Mesh dimensions (5% to 95% = 90% width)
+            const meshWidth = width * 0.9;
             const meshHeight = height * 0.6;
 
             // Draw mesh from back to front for proper occlusion
@@ -1419,10 +1509,8 @@
 
         function updateToolbarState() {
             const hasAudio = layers.some(l => l.audioBuffer !== null);
-            const canAddLayer = layers.length < MAX_LAYERS && hasAudio;
 
             document.getElementById('play-btn').disabled = !hasAudio;
-            document.getElementById('add-layer-btn').disabled = !canAddLayer;
             document.getElementById('nuke-btn').disabled = !hasAudio;
         }
 
@@ -1431,21 +1519,13 @@
             if (mediaRecorder && mediaRecorder.state === 'recording') {
                 stopRecording();
             } else {
-                if (layers.length === 0 || layers[0].audioBuffer) {
-                    createLayer(); // Create empty layer for recording
-                }
+                // Recording completion will create layer with audio - no empty layer needed
                 currentRecordingLayer = null;
                 startRecording();
             }
         });
 
         document.getElementById('play-btn').addEventListener('click', togglePlayback);
-
-        document.getElementById('add-layer-btn').addEventListener('click', () => {
-            createLayer();
-            currentRecordingLayer = null;
-            startRecording();
-        });
 
         document.getElementById('nuke-btn').addEventListener('click', nukeAllLayers);
 
