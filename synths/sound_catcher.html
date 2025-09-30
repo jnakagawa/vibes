@@ -391,6 +391,7 @@
 </head>
 <body>
     <div id="app">
+        <!-- Debug overlay (commented out for production)
         <div id="debug-overlay" class="active">
             <div class="debug-line">🔍 Debug Info</div>
             <div class="debug-line" id="debug-mic">Mic: waiting</div>
@@ -404,6 +405,7 @@
             <div class="debug-line" id="debug-reverb">Reverb: 0.0</div>
             <button id="enable-orientation-btn">Enable Tilt Controls</button>
         </div>
+        -->
 
         <div id="layers-container"></div>
 
@@ -483,6 +485,15 @@
         // INITIALIZATION
         // ============================================================================
 
+        // Helper for debug logging (safe if debug overlay is commented out)
+        function debugLog(elementId, text, className = null) {
+            const el = document.getElementById(elementId);
+            if (el) {
+                el.textContent = text;
+                if (className) el.className = className;
+            }
+        }
+
         async function init() {
             // Initialize audio context (doesn't require user permission)
             audioContext = new (window.AudioContext || window.webkitAudioContext)({
@@ -505,8 +516,7 @@
 
             try {
                 console.log('Requesting microphone permission...');
-                document.getElementById('debug-mic').textContent = 'Mic: requesting...';
-                document.getElementById('debug-mic').className = 'debug-line debug-warning';
+                debugLog('debug-mic', 'Mic: requesting...', 'debug-line debug-warning');
 
                 // Request microphone permission (must be triggered by user gesture)
                 mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -521,26 +531,15 @@
                 mediaRecorder.onstop = handleRecordingComplete;
 
                 console.log('Microphone access granted');
-                document.getElementById('debug-mic').textContent = 'Mic: ✓ granted';
-                document.getElementById('debug-mic').className = 'debug-line debug-success';
 
-                // Show orientation button if permission is needed (iOS 13+)
-                if (typeof DeviceOrientationEvent !== 'undefined' &&
-                    typeof DeviceOrientationEvent.requestPermission === 'function') {
-                    document.getElementById('enable-orientation-btn').classList.add('active');
-                    document.getElementById('debug-orientation').textContent = 'Orient: tap button →';
-                    document.getElementById('debug-orientation').className = 'debug-line debug-warning';
-                } else {
-                    // Auto-enable on Android/old iOS
-                    await requestOrientationPermission();
-                }
+                // Request orientation permission automatically
+                await requestOrientationPermission();
 
                 isInitialized = true;
                 return true;
             } catch (error) {
                 console.error('Permission request failed:', error);
-                document.getElementById('debug-mic').textContent = 'Mic: ✗ denied';
-                document.getElementById('debug-mic').className = 'debug-line debug-error';
+                debugLog('debug-mic', 'Mic: ✗ denied', 'debug-line debug-error');
                 alert('Microphone access is required to record. Please grant permission and try again.');
                 return false;
             }
@@ -549,13 +548,13 @@
         async function requestOrientationPermission() {
             if (typeof DeviceOrientationEvent === 'undefined') {
                 console.log('❌ DeviceOrientation not supported');
-                document.getElementById('debug-orientation').textContent = 'Orient: not supported';
-                document.getElementById('debug-orientation').className = 'debug-line debug-error';
+                debugLog('debug-orientation', 'Orient: not supported');
+                debugLog('debug-orientation', null, 'debug-line debug-error');
                 return false;
             }
 
-            document.getElementById('debug-orientation').textContent = 'Orient: checking...';
-            document.getElementById('debug-orientation').className = 'debug-line debug-warning';
+            debugLog('debug-orientation', 'Orient: checking...');
+            debugLog('debug-orientation', null, 'debug-line debug-warning');
 
             console.log('📱 Checking orientation support...');
             console.log('   requestPermission?', typeof DeviceOrientationEvent.requestPermission);
@@ -564,7 +563,7 @@
                 // iOS 13+ requires explicit permission
                 try {
                     console.log('   → Requesting iOS orientation permission...');
-                    document.getElementById('debug-orientation').textContent = 'Orient: requesting iOS...';
+                    debugLog('debug-orientation', 'Orient: requesting iOS...');
 
                     const response = await DeviceOrientationEvent.requestPermission();
                     console.log('   ✓ Response:', response);
@@ -572,30 +571,28 @@
                     if (response === 'granted') {
                         window.addEventListener('deviceorientation', handleOrientation, true);
                         console.log('✅ Orientation enabled (iOS)');
-                        document.getElementById('debug-orientation').textContent = 'Orient: ✓ granted (iOS)';
-                        document.getElementById('debug-orientation').className = 'debug-line debug-success';
-                        document.getElementById('enable-orientation-btn').classList.remove('active');
+                        debugLog('debug-orientation', 'Orient: ✓ granted (iOS)');
+                        debugLog('debug-orientation', null, 'debug-line debug-success');
                         return true;
                     } else {
                         console.log('⚠️ Orientation denied');
-                        document.getElementById('debug-orientation').textContent = 'Orient: ✗ denied';
-                        document.getElementById('debug-orientation').className = 'debug-line debug-error';
-                        document.getElementById('enable-orientation-btn').classList.remove('active');
+                        debugLog('debug-orientation', 'Orient: ✗ denied');
+                        debugLog('debug-orientation', null, 'debug-line debug-error');
                         return false;
                     }
                 } catch (error) {
                     console.error('❌ Orientation error:', error);
                     const msg = error.message || 'unknown error';
-                    document.getElementById('debug-orientation').textContent = `Orient: ${msg.substring(0, 20)}`;
-                    document.getElementById('debug-orientation').className = 'debug-line debug-error';
+                    debugLog('debug-orientation', `Orient: ${msg.substring(0, 20)}`);
+                    debugLog('debug-orientation', null, 'debug-line debug-error');
                     return false;
                 }
             } else {
                 // Android and older iOS
                 window.addEventListener('deviceorientation', handleOrientation, true);
                 console.log('✅ Orientation enabled (no permission)');
-                document.getElementById('debug-orientation').textContent = 'Orient: ✓ auto (Android)';
-                document.getElementById('debug-orientation').className = 'debug-line debug-success';
+                debugLog('debug-orientation', 'Orient: ✓ auto (Android)');
+                debugLog('debug-orientation', null, 'debug-line debug-success');
                 return true;
             }
         }
@@ -640,8 +637,8 @@
             const numWithAudio = layers.filter(l => l.audioBuffer).length;
             const numRendered = document.querySelectorAll('.layer').length;
 
-            document.getElementById('debug-layers').textContent = `Layers: ${numLayers}/5 (${numWithAudio} w/audio)`;
-            document.getElementById('debug-rendered').textContent = `Rendered: ${numRendered}`;
+            debugLog('debug-layers', `Layers: ${numLayers}/5 (${numWithAudio} w/audio)`);
+            debugLog('debug-rendered', `Rendered: ${numRendered}`);
         }
 
         function renderLayer(layer, index) {
@@ -789,7 +786,7 @@
                     activeHandle = handle;
                     startX = e.touches[0].clientX;
                     startValue = handle.dataset.handle === 'start' ? layer.selection.start : layer.selection.end;
-                    document.getElementById('debug-spectrogram').textContent = `Drag: ${handle.dataset.handle}`;
+                    debugLog('debug-spectrogram', `Drag: ${handle.dataset.handle}`);
                     console.log(`Touch start on ${handle.dataset.handle} handle`);
                 }, { passive: false });
             });
@@ -811,10 +808,10 @@
 
                 if (activeHandle.dataset.handle === 'start') {
                     layer.selection.start = Math.min(clampedValue, layer.selection.end - 0.01);
-                    document.getElementById('debug-spectrogram').textContent = `Start: ${layer.selection.start.toFixed(2)}`;
+                    debugLog('debug-spectrogram', `Start: ${layer.selection.start.toFixed(2)}`);
                 } else {
                     layer.selection.end = Math.max(clampedValue, layer.selection.start + 0.01);
-                    document.getElementById('debug-spectrogram').textContent = `End: ${layer.selection.end.toFixed(2)}`;
+                    debugLog('debug-spectrogram', `End: ${layer.selection.end.toFixed(2)}`);
                 }
 
                 updateSelectionUI(layer, overlay);
@@ -982,11 +979,11 @@
 
             if (!layer.audioBuffer) {
                 console.log('Cannot draw spectrogram: no audio buffer');
-                document.getElementById('debug-spectrogram').textContent = 'Spectro: no buffer';
+                debugLog('debug-spectrogram', 'Spectro: no buffer');
                 return;
             }
 
-            document.getElementById('debug-spectrogram').textContent = `Spectro: drawing ${width}x${height}`;
+            debugLog('debug-spectrogram', `Spectro: drawing ${width}x${height}`);
             console.log(`Drawing spectrogram: ${width}x${height}, duration: ${layer.audioBuffer.duration}s`);
 
             // Calculate frequency range bins
@@ -1023,7 +1020,7 @@
             // Draw 3D mesh
             draw3DSpectrogram(ctx, spectrogramData, width, height);
 
-            document.getElementById('debug-spectrogram').textContent = `Spectro: ✓ ${timeSteps}x${freqBins}`;
+            debugLog('debug-spectrogram', `Spectro: ✓ ${timeSteps}x${freqBins}`);
         }
 
         function draw3DSpectrogram(ctx, data, width, height) {
@@ -1446,10 +1443,10 @@
             orientationData.reverb = reverb;
 
             // Update debug display
-            document.getElementById('debug-beta').textContent = `β: ${beta.toFixed(1)}°`;
-            document.getElementById('debug-gamma').textContent = `γ: ${gamma.toFixed(1)}°`;
-            document.getElementById('debug-speed').textContent = `Speed: ${speed.toFixed(2)}x`;
-            document.getElementById('debug-reverb').textContent = `Reverb: ${reverb.toFixed(2)}`;
+            debugLog('debug-beta', `β: ${beta.toFixed(1)}°`);
+            debugLog('debug-gamma', `γ: ${gamma.toFixed(1)}°`);
+            debugLog('debug-speed', `Speed: ${speed.toFixed(2)}x`);
+            debugLog('debug-reverb', `Reverb: ${reverb.toFixed(2)}`);
 
             // Debug logging (throttled)
             const now = Date.now();
