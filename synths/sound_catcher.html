@@ -495,26 +495,36 @@
         }
 
         async function init() {
-            // Initialize audio context (doesn't require user permission)
-            audioContext = new (window.AudioContext || window.webkitAudioContext)({
-                sampleRate: SAMPLE_RATE
-            });
+            try {
+                // Initialize audio context (doesn't require user permission)
+                audioContext = new (window.AudioContext || window.webkitAudioContext)({
+                    sampleRate: SAMPLE_RATE
+                });
 
-            // Create master gain
-            masterGain = audioContext.createGain();
-            masterGain.connect(audioContext.destination);
+                // Create master gain
+                masterGain = audioContext.createGain();
+                masterGain.connect(audioContext.destination);
 
-            // Create convolver for reverb
-            convolver = audioContext.createConvolver();
-            convolver.buffer = createReverbImpulse();
+                // Create convolver for reverb
+                convolver = audioContext.createConvolver();
+                convolver.buffer = createReverbImpulse();
 
-            console.log('Sound Catcher UI initialized');
+                console.log('Sound Catcher UI initialized');
+            } catch (error) {
+                console.error('Failed to initialize audio:', error);
+                alert('Failed to initialize audio system. Please refresh the page.');
+            }
         }
 
         async function requestPermissions() {
             if (isInitialized) return true;
 
             try {
+                // Ensure audioContext is initialized before requesting permissions
+                if (!audioContext) {
+                    await init();
+                }
+
                 console.log('Requesting microphone permission...');
                 debugLog('debug-mic', 'Mic: requesting...', 'debug-line debug-warning');
 
@@ -926,6 +936,10 @@
 
         async function handleRecordingComplete() {
             try {
+                if (!audioContext) {
+                    throw new Error('Audio context not initialized');
+                }
+
                 const blob = new Blob(recordingChunks, { type: 'audio/webm' });
                 const arrayBuffer = await blob.arrayBuffer();
                 const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
