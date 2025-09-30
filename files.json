@@ -3,151 +3,106 @@
     {
       "name": "cindys_surf_adventure.html",
       "isDirectory": false,
-      "size": 19145,
-      "modified": "2025-09-07T00:32:24.082Z",
+      "size": 30076,
+      "modified": "2025-09-07T03:29:51.023Z",
       "extension": ".html"
     },
     {
       "name": "enhanced_theremin_gestures_v4_psychedelic.html",
       "isDirectory": false,
       "size": 36638,
-<<<<<<< HEAD
-      "modified": "2025-08-28T23:47:31.691Z",
-=======
       "modified": "2025-06-10T05:30:35.626Z",
->>>>>>> 55c7600 (Add Cindy's Surf Adventure game)
       "extension": ".html"
     },
     {
       "name": "enhanced_theremin_gestures_v5_complete.html",
       "isDirectory": false,
       "size": 60526,
-<<<<<<< HEAD
-      "modified": "2025-08-28T23:47:31.691Z",
-=======
       "modified": "2025-06-10T22:06:39.019Z",
->>>>>>> 55c7600 (Add Cindy's Surf Adventure game)
       "extension": ".html"
     },
     {
       "name": "fm_synth_v1.html",
       "isDirectory": false,
       "size": 42222,
-<<<<<<< HEAD
-      "modified": "2025-08-28T23:47:31.692Z",
-=======
       "modified": "2025-06-17T05:10:48.281Z",
->>>>>>> 55c7600 (Add Cindy's Surf Adventure game)
       "extension": ".html"
     },
     {
       "name": "fm_synth_v2.html",
       "isDirectory": false,
       "size": 49116,
-<<<<<<< HEAD
-      "modified": "2025-08-28T23:47:31.692Z",
-=======
       "modified": "2025-06-17T05:18:14.384Z",
->>>>>>> 55c7600 (Add Cindy's Surf Adventure game)
       "extension": ".html"
     },
     {
       "name": "fm_synth_v3.html",
       "isDirectory": false,
       "size": 62150,
-<<<<<<< HEAD
-      "modified": "2025-08-28T23:47:31.692Z",
-=======
       "modified": "2025-07-01T05:19:12.149Z",
->>>>>>> 55c7600 (Add Cindy's Surf Adventure game)
       "extension": ".html"
     },
     {
       "name": "glass_conductor_v4.html",
       "isDirectory": false,
       "size": 32549,
-<<<<<<< HEAD
-      "modified": "2025-08-28T23:47:31.692Z",
-=======
       "modified": "2025-07-01T06:28:29.876Z",
->>>>>>> 55c7600 (Add Cindy's Surf Adventure game)
       "extension": ".html"
     },
     {
       "name": "glass_minimalist_composer.html",
       "isDirectory": false,
       "size": 23765,
-<<<<<<< HEAD
-      "modified": "2025-08-28T23:47:31.692Z",
-=======
       "modified": "2025-07-01T06:28:29.876Z",
->>>>>>> 55c7600 (Add Cindy's Surf Adventure game)
       "extension": ".html"
     },
     {
       "name": "hatsune_shingyo.html",
       "isDirectory": false,
       "size": 11883,
-<<<<<<< HEAD
-      "modified": "2025-08-28T23:47:31.692Z",
-=======
       "modified": "2025-08-28T23:33:21.594Z",
->>>>>>> 55c7600 (Add Cindy's Surf Adventure game)
       "extension": ".html"
     },
     {
       "name": "hrv_monitor.html",
       "isDirectory": false,
       "size": 16554,
-<<<<<<< HEAD
-      "modified": "2025-08-28T23:47:31.692Z",
-=======
       "modified": "2025-06-10T22:09:58.822Z",
->>>>>>> 55c7600 (Add Cindy's Surf Adventure game)
       "extension": ".html"
     },
     {
       "name": "index.html",
       "isDirectory": false,
       "size": 10563,
-<<<<<<< HEAD
-      "modified": "2025-08-28T23:47:31.692Z",
-=======
       "modified": "2025-07-01T06:28:29.876Z",
->>>>>>> 55c7600 (Add Cindy's Surf Adventure game)
+      "extension": ".html"
+    },
+    {
+      "name": "sound_catcher.html",
+      "isDirectory": false,
+      "size": 43122,
+      "modified": "2025-09-30T03:41:00.313Z",
       "extension": ".html"
     },
     {
       "name": "stress_relief_app.html",
       "isDirectory": false,
       "size": 36744,
-<<<<<<< HEAD
-      "modified": "2025-08-28T23:47:31.693Z",
-=======
       "modified": "2025-08-28T23:47:12.751Z",
->>>>>>> 55c7600 (Add Cindy's Surf Adventure game)
       "extension": ".html"
     },
     {
       "name": "theremin_dual_sine_sorted.html",
       "isDirectory": false,
       "size": 8707,
-<<<<<<< HEAD
-      "modified": "2025-08-28T23:47:31.693Z",
-=======
       "modified": "2025-05-29T05:29:17.859Z",
->>>>>>> 55c7600 (Add Cindy's Surf Adventure game)
       "extension": ".html"
     },
     {
       "name": "visual_eno_loops_universal.html",
       "isDirectory": false,
       "size": 26572,
-<<<<<<< HEAD
-      "modified": "2025-08-28T23:47:31.693Z",
-=======
       "modified": "2025-07-01T05:13:30.860Z",
->>>>>>> 55c7600 (Add Cindy's Surf Adventure game)
       "extension": ".html"
     }
   ],
@@ -156,33 +111,21 @@
       "name": "prompt.py",
       "isDirectory": false,
       "size": 0,
-<<<<<<< HEAD
-      "modified": "2025-08-28T23:47:31.693Z",
-=======
       "modified": "2025-06-17T04:20:36.205Z",
->>>>>>> 55c7600 (Add Cindy's Surf Adventure game)
       "extension": ".py"
     },
     {
       "name": "userinput.py",
       "isDirectory": false,
       "size": 30,
-<<<<<<< HEAD
-      "modified": "2025-08-28T23:47:31.693Z",
-=======
       "modified": "2025-06-17T04:41:20.618Z",
->>>>>>> 55c7600 (Add Cindy's Surf Adventure game)
       "extension": ".py"
     },
     {
       "name": "vocal.mp3",
       "isDirectory": false,
       "size": 4869577,
-<<<<<<< HEAD
-      "modified": "2025-08-28T23:47:31.714Z",
-=======
       "modified": "2025-08-28T22:26:20.839Z",
->>>>>>> 55c7600 (Add Cindy's Surf Adventure game)
       "extension": ".mp3"
     }
   ],
@@ -191,33 +134,21 @@
       "name": "project_structure.md",
       "isDirectory": false,
       "size": 11949,
-<<<<<<< HEAD
-      "modified": "2025-08-28T23:47:31.676Z",
-=======
       "modified": "2025-07-01T06:28:29.876Z",
->>>>>>> 55c7600 (Add Cindy's Surf Adventure game)
       "extension": ".md"
     },
     {
       "name": "user_tasks.log",
       "isDirectory": false,
       "size": 285,
-<<<<<<< HEAD
-      "modified": "2025-08-28T23:47:31.677Z",
-=======
       "modified": "2025-06-17T04:36:29.482Z",
->>>>>>> 55c7600 (Add Cindy's Surf Adventure game)
       "extension": ".log"
     },
     {
       "name": "vibes-README.md",
       "isDirectory": false,
       "size": 2879,
-<<<<<<< HEAD
-      "modified": "2025-08-28T23:47:31.677Z",
-=======
       "modified": "2025-06-10T05:31:57.396Z",
->>>>>>> 55c7600 (Add Cindy's Surf Adventure game)
       "extension": ".md"
     }
   ],
@@ -226,55 +157,35 @@
       "name": "index.html",
       "isDirectory": false,
       "size": 9655,
-<<<<<<< HEAD
-      "modified": "2025-08-28T23:47:31.677Z",
-=======
       "modified": "2025-06-25T23:19:01.147Z",
->>>>>>> 55c7600 (Add Cindy's Surf Adventure game)
       "extension": ".html"
     },
     {
       "name": "README.md",
       "isDirectory": false,
       "size": 1237,
-<<<<<<< HEAD
-      "modified": "2025-08-28T23:47:31.676Z",
-=======
       "modified": "2025-06-25T23:19:01.146Z",
->>>>>>> 55c7600 (Add Cindy's Surf Adventure game)
       "extension": ".md"
     },
     {
       "name": "LICENSE",
       "isDirectory": false,
       "size": 35149,
-<<<<<<< HEAD
-      "modified": "2025-08-28T23:47:31.676Z",
-=======
       "modified": "2025-06-10T05:30:35.625Z",
->>>>>>> 55c7600 (Add Cindy's Surf Adventure game)
       "extension": ""
     },
     {
       "name": "DEPLOYMENT.md",
       "isDirectory": false,
       "size": 3247,
-<<<<<<< HEAD
-      "modified": "2025-08-28T23:47:31.676Z",
-=======
       "modified": "2025-06-25T23:14:15.574Z",
->>>>>>> 55c7600 (Add Cindy's Surf Adventure game)
       "extension": ".md"
     },
     {
       "name": "package.json",
       "isDirectory": false,
       "size": 579,
-<<<<<<< HEAD
-      "modified": "2025-08-28T23:47:31.677Z",
-=======
-      "modified": "2025-06-25T23:17:04.997Z",
->>>>>>> 55c7600 (Add Cindy's Surf Adventure game)
+      "modified": "2025-09-07T03:29:19.537Z",
       "extension": ".json"
     }
   ]

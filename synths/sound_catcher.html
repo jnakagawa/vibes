@@ -1,0 +1,1518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Sound Catcher</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #0a0a0a;
+            color: #e0e0e0;
+            overflow: hidden;
+            touch-action: none;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #app {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #layers-container {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+            position: relative;
+            padding-bottom: 80px;
+        }
+
+        .layer {
+            width: 100%;
+            position: relative;
+            border-bottom: 1px solid #222;
+            display: flex;
+        }
+
+        .layer-canvas-container {
+            flex: 1;
+            position: relative;
+            min-height: 120px;
+        }
+
+        .layer canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        .layer-controls {
+            width: 60px;
+            background: #111;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 10px 5px;
+            gap: 10px;
+        }
+
+        .volume-slider {
+            writing-mode: bt-lr;
+            -webkit-appearance: slider-vertical;
+            width: 30px;
+            height: 100px;
+            flex-shrink: 0;
+        }
+
+        .layer-button {
+            width: 44px;
+            height: 44px;
+            border: 1px solid #444;
+            background: #1a1a1a;
+            color: #e0e0e0;
+            border-radius: 6px;
+            font-size: 11px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .layer-button:active {
+            background: #2a2a2a;
+        }
+
+        .selection-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 60px;
+            bottom: 0;
+            pointer-events: none;
+        }
+
+        .selection-handle {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+            background: #00ffff;
+            cursor: ew-resize;
+            pointer-events: auto;
+            z-index: 10;
+        }
+
+        .selection-handle::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 44px;
+            height: 44px;
+            background: transparent;
+        }
+
+        .selection-dim {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            background: rgba(10, 10, 10, 0.7);
+            pointer-events: none;
+        }
+
+        .axis-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 60px;
+            bottom: 0;
+            pointer-events: none;
+        }
+
+        .axis-y {
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 50px;
+            border-right: 1px solid #333;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 5px 2px;
+        }
+
+        .axis-y-label {
+            font-size: 9px;
+            color: #666;
+            text-align: right;
+            padding-right: 3px;
+        }
+
+        .axis-x {
+            position: absolute;
+            left: 50px;
+            right: 0;
+            bottom: 0;
+            height: 20px;
+            border-top: 1px solid #333;
+            display: flex;
+            justify-content: space-between;
+            padding: 2px 5px;
+        }
+
+        .axis-x-label {
+            font-size: 9px;
+            color: #666;
+        }
+
+        .empty-state {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 18px;
+            color: #444;
+            text-align: center;
+            pointer-events: none;
+        }
+
+        #playback-indicator {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 100;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        #playback-indicator.active {
+            opacity: 1;
+        }
+
+        #toolbar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 80px;
+            background: #111;
+            border-top: 1px solid #333;
+            display: flex;
+            align-items: center;
+            justify-content: space-around;
+            padding: 10px;
+            z-index: 50;
+        }
+
+        .toolbar-button {
+            width: 60px;
+            height: 60px;
+            border: 2px solid #444;
+            background: #1a1a1a;
+            color: #e0e0e0;
+            border-radius: 50%;
+            font-size: 12px;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 3px;
+        }
+
+        .toolbar-button:active {
+            background: #2a2a2a;
+        }
+
+        .toolbar-button.recording {
+            border-color: #ff3333;
+            background: #331111;
+        }
+
+        .toolbar-button.playing {
+            border-color: #33ff33;
+            background: #113311;
+        }
+
+        .toolbar-button:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        .button-icon {
+            font-size: 24px;
+        }
+
+        .button-label {
+            font-size: 9px;
+        }
+
+        #debug-overlay {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.85);
+            color: #0f0;
+            padding: 10px;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 10px;
+            z-index: 200;
+            max-width: 200px;
+            pointer-events: auto;
+            display: none;
+        }
+
+        #debug-overlay.active {
+            display: block;
+        }
+
+        #enable-orientation-btn {
+            margin-top: 8px;
+            padding: 6px 12px;
+            background: #0088ff;
+            border: none;
+            border-radius: 4px;
+            color: white;
+            font-size: 11px;
+            font-family: -apple-system, sans-serif;
+            cursor: pointer;
+            display: none;
+        }
+
+        #enable-orientation-btn.active {
+            display: block;
+        }
+
+        .debug-line {
+            margin: 2px 0;
+        }
+
+        .debug-error {
+            color: #f00;
+        }
+
+        .debug-success {
+            color: #0f0;
+        }
+
+        .debug-warning {
+            color: #ff0;
+        }
+
+        #modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+        }
+
+        #modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            background: #1a1a1a;
+            border: 1px solid #444;
+            border-radius: 12px;
+            padding: 30px;
+            max-width: 300px;
+            text-align: center;
+        }
+
+        .modal-title {
+            font-size: 18px;
+            margin-bottom: 15px;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .modal-button {
+            flex: 1;
+            padding: 12px;
+            border: 1px solid #444;
+            background: #2a2a2a;
+            color: #e0e0e0;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .modal-button.primary {
+            background: #ff3333;
+            border-color: #ff3333;
+        }
+
+        .modal-button:active {
+            opacity: 0.8;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div id="debug-overlay" class="active">
+            <div class="debug-line">🔍 Debug Info</div>
+            <div class="debug-line" id="debug-mic">Mic: waiting</div>
+            <div class="debug-line" id="debug-orientation">Orient: waiting</div>
+            <div class="debug-line" id="debug-beta">β: --</div>
+            <div class="debug-line" id="debug-gamma">γ: --</div>
+            <div class="debug-line" id="debug-speed">Speed: 1.0x</div>
+            <div class="debug-line" id="debug-reverb">Reverb: 0.0</div>
+            <button id="enable-orientation-btn">Enable Tilt Controls</button>
+        </div>
+
+        <div id="layers-container"></div>
+
+        <svg id="playback-indicator" width="300" height="300" viewBox="0 0 300 300">
+            <g id="reverb-circles"></g>
+            <circle cx="150" cy="150" r="140" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="2"/>
+            <circle id="playback-dot" cx="150" cy="10" r="8" fill="#00ffff"/>
+        </svg>
+
+        <div id="toolbar">
+            <button class="toolbar-button" id="record-btn">
+                <div class="button-icon">●</div>
+                <div class="button-label">Record</div>
+            </button>
+            <button class="toolbar-button" id="play-btn" disabled>
+                <div class="button-icon">▶</div>
+                <div class="button-label">Play</div>
+            </button>
+            <button class="toolbar-button" id="add-layer-btn" disabled>
+                <div class="button-icon">+</div>
+                <div class="button-label">Add Layer</div>
+            </button>
+            <button class="toolbar-button" id="nuke-btn" disabled>
+                <div class="button-icon">✕</div>
+                <div class="button-label">Clear All</div>
+            </button>
+        </div>
+    </div>
+
+    <div id="modal-overlay">
+        <div class="modal">
+            <div class="modal-title">Clear all layers?</div>
+            <div>This will delete all recordings and cannot be undone.</div>
+            <div class="modal-buttons">
+                <button class="modal-button" id="modal-cancel">Cancel</button>
+                <button class="modal-button primary" id="modal-confirm">Clear All</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ============================================================================
+        // GLOBAL STATE
+        // ============================================================================
+
+        const MAX_LAYERS = 5;
+        const MAX_RECORDING_TIME = 30000; // 30 seconds
+        const SAMPLE_RATE = 44100;
+        const FFT_SIZE = 4096;
+        const MIN_FREQ = 40;
+        const MAX_FREQ = 10000;
+
+        let audioContext;
+        let analyser;
+        let mediaRecorder;
+        let recordingChunks = [];
+        let recordingStartTime;
+        let recordingTimeout;
+        let currentRecordingLayer = null;
+        let mediaStream = null;
+        let isInitialized = false;
+
+        let layers = [];
+        let isPlaying = false;
+        let playbackStartTime = 0;
+        let animationFrameId = null;
+
+        let orientationData = {
+            speed: 1.0,  // 0.1 to 10
+            reverb: 0.0  // 0 to 1
+        };
+
+        let convolver;
+        let masterGain;
+
+        // Granular synthesis for pitch-preserving time stretch
+        const GRAIN_SIZE = 0.05; // 50ms grains
+        const GRAIN_OVERLAP = 0.75; // 75% overlap
+
+        // ============================================================================
+        // INITIALIZATION
+        // ============================================================================
+
+        async function init() {
+            // Initialize audio context (doesn't require user permission)
+            audioContext = new (window.AudioContext || window.webkitAudioContext)({
+                sampleRate: SAMPLE_RATE
+            });
+
+            // Create master gain
+            masterGain = audioContext.createGain();
+            masterGain.connect(audioContext.destination);
+
+            // Create convolver for reverb
+            convolver = audioContext.createConvolver();
+            convolver.buffer = createReverbImpulse();
+
+            // Create initial empty layer
+            createLayer();
+
+            console.log('Sound Catcher UI initialized');
+        }
+
+        async function requestPermissions() {
+            if (isInitialized) return true;
+
+            try {
+                console.log('Requesting microphone permission...');
+                document.getElementById('debug-mic').textContent = 'Mic: requesting...';
+                document.getElementById('debug-mic').className = 'debug-line debug-warning';
+
+                // Request microphone permission (must be triggered by user gesture)
+                mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+                // Setup media recorder
+                mediaRecorder = new MediaRecorder(mediaStream);
+                mediaRecorder.ondataavailable = (e) => {
+                    if (e.data.size > 0) {
+                        recordingChunks.push(e.data);
+                    }
+                };
+                mediaRecorder.onstop = handleRecordingComplete;
+
+                console.log('Microphone access granted');
+                document.getElementById('debug-mic').textContent = 'Mic: ✓ granted';
+                document.getElementById('debug-mic').className = 'debug-line debug-success';
+
+                // Show orientation button if permission is needed (iOS 13+)
+                if (typeof DeviceOrientationEvent !== 'undefined' &&
+                    typeof DeviceOrientationEvent.requestPermission === 'function') {
+                    document.getElementById('enable-orientation-btn').classList.add('active');
+                    document.getElementById('debug-orientation').textContent = 'Orient: tap button →';
+                    document.getElementById('debug-orientation').className = 'debug-line debug-warning';
+                } else {
+                    // Auto-enable on Android/old iOS
+                    await requestOrientationPermission();
+                }
+
+                isInitialized = true;
+                return true;
+            } catch (error) {
+                console.error('Permission request failed:', error);
+                document.getElementById('debug-mic').textContent = 'Mic: ✗ denied';
+                document.getElementById('debug-mic').className = 'debug-line debug-error';
+                alert('Microphone access is required to record. Please grant permission and try again.');
+                return false;
+            }
+        }
+
+        async function requestOrientationPermission() {
+            if (typeof DeviceOrientationEvent === 'undefined') {
+                console.log('❌ DeviceOrientation not supported');
+                document.getElementById('debug-orientation').textContent = 'Orient: not supported';
+                document.getElementById('debug-orientation').className = 'debug-line debug-error';
+                return false;
+            }
+
+            document.getElementById('debug-orientation').textContent = 'Orient: checking...';
+            document.getElementById('debug-orientation').className = 'debug-line debug-warning';
+
+            console.log('📱 Checking orientation support...');
+            console.log('   requestPermission?', typeof DeviceOrientationEvent.requestPermission);
+
+            if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+                // iOS 13+ requires explicit permission
+                try {
+                    console.log('   → Requesting iOS orientation permission...');
+                    document.getElementById('debug-orientation').textContent = 'Orient: requesting iOS...';
+
+                    const response = await DeviceOrientationEvent.requestPermission();
+                    console.log('   ✓ Response:', response);
+
+                    if (response === 'granted') {
+                        window.addEventListener('deviceorientation', handleOrientation, true);
+                        console.log('✅ Orientation enabled (iOS)');
+                        document.getElementById('debug-orientation').textContent = 'Orient: ✓ granted (iOS)';
+                        document.getElementById('debug-orientation').className = 'debug-line debug-success';
+                        document.getElementById('enable-orientation-btn').classList.remove('active');
+                        return true;
+                    } else {
+                        console.log('⚠️ Orientation denied');
+                        document.getElementById('debug-orientation').textContent = 'Orient: ✗ denied';
+                        document.getElementById('debug-orientation').className = 'debug-line debug-error';
+                        document.getElementById('enable-orientation-btn').classList.remove('active');
+                        return false;
+                    }
+                } catch (error) {
+                    console.error('❌ Orientation error:', error);
+                    const msg = error.message || 'unknown error';
+                    document.getElementById('debug-orientation').textContent = `Orient: ${msg.substring(0, 20)}`;
+                    document.getElementById('debug-orientation').className = 'debug-line debug-error';
+                    return false;
+                }
+            } else {
+                // Android and older iOS
+                window.addEventListener('deviceorientation', handleOrientation, true);
+                console.log('✅ Orientation enabled (no permission)');
+                document.getElementById('debug-orientation').textContent = 'Orient: ✓ auto (Android)';
+                document.getElementById('debug-orientation').className = 'debug-line debug-success';
+                return true;
+            }
+        }
+
+        // ============================================================================
+        // LAYER MANAGEMENT
+        // ============================================================================
+
+        function createLayer(audioBuffer = null) {
+            if (layers.length >= MAX_LAYERS) {
+                alert(`Maximum ${MAX_LAYERS} layers reached`);
+                return null;
+            }
+
+            const layerIndex = layers.length;
+            const layer = {
+                id: Date.now() + layerIndex,
+                audioBuffer: audioBuffer,
+                volume: 1.0,
+                selection: { start: 0, end: 1 }, // Normalized 0-1
+                sourceNode: null,
+                gainNode: null,
+                spectrogramData: null
+            };
+
+            layers.push(layer);
+            renderLayer(layer, layerIndex);
+            updateToolbarState();
+
+            return layer;
+        }
+
+        function renderLayer(layer, index) {
+            const container = document.getElementById('layers-container');
+            const layerDiv = document.createElement('div');
+            layerDiv.className = 'layer';
+            layerDiv.id = `layer-${layer.id}`;
+
+            // Canvas container
+            const canvasContainer = document.createElement('div');
+            canvasContainer.className = 'layer-canvas-container';
+
+            const canvas = document.createElement('canvas');
+            canvas.width = window.innerWidth - 60;
+            canvas.height = 150;
+            canvasContainer.appendChild(canvas);
+
+            // Axes (only show on empty layers)
+            if (!layer.audioBuffer) {
+                const axisContainer = document.createElement('div');
+                axisContainer.className = 'axis-container';
+
+                const axisY = document.createElement('div');
+                axisY.className = 'axis-y';
+                axisY.innerHTML = `
+                    <div class="axis-y-label">10kHz</div>
+                    <div class="axis-y-label">5kHz</div>
+                    <div class="axis-y-label">1kHz</div>
+                    <div class="axis-y-label">100Hz</div>
+                    <div class="axis-y-label">40Hz</div>
+                `;
+
+                const axisX = document.createElement('div');
+                axisX.className = 'axis-x';
+                axisX.innerHTML = `
+                    <div class="axis-x-label">0s</div>
+                    <div class="axis-x-label">15s</div>
+                    <div class="axis-x-label">30s</div>
+                `;
+
+                axisContainer.appendChild(axisY);
+                axisContainer.appendChild(axisX);
+                canvasContainer.appendChild(axisContainer);
+
+                const emptyState = document.createElement('div');
+                emptyState.className = 'empty-state';
+                emptyState.textContent = index === 0 ? 'Tap Record to Begin' : 'Tap Add Layer to Record';
+                canvasContainer.appendChild(emptyState);
+            }
+
+            // Selection overlay
+            const selectionOverlay = document.createElement('div');
+            selectionOverlay.className = 'selection-overlay';
+
+            if (layer.audioBuffer) {
+                const dimLeft = document.createElement('div');
+                dimLeft.className = 'selection-dim';
+                dimLeft.style.left = '0';
+                dimLeft.style.width = '0%';
+
+                const dimRight = document.createElement('div');
+                dimRight.className = 'selection-dim';
+                dimRight.style.right = '0';
+                dimRight.style.width = '0%';
+
+                const handleStart = document.createElement('div');
+                handleStart.className = 'selection-handle';
+                handleStart.style.left = '0%';
+                handleStart.dataset.handle = 'start';
+
+                const handleEnd = document.createElement('div');
+                handleEnd.className = 'selection-handle';
+                handleEnd.style.left = '100%';
+                handleEnd.dataset.handle = 'end';
+
+                selectionOverlay.appendChild(dimLeft);
+                selectionOverlay.appendChild(dimRight);
+                selectionOverlay.appendChild(handleStart);
+                selectionOverlay.appendChild(handleEnd);
+
+                setupSelectionHandles(layer, selectionOverlay);
+            }
+
+            canvasContainer.appendChild(selectionOverlay);
+
+            // Layer controls
+            const controls = document.createElement('div');
+            controls.className = 'layer-controls';
+
+            const volumeSlider = document.createElement('input');
+            volumeSlider.type = 'range';
+            volumeSlider.min = '0';
+            volumeSlider.max = '100';
+            volumeSlider.value = '100';
+            volumeSlider.className = 'volume-slider';
+            volumeSlider.addEventListener('input', (e) => {
+                layer.volume = e.target.value / 100;
+                if (layer.gainNode) {
+                    layer.gainNode.gain.setValueAtTime(layer.volume, audioContext.currentTime);
+                }
+            });
+
+            const reRecordBtn = document.createElement('button');
+            reRecordBtn.className = 'layer-button';
+            reRecordBtn.textContent = '↻';
+            reRecordBtn.title = 'Re-record this layer';
+            reRecordBtn.addEventListener('click', () => reRecordLayer(layer));
+
+            if (layer.audioBuffer) {
+                controls.appendChild(volumeSlider);
+                controls.appendChild(reRecordBtn);
+            }
+
+            layerDiv.appendChild(canvasContainer);
+            layerDiv.appendChild(controls);
+            container.appendChild(layerDiv);
+
+            // Draw spectrogram if we have audio
+            if (layer.audioBuffer) {
+                drawSpectrogram(layer, canvas);
+            }
+
+            // Adjust layer heights
+            adjustLayerHeights();
+        }
+
+        function adjustLayerHeights() {
+            const container = document.getElementById('layers-container');
+            const containerHeight = window.innerHeight - 80; // Minus toolbar
+            const layerDivs = container.querySelectorAll('.layer');
+            const layerHeight = Math.floor(containerHeight / Math.max(layers.length, 1));
+
+            layerDivs.forEach((div, idx) => {
+                const canvasContainer = div.querySelector('.layer-canvas-container');
+                canvasContainer.style.height = `${layerHeight}px`;
+
+                const canvas = div.querySelector('canvas');
+                canvas.height = layerHeight;
+
+                // Redraw if layer has data
+                if (layers[idx] && layers[idx].audioBuffer) {
+                    drawSpectrogram(layers[idx], canvas);
+                }
+            });
+        }
+
+        function setupSelectionHandles(layer, overlay) {
+            const handles = overlay.querySelectorAll('.selection-handle');
+            let activeHandle = null;
+            let startX = 0;
+            let startValue = 0;
+
+            handles.forEach(handle => {
+                handle.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    activeHandle = handle;
+                    startX = e.touches[0].clientX;
+                    startValue = handle.dataset.handle === 'start' ? layer.selection.start : layer.selection.end;
+                }, { passive: false });
+            });
+
+            overlay.addEventListener('touchmove', (e) => {
+                if (!activeHandle) return;
+                e.preventDefault();
+                e.stopPropagation();
+
+                const rect = overlay.getBoundingClientRect();
+                const deltaX = e.touches[0].clientX - startX;
+                const deltaPercent = deltaX / rect.width;
+                const newValue = Math.max(0, Math.min(1, startValue + deltaPercent));
+
+                if (activeHandle.dataset.handle === 'start') {
+                    layer.selection.start = Math.min(newValue, layer.selection.end - 0.01);
+                } else {
+                    layer.selection.end = Math.max(newValue, layer.selection.start + 0.01);
+                }
+
+                updateSelectionUI(layer, overlay);
+            }, { passive: false });
+
+            overlay.addEventListener('touchend', (e) => {
+                if (activeHandle) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    activeHandle = null;
+                }
+            }, { passive: false });
+        }
+
+        function updateSelectionUI(layer, overlay) {
+            const dimLeft = overlay.querySelector('.selection-dim:first-child');
+            const dimRight = overlay.querySelector('.selection-dim:last-child');
+            const handleStart = overlay.querySelector('[data-handle="start"]');
+            const handleEnd = overlay.querySelector('[data-handle="end"]');
+
+            const startPercent = layer.selection.start * 100;
+            const endPercent = layer.selection.end * 100;
+
+            dimLeft.style.width = `${startPercent}%`;
+            dimRight.style.width = `${100 - endPercent}%`;
+            handleStart.style.left = `${startPercent}%`;
+            handleEnd.style.left = `${endPercent}%`;
+        }
+
+        function reRecordLayer(layer) {
+            if (isPlaying) {
+                stopPlayback();
+            }
+
+            currentRecordingLayer = layer;
+            startRecording();
+        }
+
+        function nukeAllLayers() {
+            document.getElementById('modal-overlay').classList.add('active');
+        }
+
+        // ============================================================================
+        // RECORDING
+        // ============================================================================
+
+        async function startRecording() {
+            // Request all permissions on first recording (user gesture required)
+            const hasAccess = await requestPermissions();
+            if (!hasAccess) return;
+
+            try {
+                recordingChunks = [];
+                recordingStartTime = Date.now();
+                mediaRecorder.start();
+
+                const recordBtn = document.getElementById('record-btn');
+                recordBtn.classList.add('recording');
+                recordBtn.querySelector('.button-label').textContent = 'Recording...';
+
+                // Auto-stop after 30 seconds
+                recordingTimeout = setTimeout(() => {
+                    if (mediaRecorder.state === 'recording') {
+                        stopRecording();
+                    }
+                }, MAX_RECORDING_TIME);
+
+                console.log('Recording started');
+            } catch (error) {
+                console.error('Recording failed:', error);
+            }
+        }
+
+        function stopRecording() {
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                clearTimeout(recordingTimeout);
+                mediaRecorder.stop();
+
+                const recordBtn = document.getElementById('record-btn');
+                recordBtn.classList.remove('recording');
+                recordBtn.querySelector('.button-label').textContent = 'Record';
+
+                console.log('Recording stopped');
+            }
+        }
+
+        async function handleRecordingComplete() {
+            try {
+                const blob = new Blob(recordingChunks, { type: 'audio/webm' });
+                const arrayBuffer = await blob.arrayBuffer();
+                const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+                if (currentRecordingLayer) {
+                    // Re-recording existing layer
+                    currentRecordingLayer.audioBuffer = audioBuffer;
+                    currentRecordingLayer.selection = { start: 0, end: 1 };
+
+                    // Re-render this layer
+                    const layerDiv = document.getElementById(`layer-${currentRecordingLayer.id}`);
+                    layerDiv.remove();
+                    const layerIndex = layers.indexOf(currentRecordingLayer);
+                    renderLayer(currentRecordingLayer, layerIndex);
+
+                    currentRecordingLayer = null;
+                } else {
+                    // New recording for first layer or adding
+                    if (layers[0] && !layers[0].audioBuffer) {
+                        // First layer is empty, populate it
+                        layers[0].audioBuffer = audioBuffer;
+                        layers[0].selection = { start: 0, end: 1 };
+
+                        const layerDiv = document.getElementById(`layer-${layers[0].id}`);
+                        layerDiv.remove();
+                        renderLayer(layers[0], 0);
+                    } else {
+                        // Add new layer
+                        createLayer(audioBuffer);
+                    }
+                }
+
+                updateToolbarState();
+                console.log('Recording processed successfully');
+            } catch (error) {
+                console.error('Failed to process recording:', error);
+            }
+        }
+
+        // ============================================================================
+        // SPECTROGRAM GENERATION (3D PERSPECTIVE MESH)
+        // ============================================================================
+
+        async function drawSpectrogram(layer, canvas) {
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width;
+            const height = canvas.height;
+
+            // Clear canvas
+            ctx.fillStyle = '#0a0a0a';
+            ctx.fillRect(0, 0, width, height);
+
+            if (!layer.audioBuffer) return;
+
+            // Calculate frequency range bins
+            const nyquist = layer.audioBuffer.sampleRate / 2;
+            const bufferLength = FFT_SIZE / 2;
+            const minBin = Math.floor((MIN_FREQ / nyquist) * bufferLength);
+            const maxBin = Math.ceil((MAX_FREQ / nyquist) * bufferLength);
+            const freqBins = 64; // Fixed vertical resolution for 3D mesh
+
+            // Time resolution
+            const duration = layer.audioBuffer.duration;
+            const timeSteps = 128; // Fixed horizontal resolution
+            const stepSize = duration / timeSteps;
+
+            // Store spectrogram data
+            const spectrogramData = [];
+
+            // Analyze audio in chunks
+            const channelData = layer.audioBuffer.getChannelData(0);
+
+            for (let t = 0; t < timeSteps; t++) {
+                const sampleOffset = Math.floor((t * stepSize) * layer.audioBuffer.sampleRate);
+                const chunk = channelData.slice(sampleOffset, sampleOffset + FFT_SIZE);
+
+                if (chunk.length < FFT_SIZE) break;
+
+                // Simple FFT simulation (in production, use actual FFT library)
+                const freqData = performSimpleFFT(chunk, freqBins, minBin, maxBin, bufferLength);
+                spectrogramData.push(freqData);
+            }
+
+            layer.spectrogramData = spectrogramData;
+
+            // Draw 3D mesh
+            draw3DSpectrogram(ctx, spectrogramData, width, height);
+        }
+
+        function draw3DSpectrogram(ctx, data, width, height) {
+            if (!data || data.length === 0) return;
+
+            const timeSteps = data.length;
+            const freqBins = data[0].length;
+
+            // 3D perspective parameters
+            const perspective = 600; // Lower = more dramatic perspective
+            const angleX = 25; // Tilt angle in degrees
+            const angleY = -30; // Rotation angle
+            const scale = 0.8; // Overall scale
+            const depthScale = 0.6; // Height scale for z-axis
+
+            // Calculate center point for rotation
+            const centerX = width / 2;
+            const centerY = height / 2;
+
+            // Pre-calculate sin/cos for rotation
+            const radX = (angleX * Math.PI) / 180;
+            const radY = (angleY * Math.PI) / 180;
+            const cosX = Math.cos(radX);
+            const sinX = Math.sin(radX);
+            const cosY = Math.cos(radY);
+            const sinY = Math.sin(radY);
+
+            // Project 3D point to 2D with perspective
+            function project3D(x, y, z) {
+                // Apply rotations
+                const rotatedX = x * cosY - z * sinY;
+                const rotatedZ = x * sinY + z * cosY;
+                const rotatedY = y * cosX - rotatedZ * sinX;
+                const finalZ = y * sinX + rotatedZ * cosX;
+
+                // Apply perspective
+                const factor = perspective / (perspective + finalZ);
+                const screenX = centerX + rotatedX * factor * scale;
+                const screenY = centerY + rotatedY * factor * scale;
+
+                return { x: screenX, y: screenY, z: finalZ };
+            }
+
+            // Generate mesh grid
+            const meshWidth = width * 0.6;
+            const meshHeight = height * 0.4;
+
+            // Draw mesh from back to front for proper occlusion
+            for (let t = timeSteps - 1; t >= 0; t--) {
+                const freqData = data[t];
+                if (!freqData) continue;
+
+                for (let f = 0; f < freqBins - 1; f++) {
+                    // Get magnitude values
+                    const mag00 = freqData[f] || 0;
+                    const mag01 = freqData[f + 1] || 0;
+                    const mag10 = t > 0 ? (data[t - 1][f] || 0) : 0;
+                    const mag11 = t > 0 ? (data[t - 1][f + 1] || 0) : 0;
+
+                    // Calculate 3D positions
+                    const x0 = (t / timeSteps) * meshWidth - meshWidth / 2;
+                    const x1 = ((t - 1) / timeSteps) * meshWidth - meshWidth / 2;
+                    const y0 = (f / freqBins) * meshHeight - meshHeight / 2;
+                    const y1 = ((f + 1) / freqBins) * meshHeight - meshHeight / 2;
+
+                    const z00 = -mag00 * meshHeight * depthScale;
+                    const z01 = -mag01 * meshHeight * depthScale;
+                    const z10 = -mag10 * meshHeight * depthScale;
+                    const z11 = -mag11 * meshHeight * depthScale;
+
+                    // Project to 2D
+                    const p00 = project3D(x0, y0, z00);
+                    const p01 = project3D(x0, y1, z01);
+                    const p10 = project3D(x1, y0, z10);
+                    const p11 = project3D(x1, y1, z11);
+
+                    // Draw quad as two triangles with colors
+                    const avgMag = (mag00 + mag01 + mag10 + mag11) / 4;
+                    const color = getHeatmapColor(avgMag);
+                    const brightness = 0.5 + (p00.z / perspective) * 0.5; // Depth-based shading
+
+                    ctx.fillStyle = `rgb(${color.r * brightness}, ${color.g * brightness}, ${color.b * brightness})`;
+                    ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
+                    ctx.lineWidth = 0.5;
+
+                    // Draw first triangle
+                    ctx.beginPath();
+                    ctx.moveTo(p00.x, p00.y);
+                    ctx.lineTo(p01.x, p01.y);
+                    ctx.lineTo(p10.x, p10.y);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.stroke();
+
+                    // Draw second triangle (only if not first time slice)
+                    if (t > 0) {
+                        ctx.beginPath();
+                        ctx.moveTo(p01.x, p01.y);
+                        ctx.lineTo(p11.x, p11.y);
+                        ctx.lineTo(p10.x, p10.y);
+                        ctx.closePath();
+                        ctx.fill();
+                        ctx.stroke();
+                    }
+                }
+            }
+        }
+
+        function performSimpleFFT(samples, outputSize, minBin, maxBin, bufferLength) {
+            // Simplified magnitude calculation with frequency range support
+            // In production, use an actual FFT library like fft.js
+            const magnitudes = new Array(outputSize).fill(0);
+
+            for (let i = 0; i < outputSize; i++) {
+                // Map output bin to input frequency range
+                const freqBin = minBin + (i / outputSize) * (maxBin - minBin);
+                const binStart = Math.floor((freqBin / bufferLength) * samples.length);
+                const binEnd = Math.floor(((freqBin + 1) / bufferLength) * samples.length);
+
+                let sum = 0;
+                let count = 0;
+                for (let j = binStart; j < Math.min(binEnd, samples.length); j++) {
+                    sum += Math.abs(samples[j]);
+                    count++;
+                }
+                magnitudes[i] = count > 0 ? sum / count : 0;
+            }
+
+            // Normalize
+            const max = Math.max(...magnitudes);
+            return magnitudes.map(m => m / (max || 1));
+        }
+
+        function getHeatmapColor(value) {
+            // Blue -> Yellow -> Red
+            // 0.0 = Blue (0, 0, 255)
+            // 0.5 = Yellow (255, 255, 0)
+            // 1.0 = Red (255, 0, 0)
+
+            if (value < 0.5) {
+                const t = value * 2;
+                return {
+                    r: Math.floor(t * 255),
+                    g: Math.floor(t * 255),
+                    b: Math.floor((1 - t) * 255)
+                };
+            } else {
+                const t = (value - 0.5) * 2;
+                return {
+                    r: 255,
+                    g: Math.floor((1 - t) * 255),
+                    b: 0
+                };
+            }
+        }
+
+        // ============================================================================
+        // PLAYBACK
+        // ============================================================================
+
+        function togglePlayback() {
+            if (isPlaying) {
+                stopPlayback();
+            } else {
+                startPlayback();
+            }
+        }
+
+        function startPlayback() {
+            if (audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+
+            isPlaying = true;
+            playbackStartTime = audioContext.currentTime;
+
+            // Find longest selection duration
+            const maxDuration = getMaxSelectionDuration();
+
+            if (maxDuration === 0) return;
+
+            // Start all layers
+            layers.forEach(layer => {
+                if (layer.audioBuffer) {
+                    scheduleLayerPlayback(layer, maxDuration);
+                }
+            });
+
+            // Update UI
+            const playBtn = document.getElementById('play-btn');
+            playBtn.classList.add('playing');
+            playBtn.querySelector('.button-icon').textContent = '⏸';
+            playBtn.querySelector('.button-label').textContent = 'Pause';
+
+            document.getElementById('playback-indicator').classList.add('active');
+
+            // Start animation loop
+            animatePlayback();
+
+            console.log('Playback started');
+        }
+
+        function stopPlayback() {
+            isPlaying = false;
+
+            // Stop all grain scheduling and disconnect nodes
+            layers.forEach(layer => {
+                if (layer.grainScheduleId) {
+                    clearTimeout(layer.grainScheduleId);
+                    layer.grainScheduleId = null;
+                }
+                if (layer.gainNode) {
+                    layer.gainNode.disconnect();
+                    layer.gainNode = null;
+                }
+                if (layer.dryGain) {
+                    layer.dryGain.disconnect();
+                    layer.dryGain = null;
+                }
+                if (layer.wetGain) {
+                    layer.wetGain.disconnect();
+                    layer.wetGain = null;
+                }
+            });
+
+            // Update UI
+            const playBtn = document.getElementById('play-btn');
+            playBtn.classList.remove('playing');
+            playBtn.querySelector('.button-icon').textContent = '▶';
+            playBtn.querySelector('.button-label').textContent = 'Play';
+
+            document.getElementById('playback-indicator').classList.remove('active');
+
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+            }
+
+            console.log('Playback stopped');
+        }
+
+        function scheduleLayerPlayback(layer, loopDuration) {
+            const selectionStart = layer.selection.start * layer.audioBuffer.duration;
+            const selectionEnd = layer.selection.end * layer.audioBuffer.duration;
+            const selectionDuration = selectionEnd - selectionStart;
+
+            // Create gain nodes for this layer
+            const layerGain = audioContext.createGain();
+            layerGain.gain.value = layer.volume;
+
+            // Apply reverb with dry/wet mix
+            const dryGain = audioContext.createGain();
+            const wetGain = audioContext.createGain();
+
+            dryGain.gain.value = 1 - orientationData.reverb;
+            wetGain.gain.value = orientationData.reverb;
+
+            layerGain.connect(dryGain);
+            layerGain.connect(convolver);
+            convolver.connect(wetGain);
+
+            dryGain.connect(masterGain);
+            wetGain.connect(masterGain);
+
+            // Store nodes and playback state
+            layer.gainNode = layerGain;
+            layer.dryGain = dryGain;
+            layer.wetGain = wetGain;
+            layer.playbackPosition = 0; // Position within selection (0 to 1)
+            layer.nextGrainTime = audioContext.currentTime;
+            layer.grainScheduleId = null;
+
+            // Start granular playback
+            scheduleGrains(layer, selectionStart, selectionEnd);
+        }
+
+        function scheduleGrains(layer, selectionStart, selectionEnd) {
+            if (!isPlaying || !layer.gainNode) return;
+
+            const now = audioContext.currentTime;
+            const selectionDuration = selectionEnd - selectionStart;
+
+            // Schedule grains ahead of time
+            while (layer.nextGrainTime < now + 0.2) { // Schedule 200ms ahead
+                createGrain(layer, selectionStart, selectionEnd, layer.nextGrainTime);
+
+                // Calculate spacing based on speed (pitch-preserving)
+                const grainSpacing = GRAIN_SIZE * (1 - GRAIN_OVERLAP) / orientationData.speed;
+                layer.nextGrainTime += grainSpacing;
+
+                // Advance playback position
+                layer.playbackPosition += (GRAIN_SIZE / selectionDuration) * orientationData.speed;
+
+                // Loop back to start
+                if (layer.playbackPosition >= 1) {
+                    layer.playbackPosition = layer.playbackPosition % 1;
+                }
+            }
+
+            // Continue scheduling
+            layer.grainScheduleId = setTimeout(() => scheduleGrains(layer, selectionStart, selectionEnd), 50);
+        }
+
+        function createGrain(layer, selectionStart, selectionEnd, startTime) {
+            const selectionDuration = selectionEnd - selectionStart;
+            const offset = selectionStart + (layer.playbackPosition * selectionDuration);
+
+            // Create grain source
+            const grain = audioContext.createBufferSource();
+            grain.buffer = layer.audioBuffer;
+
+            // Envelope for smooth grain (no clicks)
+            const grainEnv = audioContext.createGain();
+            grainEnv.gain.setValueAtTime(0, startTime);
+            grainEnv.gain.linearRampToValueAtTime(0.7, startTime + 0.005);
+            grainEnv.gain.setValueAtTime(0.7, startTime + GRAIN_SIZE - 0.005);
+            grainEnv.gain.linearRampToValueAtTime(0, startTime + GRAIN_SIZE);
+
+            grain.connect(grainEnv);
+            grainEnv.connect(layer.gainNode);
+
+            // Play grain at fixed pitch
+            try {
+                grain.start(startTime, offset, GRAIN_SIZE);
+            } catch (e) {
+                // Ignore scheduling errors
+            }
+        }
+
+        function getMaxSelectionDuration() {
+            let maxDuration = 0;
+            layers.forEach(layer => {
+                if (layer.audioBuffer) {
+                    const selectionDuration =
+                        (layer.selection.end - layer.selection.start) * layer.audioBuffer.duration;
+                    maxDuration = Math.max(maxDuration, selectionDuration);
+                }
+            });
+            return maxDuration;
+        }
+
+        function animatePlayback() {
+            if (!isPlaying) return;
+
+            const elapsed = audioContext.currentTime - playbackStartTime;
+            const maxDuration = getMaxSelectionDuration();
+            const progress = (elapsed * orientationData.speed) % maxDuration / maxDuration;
+
+            updatePlaybackIndicator(progress);
+
+            animationFrameId = requestAnimationFrame(animatePlayback);
+        }
+
+        function updatePlaybackIndicator(progress) {
+            const angle = progress * 360 - 90; // Start at top (0 = top of circle)
+            const radians = (angle * Math.PI) / 180;
+            const x = 150 + 140 * Math.cos(radians);
+            const y = 150 + 140 * Math.sin(radians);
+
+            const dot = document.getElementById('playback-dot');
+            dot.setAttribute('cx', x);
+            dot.setAttribute('cy', y);
+
+            // Update reverb circles
+            const reverbCircles = document.getElementById('reverb-circles');
+            reverbCircles.innerHTML = '';
+
+            const numCircles = Math.floor(orientationData.reverb * 10);
+            for (let i = 0; i < numCircles; i++) {
+                const radius = 130 - (i * 10);
+                const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                circle.setAttribute('cx', '150');
+                circle.setAttribute('cy', '150');
+                circle.setAttribute('r', radius);
+                circle.setAttribute('fill', 'none');
+                circle.setAttribute('stroke', 'rgba(0, 255, 255, 0.2)');
+                circle.setAttribute('stroke-width', '1');
+                reverbCircles.appendChild(circle);
+            }
+        }
+
+        // ============================================================================
+        // DEVICE ORIENTATION
+        // ============================================================================
+
+        let lastOrientationLog = 0;
+        const ORIENTATION_LOG_INTERVAL = 1000; // Log every 1 second
+
+        function handleOrientation(event) {
+            const beta = event.beta || 0;  // Pitch: -180 to 180
+            const gamma = event.gamma || 0; // Roll: -90 to 90
+
+            // Speed control (pitch)
+            // Face up (beta ~0) = 1x
+            // Tilted forward (beta -> 90) = 10x
+            // Tilted back (beta -> -90) = 0.1x
+            const DEAD_ZONE = 5;
+            let speed = 1.0;
+
+            if (beta > DEAD_ZONE) {
+                // Forward tilt: 0 to 90 degrees maps to 1x to 10x
+                speed = 1 + (Math.min(beta, 90) / 90) * 9;
+            } else if (beta < -DEAD_ZONE) {
+                // Backward tilt: 0 to -90 degrees maps to 1x to 0.1x
+                speed = Math.max(0.1, 1 + (Math.max(beta, -90) / 90) * 0.9);
+            }
+
+            orientationData.speed = speed;
+
+            // Reverb control (roll)
+            // Centered (gamma ~0) = 0 reverb
+            // Tilted right (gamma -> 90) = max reverb
+            let reverb = 0;
+
+            if (Math.abs(gamma) > DEAD_ZONE) {
+                reverb = Math.min(Math.abs(gamma) / 90, 1);
+            }
+
+            orientationData.reverb = reverb;
+
+            // Update debug display
+            document.getElementById('debug-beta').textContent = `β: ${beta.toFixed(1)}°`;
+            document.getElementById('debug-gamma').textContent = `γ: ${gamma.toFixed(1)}°`;
+            document.getElementById('debug-speed').textContent = `Speed: ${speed.toFixed(2)}x`;
+            document.getElementById('debug-reverb').textContent = `Reverb: ${reverb.toFixed(2)}`;
+
+            // Debug logging (throttled)
+            const now = Date.now();
+            if (now - lastOrientationLog > ORIENTATION_LOG_INTERVAL) {
+                console.log(`Orientation: β=${beta.toFixed(1)}° γ=${gamma.toFixed(1)}° → speed=${speed.toFixed(2)}x reverb=${reverb.toFixed(2)}`);
+                lastOrientationLog = now;
+            }
+
+            // Update active playback
+            if (isPlaying) {
+                updatePlaybackParameters();
+            }
+        }
+
+        function updatePlaybackParameters() {
+            // Update reverb dry/wet mix in real-time
+            // Speed is handled automatically by grain scheduling
+            layers.forEach(layer => {
+                if (layer.dryGain) {
+                    layer.dryGain.gain.setValueAtTime(
+                        1 - orientationData.reverb,
+                        audioContext.currentTime
+                    );
+                }
+                if (layer.wetGain) {
+                    layer.wetGain.gain.setValueAtTime(
+                        orientationData.reverb,
+                        audioContext.currentTime
+                    );
+                }
+            });
+        }
+
+        // ============================================================================
+        // REVERB IMPULSE GENERATION
+        // ============================================================================
+
+        function createReverbImpulse() {
+            const sampleRate = audioContext.sampleRate;
+            const length = sampleRate * 2; // 2 second reverb
+            const impulse = audioContext.createBuffer(2, length, sampleRate);
+            const left = impulse.getChannelData(0);
+            const right = impulse.getChannelData(1);
+
+            for (let i = 0; i < length; i++) {
+                const decay = Math.exp(-i / (sampleRate * 0.5));
+                left[i] = (Math.random() * 2 - 1) * decay;
+                right[i] = (Math.random() * 2 - 1) * decay;
+            }
+
+            return impulse;
+        }
+
+        // ============================================================================
+        // UI HANDLERS
+        // ============================================================================
+
+        function updateToolbarState() {
+            const hasAudio = layers.some(l => l.audioBuffer !== null);
+            const canAddLayer = layers.length < MAX_LAYERS && hasAudio;
+
+            document.getElementById('play-btn').disabled = !hasAudio;
+            document.getElementById('add-layer-btn').disabled = !canAddLayer;
+            document.getElementById('nuke-btn').disabled = !hasAudio;
+        }
+
+        // Event Listeners
+        document.getElementById('record-btn').addEventListener('click', () => {
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                stopRecording();
+            } else {
+                if (layers.length === 0 || layers[0].audioBuffer) {
+                    createLayer(); // Create empty layer for recording
+                }
+                currentRecordingLayer = null;
+                startRecording();
+            }
+        });
+
+        document.getElementById('play-btn').addEventListener('click', togglePlayback);
+
+        document.getElementById('add-layer-btn').addEventListener('click', () => {
+            createLayer();
+            currentRecordingLayer = null;
+            startRecording();
+        });
+
+        document.getElementById('nuke-btn').addEventListener('click', nukeAllLayers);
+
+        document.getElementById('modal-cancel').addEventListener('click', () => {
+            document.getElementById('modal-overlay').classList.remove('active');
+        });
+
+        document.getElementById('modal-confirm').addEventListener('click', () => {
+            stopPlayback();
+
+            // Clear all layers
+            const container = document.getElementById('layers-container');
+            container.innerHTML = '';
+            layers = [];
+
+            // Create fresh empty layer
+            createLayer();
+
+            document.getElementById('modal-overlay').classList.remove('active');
+            updateToolbarState();
+        });
+
+        // Window resize handler
+        window.addEventListener('resize', () => {
+            adjustLayerHeights();
+        });
+
+        // Enable orientation button handler
+        document.getElementById('enable-orientation-btn').addEventListener('click', async () => {
+            await requestOrientationPermission();
+        });
+
+        // ============================================================================
+        // STARTUP
+        // ============================================================================
+
+        window.addEventListener('load', init);
+    </script>
+</body>
+</html>
