@@ -801,6 +801,9 @@
                 }, { passive: false });
             });
 
+            let lastUpdateTime = 0;
+            const UPDATE_THROTTLE = 100; // ms - throttle playback restarts
+
             overlay.addEventListener('touchmove', (e) => {
                 if (!activeHandle) return;
                 e.preventDefault();
@@ -825,6 +828,9 @@
                 }
 
                 updateSelectionUI(layer, overlay);
+
+                // Note: Selection changes are automatically picked up by the granular scheduler
+                // which reads layer.selection on each grain, so no manual restart needed
             }, { passive: false });
 
             overlay.addEventListener('touchend', (e) => {
@@ -832,12 +838,7 @@
                     e.preventDefault();
                     e.stopPropagation();
                     activeHandle = null;
-
-                    // If playing, restart playback with new selection
-                    if (isPlaying) {
-                        stopPlayback();
-                        startPlayback();
-                    }
+                    // Selection changes are picked up automatically by granular scheduler
                 }
             }, { passive: false });
         }
@@ -1275,10 +1276,6 @@
         }
 
         function scheduleLayerPlayback(layer, loopDuration) {
-            const selectionStart = layer.selection.start * layer.audioBuffer.duration;
-            const selectionEnd = layer.selection.end * layer.audioBuffer.duration;
-            const selectionDuration = selectionEnd - selectionStart;
-
             // Create gain nodes for this layer
             const layerGain = audioContext.createGain();
             layerGain.gain.value = layer.volume;
@@ -1301,18 +1298,22 @@
             layer.gainNode = layerGain;
             layer.dryGain = dryGain;
             layer.wetGain = wetGain;
-            layer.playbackPosition = 0; // Position within selection (0 to 1)
+            layer.playbackPosition = 0; // Position in seconds within selection
             layer.nextGrainTime = audioContext.currentTime;
             layer.grainScheduleId = null;
 
-            // Start granular playback
-            scheduleGrains(layer, selectionStart, selectionEnd);
+            // Start granular playback (reads selection dynamically)
+            scheduleGrains(layer);
         }
 
-        function scheduleGrains(layer, selectionStart, selectionEnd) {
+        function scheduleGrains(layer) {
             if (!isPlaying || !layer.gainNode) return;
 
             const now = audioContext.currentTime;
+
+            // Read selection dynamically (allows live updates during playback)
+            const selectionStart = layer.selection.start * layer.audioBuffer.duration;
+            const selectionEnd = layer.selection.end * layer.audioBuffer.duration;
             const selectionDuration = selectionEnd - selectionStart;
 
             // Schedule grains ahead of time
@@ -1333,8 +1334,8 @@
                 }
             }
 
-            // Continue scheduling
-            layer.grainScheduleId = setTimeout(() => scheduleGrains(layer, selectionStart, selectionEnd), 50);
+            // Continue scheduling (will re-read selection next time)
+            layer.grainScheduleId = setTimeout(() => scheduleGrains(layer), 50);
         }
 
         function createGrain(layer, selectionStart, selectionEnd, startTime) {
