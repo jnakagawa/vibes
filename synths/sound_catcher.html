@@ -542,8 +542,17 @@
 
                 console.log('Microphone access granted');
 
-                // Request orientation permission automatically
-                await requestOrientationPermission();
+                // Try to request orientation (may fail if not separate gesture on iOS)
+                const orientationGranted = await requestOrientationPermission();
+
+                // If orientation failed, user can still use the app without tilt controls
+                if (!orientationGranted) {
+                    console.log('ℹ️ Tilt controls not available - continuing without orientation');
+                    // Show brief notification
+                    setTimeout(() => {
+                        alert('Tilt controls unavailable - playback speed and reverb controls will not work. The looper will still function normally.');
+                    }, 500);
+                }
 
                 isInitialized = true;
                 return true;
