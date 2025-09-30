@@ -331,20 +331,22 @@
             color: #ff0;
         }
 
-        #modal-overlay {
+        #modal-overlay,
+        #permissions-overlay {
             position: fixed;
             top: 0;
             left: 0;
             right: 0;
             bottom: 0;
-            background: rgba(0, 0, 0, 0.8);
+            background: rgba(0, 0, 0, 0.9);
             display: none;
             align-items: center;
             justify-content: center;
-            z-index: 200;
+            z-index: 2000;
         }
 
-        #modal-overlay.active {
+        #modal-overlay.active,
+        #permissions-overlay.active {
             display: flex;
         }
 
@@ -442,6 +444,10 @@
         </div>
     </div>
 
+    <div id="permissions-overlay" class="active">
+        <button class="modal-button primary" id="request-mic-btn" style="font-size: 16px; padding: 16px 32px;">Enable Microphone</button>
+    </div>
+
     <script>
         // ============================================================================
         // GLOBAL STATE
@@ -517,51 +523,16 @@
         }
 
         async function requestPermissions() {
+            // Permissions are now handled by the overlay on first load
+            // This function just ensures init has happened
             if (isInitialized) return true;
 
-            try {
-                // Ensure audioContext is initialized before requesting permissions
-                if (!audioContext) {
-                    await init();
-                }
-
-                console.log('Requesting microphone permission...');
-                debugLog('debug-mic', 'Mic: requesting...', 'debug-line debug-warning');
-
-                // Request microphone permission (must be triggered by user gesture)
-                mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
-                // Setup media recorder
-                mediaRecorder = new MediaRecorder(mediaStream);
-                mediaRecorder.ondataavailable = (e) => {
-                    if (e.data.size > 0) {
-                        recordingChunks.push(e.data);
-                    }
-                };
-                mediaRecorder.onstop = handleRecordingComplete;
-
-                console.log('Microphone access granted');
-
-                // Try to request orientation (may fail if not separate gesture on iOS)
-                const orientationGranted = await requestOrientationPermission();
-
-                // If orientation failed, user can still use the app without tilt controls
-                if (!orientationGranted) {
-                    console.log('ℹ️ Tilt controls not available - continuing without orientation');
-                    // Show brief notification
-                    setTimeout(() => {
-                        alert('Tilt controls unavailable - playback speed and reverb controls will not work. The looper will still function normally.');
-                    }, 500);
-                }
-
-                isInitialized = true;
-                return true;
-            } catch (error) {
-                console.error('Permission request failed:', error);
-                debugLog('debug-mic', 'Mic: ✗ denied', 'debug-line debug-error');
-                alert('Microphone access is required to record. Please grant permission and try again.');
-                return false;
+            // Ensure audioContext is initialized
+            if (!audioContext) {
+                await init();
             }
+
+            return isInitialized;
         }
 
         async function requestOrientationPermission() {
@@ -906,10 +877,7 @@
         // ============================================================================
 
         async function startRecording() {
-            // Request all permissions on first recording (user gesture required)
-            const hasAccess = await requestPermissions();
-            if (!hasAccess) return;
-
+            // Permissions are handled by the overlay now
             try {
                 recordingChunks = [];
                 recordingStartTime = Date.now();
@@ -1536,12 +1504,61 @@
             document.getElementById('nuke-btn').disabled = !hasAudio;
         }
 
+        // Permission overlay handlers
+        document.getElementById('request-mic-btn').addEventListener('click', async () => {
+            try {
+                // Ensure audioContext is initialized first
+                if (!audioContext) {
+                    await init();
+                }
+
+                // Request microphone
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaStream = stream;
+
+                // Setup media recorder
+                mediaRecorder = new MediaRecorder(mediaStream);
+                mediaRecorder.ondataavailable = (e) => {
+                    if (e.data.size > 0) {
+                        recordingChunks.push(e.data);
+                    }
+                };
+                mediaRecorder.onstop = handleRecordingComplete;
+
+                // Update button for orientation request
+                document.getElementById('request-mic-btn').textContent = 'Enable Tilt';
+                document.getElementById('request-mic-btn').id = 'request-orientation-btn';
+
+                // Orientation button handler
+                document.getElementById('request-orientation-btn').addEventListener('click', async () => {
+                    const granted = await requestOrientationPermission();
+                    document.getElementById('permissions-overlay').classList.remove('active');
+                    isInitialized = true;
+
+                    if (!granted) {
+                        setTimeout(() => {
+                            alert('Tilt controls could not be enabled. You can still use the looper normally.');
+                        }, 300);
+                    }
+                });
+
+            } catch (error) {
+                console.error('Permission error:', error);
+                // Don't show alert if permissions were actually granted
+                // Keep overlay visible so user can try again
+            }
+        });
+
         // Event Listeners
         document.getElementById('record-btn').addEventListener('click', () => {
             if (mediaRecorder && mediaRecorder.state === 'recording') {
                 stopRecording();
             } else {
-                // Recording completion will create layer with audio - no empty layer needed
+                // Check if initialized
+                if (!isInitialized || !mediaRecorder) {
+                    alert('Please complete the permission setup first.');
+                    return;
+                }
                 currentRecordingLayer = null;
                 startRecording();
             }
