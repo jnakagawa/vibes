@@ -482,9 +482,6 @@
             convolver = audioContext.createConvolver();
             convolver.buffer = createReverbImpulse();
 
-            // Create initial empty layer
-            createLayer();
-
             console.log('Sound Catcher UI initialized');
         }
 
@@ -612,11 +609,15 @@
             layers.push(layer);
             renderLayer(layer, layerIndex);
             updateToolbarState();
+            adjustLayerHeights(); // Resize all layers to fit
 
             return layer;
         }
 
         function renderLayer(layer, index) {
+            // Only render layers that have audio
+            if (!layer.audioBuffer) return;
+
             const container = document.getElementById('layers-container');
             const layerDiv = document.createElement('div');
             layerDiv.className = 'layer';
@@ -630,39 +631,6 @@
             canvas.width = window.innerWidth - 60;
             canvas.height = 150;
             canvasContainer.appendChild(canvas);
-
-            // Axes (only show on empty layers)
-            if (!layer.audioBuffer) {
-                const axisContainer = document.createElement('div');
-                axisContainer.className = 'axis-container';
-
-                const axisY = document.createElement('div');
-                axisY.className = 'axis-y';
-                axisY.innerHTML = `
-                    <div class="axis-y-label">10kHz</div>
-                    <div class="axis-y-label">5kHz</div>
-                    <div class="axis-y-label">1kHz</div>
-                    <div class="axis-y-label">100Hz</div>
-                    <div class="axis-y-label">40Hz</div>
-                `;
-
-                const axisX = document.createElement('div');
-                axisX.className = 'axis-x';
-                axisX.innerHTML = `
-                    <div class="axis-x-label">0s</div>
-                    <div class="axis-x-label">15s</div>
-                    <div class="axis-x-label">30s</div>
-                `;
-
-                axisContainer.appendChild(axisY);
-                axisContainer.appendChild(axisX);
-                canvasContainer.appendChild(axisContainer);
-
-                const emptyState = document.createElement('div');
-                emptyState.className = 'empty-state';
-                emptyState.textContent = index === 0 ? 'Tap Record to Begin' : 'Tap Add Layer to Record';
-                canvasContainer.appendChild(emptyState);
-            }
 
             // Selection overlay
             const selectionOverlay = document.createElement('div');
@@ -744,13 +712,20 @@
             const container = document.getElementById('layers-container');
             const containerHeight = window.innerHeight - 80; // Minus toolbar
             const layerDivs = container.querySelectorAll('.layer');
-            const layerHeight = Math.floor(containerHeight / Math.max(layers.length, 1));
+
+            // Calculate height per layer (only count layers with audio)
+            const numLayersWithAudio = layers.filter(l => l.audioBuffer).length;
+            if (numLayersWithAudio === 0) return;
+
+            const layerHeight = Math.max(120, Math.floor(containerHeight / numLayersWithAudio));
 
             layerDivs.forEach((div, idx) => {
                 const canvasContainer = div.querySelector('.layer-canvas-container');
                 canvasContainer.style.height = `${layerHeight}px`;
 
                 const canvas = div.querySelector('canvas');
+                // Update canvas dimensions to match container
+                canvas.width = window.innerWidth - 60;
                 canvas.height = layerHeight;
 
                 // Redraw if layer has data
@@ -895,19 +870,8 @@
 
                     currentRecordingLayer = null;
                 } else {
-                    // New recording for first layer or adding
-                    if (layers[0] && !layers[0].audioBuffer) {
-                        // First layer is empty, populate it
-                        layers[0].audioBuffer = audioBuffer;
-                        layers[0].selection = { start: 0, end: 1 };
-
-                        const layerDiv = document.getElementById(`layer-${layers[0].id}`);
-                        layerDiv.remove();
-                        renderLayer(layers[0], 0);
-                    } else {
-                        // Add new layer
-                        createLayer(audioBuffer);
-                    }
+                    // Add new layer with audio
+                    createLayer(audioBuffer);
                 }
 
                 updateToolbarState();
@@ -930,7 +894,12 @@
             ctx.fillStyle = '#0a0a0a';
             ctx.fillRect(0, 0, width, height);
 
-            if (!layer.audioBuffer) return;
+            if (!layer.audioBuffer) {
+                console.log('Cannot draw spectrogram: no audio buffer');
+                return;
+            }
+
+            console.log(`Drawing spectrogram: ${width}x${height}, duration: ${layer.audioBuffer.duration}s`);
 
             // Calculate frequency range bins
             const nyquist = layer.audioBuffer.sampleRate / 2;
@@ -974,97 +943,95 @@
             const freqBins = data[0].length;
 
             // 3D perspective parameters
-            const perspective = 600; // Lower = more dramatic perspective
-            const angleX = 25; // Tilt angle in degrees
-            const angleY = -30; // Rotation angle
-            const scale = 0.8; // Overall scale
-            const depthScale = 0.6; // Height scale for z-axis
+            const perspective = 800; // Perspective strength
+            const angleX = 15; // Slight tilt to see depth
+            const scale = 0.9; // Overall scale
+            const amplitudeScale = 60; // How far amplitude extends in Z
 
-            // Calculate center point for rotation
+            // Calculate center point
             const centerX = width / 2;
             const centerY = height / 2;
 
-            // Pre-calculate sin/cos for rotation
+            // Pre-calculate rotation (just X-axis tilt to see 3D effect)
             const radX = (angleX * Math.PI) / 180;
-            const radY = (angleY * Math.PI) / 180;
             const cosX = Math.cos(radX);
             const sinX = Math.sin(radX);
-            const cosY = Math.cos(radY);
-            const sinY = Math.sin(radY);
 
             // Project 3D point to 2D with perspective
+            // x = time (horizontal), y = frequency (vertical), z = amplitude (depth)
             function project3D(x, y, z) {
-                // Apply rotations
-                const rotatedX = x * cosY - z * sinY;
-                const rotatedZ = x * sinY + z * cosY;
-                const rotatedY = y * cosX - rotatedZ * sinX;
-                const finalZ = y * sinX + rotatedZ * cosX;
+                // Apply X-axis rotation (tilt forward to see depth)
+                const rotatedY = y * cosX - z * sinX;
+                const rotatedZ = y * sinX + z * cosX;
 
                 // Apply perspective
-                const factor = perspective / (perspective + finalZ);
-                const screenX = centerX + rotatedX * factor * scale;
+                const factor = perspective / (perspective + rotatedZ);
+                const screenX = centerX + x * factor * scale;
                 const screenY = centerY + rotatedY * factor * scale;
 
-                return { x: screenX, y: screenY, z: finalZ };
+                return { x: screenX, y: screenY, z: rotatedZ };
             }
 
-            // Generate mesh grid
-            const meshWidth = width * 0.6;
-            const meshHeight = height * 0.4;
+            // Mesh dimensions
+            const meshWidth = width * 0.7;
+            const meshHeight = height * 0.6;
 
             // Draw mesh from back to front for proper occlusion
-            for (let t = timeSteps - 1; t >= 0; t--) {
-                const freqData = data[t];
-                if (!freqData) continue;
-
-                for (let f = 0; f < freqBins - 1; f++) {
-                    // Get magnitude values
-                    const mag00 = freqData[f] || 0;
-                    const mag01 = freqData[f + 1] || 0;
-                    const mag10 = t > 0 ? (data[t - 1][f] || 0) : 0;
-                    const mag11 = t > 0 ? (data[t - 1][f + 1] || 0) : 0;
+            for (let f = freqBins - 1; f >= 0; f--) {
+                for (let t = 0; t < timeSteps - 1; t++) {
+                    // Get magnitude values at 4 corners of quad
+                    const mag00 = data[t][f] || 0;
+                    const mag10 = data[t + 1][f] || 0;
+                    const mag01 = f > 0 ? (data[t][f - 1] || 0) : 0;
+                    const mag11 = f > 0 ? (data[t + 1][f - 1] || 0) : 0;
 
                     // Calculate 3D positions
+                    // X = time (left to right)
                     const x0 = (t / timeSteps) * meshWidth - meshWidth / 2;
-                    const x1 = ((t - 1) / timeSteps) * meshWidth - meshWidth / 2;
-                    const y0 = (f / freqBins) * meshHeight - meshHeight / 2;
-                    const y1 = ((f + 1) / freqBins) * meshHeight - meshHeight / 2;
+                    const x1 = ((t + 1) / timeSteps) * meshWidth - meshWidth / 2;
 
-                    const z00 = -mag00 * meshHeight * depthScale;
-                    const z01 = -mag01 * meshHeight * depthScale;
-                    const z10 = -mag10 * meshHeight * depthScale;
-                    const z11 = -mag11 * meshHeight * depthScale;
+                    // Y = frequency (bottom to top)
+                    const y0 = (f / freqBins) * meshHeight - meshHeight / 2;
+                    const y1 = ((f - 1) / freqBins) * meshHeight - meshHeight / 2;
+
+                    // Z = amplitude (depth toward viewer)
+                    const z00 = mag00 * amplitudeScale;
+                    const z10 = mag10 * amplitudeScale;
+                    const z01 = mag01 * amplitudeScale;
+                    const z11 = mag11 * amplitudeScale;
 
                     // Project to 2D
                     const p00 = project3D(x0, y0, z00);
-                    const p01 = project3D(x0, y1, z01);
                     const p10 = project3D(x1, y0, z10);
+                    const p01 = project3D(x0, y1, z01);
                     const p11 = project3D(x1, y1, z11);
 
-                    // Draw quad as two triangles with colors
-                    const avgMag = (mag00 + mag01 + mag10 + mag11) / 4;
+                    // Color based on average magnitude
+                    const avgMag = (mag00 + mag10 + mag01 + mag11) / 4;
                     const color = getHeatmapColor(avgMag);
-                    const brightness = 0.5 + (p00.z / perspective) * 0.5; // Depth-based shading
+
+                    // Depth-based brightness
+                    const avgZ = (p00.z + p10.z + p01.z + p11.z) / 4;
+                    const brightness = 0.4 + (avgZ / (perspective * 0.5)) * 0.6;
 
                     ctx.fillStyle = `rgb(${color.r * brightness}, ${color.g * brightness}, ${color.b * brightness})`;
-                    ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
+                    ctx.strokeStyle = 'rgba(0, 0, 0, 0.2)';
                     ctx.lineWidth = 0.5;
 
-                    // Draw first triangle
+                    // Draw quad as two triangles
                     ctx.beginPath();
                     ctx.moveTo(p00.x, p00.y);
-                    ctx.lineTo(p01.x, p01.y);
                     ctx.lineTo(p10.x, p10.y);
+                    ctx.lineTo(p11.x, p11.y);
                     ctx.closePath();
                     ctx.fill();
                     ctx.stroke();
 
-                    // Draw second triangle (only if not first time slice)
-                    if (t > 0) {
+                    if (f > 0) {
                         ctx.beginPath();
-                        ctx.moveTo(p01.x, p01.y);
+                        ctx.moveTo(p00.x, p00.y);
                         ctx.lineTo(p11.x, p11.y);
-                        ctx.lineTo(p10.x, p10.y);
+                        ctx.lineTo(p01.x, p01.y);
                         ctx.closePath();
                         ctx.fill();
                         ctx.stroke();
