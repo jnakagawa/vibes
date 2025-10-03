@@ -478,6 +478,8 @@
         let isPlaying = false;
         let playbackStartTime = 0;
         let animationFrameId = null;
+        let lastVisualPosition = 0;
+        let lastPositionUpdateTime = 0;
 
         let orientationData = {
             speed: 1.0,  // 0.1 to 10
@@ -1223,6 +1225,10 @@
         function stopPlayback() {
             isPlaying = false;
 
+            // Reset visual position tracking
+            lastVisualPosition = 0;
+            lastPositionUpdateTime = 0;
+
             // Stop all grain scheduling and disconnect nodes
             layers.forEach(layer => {
                 if (layer.grainScheduleId) {
@@ -1376,11 +1382,56 @@
         function animatePlayback() {
             if (!isPlaying) return;
 
-            const elapsed = audioContext.currentTime - playbackStartTime;
-            const maxDuration = getMaxSelectionDuration();
-            const progress = (elapsed * orientationData.speed) % maxDuration / maxDuration;
+            // Get actual playback position from layers
+            let totalPosition = 0;
+            let layerCount = 0;
+            layers.forEach(layer => {
+                if (layer.audioBuffer && layer.playbackPosition !== undefined) {
+                    totalPosition += layer.playbackPosition;
+                    layerCount++;
+                }
+            });
 
-            updatePlaybackIndicator(progress);
+            const targetPosition = layerCount > 0 ? totalPosition / layerCount : 0;
+            const now = performance.now();
+
+            // Smooth interpolation between position updates
+            // Calculate expected progress based on current speed
+            if (lastPositionUpdateTime > 0) {
+                const deltaTime = (now - lastPositionUpdateTime) / 1000; // seconds
+                const maxDuration = getMaxSelectionDuration();
+
+                if (maxDuration > 0) {
+                    // How much we should have progressed based on speed
+                    const expectedDelta = (deltaTime * orientationData.speed) / maxDuration;
+
+                    // Interpolate smoothly toward target position
+                    lastVisualPosition += expectedDelta;
+
+                    // Handle loop wraparound
+                    if (lastVisualPosition >= 1) {
+                        lastVisualPosition = lastVisualPosition % 1;
+                    }
+
+                    // Gently pull toward actual position to avoid drift
+                    const drift = targetPosition - lastVisualPosition;
+                    // Handle wraparound in drift calculation
+                    let adjustedDrift = drift;
+                    if (Math.abs(drift) > 0.5) {
+                        adjustedDrift = drift > 0 ? drift - 1 : drift + 1;
+                    }
+                    lastVisualPosition += adjustedDrift * 0.1; // 10% correction per frame
+
+                    if (lastVisualPosition < 0) lastVisualPosition += 1;
+                    if (lastVisualPosition >= 1) lastVisualPosition -= 1;
+                }
+            } else {
+                lastVisualPosition = targetPosition;
+            }
+
+            lastPositionUpdateTime = now;
+
+            updatePlaybackIndicator(lastVisualPosition);
 
             animationFrameId = requestAnimationFrame(animatePlayback);
         }
