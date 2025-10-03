@@ -403,8 +403,10 @@
             <div class="debug-line" id="debug-spectrogram">Spectro: --</div>
             <div class="debug-line" id="debug-beta">β: --</div>
             <div class="debug-line" id="debug-gamma">γ: --</div>
+            <div class="debug-line" id="debug-alpha">α: --</div>
             <div class="debug-line" id="debug-speed">Speed: 1.0x</div>
             <div class="debug-line" id="debug-reverb">Reverb: 0.0</div>
+            <div class="debug-line" id="debug-filter">Filter: none</div>
             <button id="enable-orientation-btn">Enable Tilt Controls</button>
         </div>
         -->
@@ -414,6 +416,7 @@
         <svg id="playback-indicator" width="300" height="300" viewBox="0 0 300 300">
             <g id="reverb-circles"></g>
             <circle cx="150" cy="150" r="140" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="2"/>
+            <g id="yaw-indicator"></g>
             <circle id="playback-dot" cx="150" cy="10" r="8" fill="#00ffff"/>
         </svg>
 
@@ -477,7 +480,9 @@
 
         let orientationData = {
             speed: 1.0,  // 0.1 to 10
-            reverb: 0.0  // 0 to 1
+            reverb: 0.0, // 0 to 1
+            filterType: 'allpass', // 'lowpass', 'highpass', 'allpass'
+            filterFreq: 1000 // Hz
         };
 
         let convolver;
@@ -1227,6 +1232,10 @@
                     layer.gainNode.disconnect();
                     layer.gainNode = null;
                 }
+                if (layer.filterNode) {
+                    layer.filterNode.disconnect();
+                    layer.filterNode = null;
+                }
                 if (layer.dryGain) {
                     layer.dryGain.disconnect();
                     layer.dryGain = null;
@@ -1258,6 +1267,12 @@
             const layerGain = audioContext.createGain();
             layerGain.gain.value = layer.volume;
 
+            // Create filter node
+            const filterNode = audioContext.createBiquadFilter();
+            filterNode.type = orientationData.filterType;
+            filterNode.frequency.value = orientationData.filterFreq;
+            filterNode.Q.value = 1.0; // Standard Q value
+
             // Apply reverb with dry/wet mix
             const dryGain = audioContext.createGain();
             const wetGain = audioContext.createGain();
@@ -1265,8 +1280,10 @@
             dryGain.gain.value = 1 - orientationData.reverb;
             wetGain.gain.value = orientationData.reverb;
 
-            layerGain.connect(dryGain);
-            layerGain.connect(convolver);
+            // Audio routing: layer gain -> filter -> dry/wet split -> master
+            layerGain.connect(filterNode);
+            filterNode.connect(dryGain);
+            filterNode.connect(convolver);
             convolver.connect(wetGain);
 
             dryGain.connect(masterGain);
@@ -1274,6 +1291,7 @@
 
             // Store nodes and playback state
             layer.gainNode = layerGain;
+            layer.filterNode = filterNode;
             layer.dryGain = dryGain;
             layer.wetGain = wetGain;
             layer.playbackPosition = 0; // Position in seconds within selection
@@ -1394,6 +1412,73 @@
             }
         }
 
+        function updateYawIndicator(yaw) {
+            const yawGroup = document.getElementById('yaw-indicator');
+            if (!yawGroup) return;
+
+            // Clear previous indicator
+            yawGroup.innerHTML = '';
+
+            const FILTER_DEAD_ZONE = 10;
+
+            // Only show if outside dead zone
+            if (Math.abs(yaw) <= FILTER_DEAD_ZONE) return;
+
+            const centerX = 150;
+            const centerY = 150;
+            const radius = 145;
+
+            // Convert yaw to SVG coordinates
+            // 0° = top (12 o'clock), positive = clockwise
+            const startAngle = -90; // Top of circle in SVG coords
+            const endAngle = startAngle + yaw;
+
+            // Calculate arc path
+            const startRad = (startAngle * Math.PI) / 180;
+            const endRad = (endAngle * Math.PI) / 180;
+
+            const startX = centerX + radius * Math.cos(startRad);
+            const startY = centerY + radius * Math.sin(startRad);
+            const endX = centerX + radius * Math.cos(endRad);
+            const endY = centerY + radius * Math.sin(endRad);
+
+            // Determine if we should use large arc flag
+            const largeArcFlag = Math.abs(yaw) > 180 ? 1 : 0;
+            const sweepFlag = yaw > 0 ? 1 : 0;
+
+            // Create arc path
+            const arcPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            const pathData = `M ${startX} ${startY} A ${radius} ${radius} 0 ${largeArcFlag} ${sweepFlag} ${endX} ${endY}`;
+            arcPath.setAttribute('d', pathData);
+            arcPath.setAttribute('fill', 'none');
+            arcPath.setAttribute('stroke', 'rgba(255, 51, 51, 0.6)');
+            arcPath.setAttribute('stroke-width', '4');
+            arcPath.setAttribute('stroke-linecap', 'round');
+            yawGroup.appendChild(arcPath);
+
+            // Create arrow at end position
+            const arrowSize = 12;
+            const arrowAngle = endAngle * Math.PI / 180;
+
+            // Arrow points radially outward
+            const arrowTipX = centerX + (radius + 8) * Math.cos(arrowAngle);
+            const arrowTipY = centerY + (radius + 8) * Math.sin(arrowAngle);
+
+            // Calculate perpendicular points for arrow base
+            const perpAngle1 = arrowAngle + (2.5 * Math.PI / 180);
+            const perpAngle2 = arrowAngle - (2.5 * Math.PI / 180);
+
+            const baseX1 = centerX + (radius - 4) * Math.cos(perpAngle1);
+            const baseY1 = centerY + (radius - 4) * Math.sin(perpAngle1);
+            const baseX2 = centerX + (radius - 4) * Math.cos(perpAngle2);
+            const baseY2 = centerY + (radius - 4) * Math.sin(perpAngle2);
+
+            const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+            arrow.setAttribute('points', `${arrowTipX},${arrowTipY} ${baseX1},${baseY1} ${baseX2},${baseY2}`);
+            arrow.setAttribute('fill', '#ff3333');
+            yawGroup.appendChild(arrow);
+        }
+
         // ============================================================================
         // DEVICE ORIENTATION
         // ============================================================================
@@ -1402,8 +1487,9 @@
         const ORIENTATION_LOG_INTERVAL = 1000; // Log every 1 second
 
         function handleOrientation(event) {
-            const beta = event.beta || 0;  // Pitch: -180 to 180
+            const beta = event.beta || 0;   // Pitch: -180 to 180
             const gamma = event.gamma || 0; // Roll: -90 to 90
+            const alpha = event.alpha || 0; // Yaw: 0 to 360
 
             // Speed control (pitch) - full range mapping
             // Face up (beta ~0) = 1x
@@ -1435,18 +1521,54 @@
 
             orientationData.reverb = reverb;
 
+            // Filter control (yaw)
+            // Convert alpha to -180 to 180 range and reverse so arrow matches phone direction
+            let yaw = alpha;
+            if (yaw > 180) yaw -= 360;
+            yaw = -yaw; // Reverse so positive yaw = phone pointing right
+
+            const FILTER_DEAD_ZONE = 10;
+            let filterType = 'allpass';
+            let filterFreq = 1000;
+
+            if (yaw < -FILTER_DEAD_ZONE) {
+                // Yaw left: Low-pass filter
+                // -10° to -180° maps to 20kHz to 200Hz
+                filterType = 'lowpass';
+                const t = (Math.abs(yaw) - FILTER_DEAD_ZONE) / (180 - FILTER_DEAD_ZONE); // 0 to 1
+                filterFreq = 20000 * Math.pow(0.01, t); // Exponential: 20kHz -> 200Hz
+            } else if (yaw > FILTER_DEAD_ZONE) {
+                // Yaw right: High-pass filter
+                // +10° to +180° maps to 20Hz to 2kHz
+                filterType = 'highpass';
+                const t = (yaw - FILTER_DEAD_ZONE) / (180 - FILTER_DEAD_ZONE); // 0 to 1
+                filterFreq = 20 * Math.pow(100, t); // Exponential: 20Hz -> 2kHz
+            }
+
+            orientationData.filterType = filterType;
+            orientationData.filterFreq = filterFreq;
+
             // Update debug display
             debugLog('debug-beta', `β: ${beta.toFixed(1)}°`);
             debugLog('debug-gamma', `γ: ${gamma.toFixed(1)}°`);
+            debugLog('debug-alpha', `α: ${yaw.toFixed(1)}°`);
             debugLog('debug-speed', `Speed: ${speed.toFixed(2)}x`);
             debugLog('debug-reverb', `Reverb: ${reverb.toFixed(2)}`);
+
+            const filterDisplay = filterType === 'allpass'
+                ? 'none'
+                : `${filterType} ${filterFreq.toFixed(0)}Hz`;
+            debugLog('debug-filter', `Filter: ${filterDisplay}`);
 
             // Debug logging (throttled)
             const now = Date.now();
             if (now - lastOrientationLog > ORIENTATION_LOG_INTERVAL) {
-                console.log(`Orientation: β=${beta.toFixed(1)}° γ=${gamma.toFixed(1)}° → speed=${speed.toFixed(2)}x reverb=${reverb.toFixed(2)}`);
+                console.log(`Orientation: β=${beta.toFixed(1)}° γ=${gamma.toFixed(1)}° α=${yaw.toFixed(1)}° → speed=${speed.toFixed(2)}x reverb=${reverb.toFixed(2)} filter=${filterType}@${filterFreq.toFixed(0)}Hz`);
                 lastOrientationLog = now;
             }
+
+            // Update yaw indicator visualization
+            updateYawIndicator(yaw);
 
             // Update active playback
             if (isPlaying) {
@@ -1455,7 +1577,7 @@
         }
 
         function updatePlaybackParameters() {
-            // Update reverb dry/wet mix in real-time
+            // Update reverb dry/wet mix and filter in real-time
             // Speed is handled automatically by grain scheduling
             layers.forEach(layer => {
                 if (layer.dryGain) {
@@ -1467,6 +1589,13 @@
                 if (layer.wetGain) {
                     layer.wetGain.gain.setValueAtTime(
                         orientationData.reverb,
+                        audioContext.currentTime
+                    );
+                }
+                if (layer.filterNode) {
+                    layer.filterNode.type = orientationData.filterType;
+                    layer.filterNode.frequency.setValueAtTime(
+                        orientationData.filterFreq,
                         audioContext.currentTime
                     );
                 }
