@@ -1544,16 +1544,16 @@
 
             if (yaw < -FILTER_DEAD_ZONE) {
                 // Yaw left: Low-pass filter
-                // -10° to -180° maps to 20kHz to 200Hz
+                // -10° to -180° maps to 10kHz to 40Hz
                 filterType = 'lowpass';
                 const t = (Math.abs(yaw) - FILTER_DEAD_ZONE) / (180 - FILTER_DEAD_ZONE); // 0 to 1
-                filterFreq = 20000 * Math.pow(0.01, t); // Exponential: 20kHz -> 200Hz
+                filterFreq = 10000 * Math.pow(0.004, t); // Exponential: 10kHz -> 40Hz
             } else if (yaw > FILTER_DEAD_ZONE) {
                 // Yaw right: High-pass filter
-                // +10° to +180° maps to 20Hz to 2kHz
+                // +10° to +180° maps to 40Hz to 10kHz
                 filterType = 'highpass';
                 const t = (yaw - FILTER_DEAD_ZONE) / (180 - FILTER_DEAD_ZONE); // 0 to 1
-                filterFreq = 20 * Math.pow(100, t); // Exponential: 20Hz -> 2kHz
+                filterFreq = 40 * Math.pow(250, t); // Exponential: 40Hz -> 10kHz
             }
 
             orientationData.filterType = filterType;
