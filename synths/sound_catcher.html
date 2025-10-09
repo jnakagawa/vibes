@@ -1021,6 +1021,13 @@
             // Draw 3D mesh
             draw3DSpectrogram(ctx, spectrogramData, width, height);
 
+            // Apply darkening overlay to push spectrogram into background
+            ctx.fillStyle = 'rgba(10, 10, 10, 0.7)'; // Dark semi-transparent overlay
+            ctx.fillRect(0, 0, width, height);
+
+            // Draw amplitude waveform on top
+            drawAmplitudeWaveform(ctx, layer.audioBuffer, width, height);
+
             debugLog('debug-spectrogram', `Spectro: ✓ ${timeSteps}x${freqBins}`);
         }
 
@@ -1126,6 +1133,66 @@
                     }
                 }
             }
+        }
+
+        function drawAmplitudeWaveform(ctx, audioBuffer, width, height) {
+            if (!audioBuffer) return;
+
+            // Get audio data
+            const channelData = audioBuffer.getChannelData(0);
+            const sampleCount = channelData.length;
+            const samplesPerPixel = Math.floor(sampleCount / width);
+
+            // Calculate downsampled envelope
+            const amplitudes = [];
+            for (let x = 0; x < width; x++) {
+                const startSample = x * samplesPerPixel;
+                const endSample = Math.min(startSample + samplesPerPixel, sampleCount);
+
+                // Find peak amplitude in this window
+                let max = 0;
+                for (let i = startSample; i < endSample; i++) {
+                    max = Math.max(max, Math.abs(channelData[i]));
+                }
+                amplitudes.push(max);
+            }
+
+            // Draw waveform
+            const centerY = height / 2;
+            const amplitudeScale = height * 0.35; // Use 35% of height for amplitude range
+
+            ctx.strokeStyle = 'rgba(0, 255, 255, 0.9)'; // Cyan with high opacity
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+
+            // Draw top envelope
+            for (let x = 0; x < amplitudes.length; x++) {
+                const y = centerY - (amplitudes[x] * amplitudeScale);
+                if (x === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+
+            // Draw bottom envelope (mirror)
+            for (let x = amplitudes.length - 1; x >= 0; x--) {
+                const y = centerY + (amplitudes[x] * amplitudeScale);
+                ctx.lineTo(x, y);
+            }
+
+            ctx.closePath();
+            ctx.fillStyle = 'rgba(0, 255, 255, 0.15)'; // Light cyan fill
+            ctx.fill();
+            ctx.stroke();
+
+            // Draw center line
+            ctx.strokeStyle = 'rgba(0, 255, 255, 0.3)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(0, centerY);
+            ctx.lineTo(width, centerY);
+            ctx.stroke();
         }
 
         function performSimpleFFT(samples, outputSize, minBin, maxBin, bufferLength) {
