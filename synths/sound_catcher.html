@@ -473,6 +473,7 @@
         let currentRecordingLayer = null;
         let mediaStream = null;
         let isInitialized = false;
+        let shouldAutoReconnect = false; // Track if we should auto-reconnect on visibility change
 
         let layers = [];
         let isPlaying = false;
@@ -499,6 +500,14 @@
         // INITIALIZATION
         // ============================================================================
 
+        // Convert linear slider value (0-100) to logarithmic gain (0-1)
+        // Human hearing is logarithmic, so this provides better volume control
+        function sliderToGain(sliderValue) {
+            if (sliderValue === 0) return 0;
+            // Exponential curve: 50% slider = -20dB, 75% = -10dB, 100% = 0dB
+            return Math.pow(10, ((sliderValue / 100) - 1) * 2);
+        }
+
         // Helper for debug logging (safe if debug overlay is commented out)
         function debugLog(elementId, text, className = null) {
             const el = document.getElementById(elementId);
@@ -515,8 +524,9 @@
                     sampleRate: SAMPLE_RATE
                 });
 
-                // Create master gain
+                // Create master gain with reasonable default (0.3 = -10dB)
                 masterGain = audioContext.createGain();
+                masterGain.gain.value = 0.3;
                 masterGain.connect(audioContext.destination);
 
                 // Create convolver for reverb
@@ -612,7 +622,7 @@
             const layer = {
                 id: Date.now() + layerIndex,
                 audioBuffer: audioBuffer,
-                volume: 1.0,
+                volume: sliderToGain(80), // Default to 80% slider position (~0.4 gain)
                 selection: { start: 0, end: 1 }, // Normalized 0-1
                 sourceNode: null,
                 gainNode: null,
@@ -711,12 +721,14 @@
             volumeSlider.type = 'range';
             volumeSlider.min = '0';
             volumeSlider.max = '100';
-            volumeSlider.value = '100';
+            volumeSlider.value = '80'; // Default to 80% (roughly -6dB)
             volumeSlider.className = 'volume-slider';
             volumeSlider.addEventListener('input', (e) => {
-                layer.volume = e.target.value / 100;
+                const sliderValue = parseInt(e.target.value);
+                const gain = sliderToGain(sliderValue);
+                layer.volume = gain;
                 if (layer.gainNode) {
-                    layer.gainNode.gain.setValueAtTime(layer.volume, audioContext.currentTime);
+                    layer.gainNode.gain.setValueAtTime(gain, audioContext.currentTime);
                 }
             });
 
@@ -1765,8 +1777,8 @@
             document.getElementById('nuke-btn').disabled = !hasAudio;
         }
 
-        // Permission overlay handlers
-        document.getElementById('request-mic-btn').addEventListener('click', async () => {
+        // Helper function to setup microphone
+        async function setupMicrophone() {
             try {
                 // Ensure audioContext is initialized first
                 if (!audioContext) {
@@ -1786,6 +1798,23 @@
                 };
                 mediaRecorder.onstop = handleRecordingComplete;
 
+                // Mark that we should auto-reconnect on visibility changes
+                shouldAutoReconnect = true;
+
+                console.log('Microphone setup complete');
+                return true;
+            } catch (error) {
+                console.error('Microphone setup error:', error);
+                shouldAutoReconnect = false;
+                return false;
+            }
+        }
+
+        // Permission overlay handlers
+        document.getElementById('request-mic-btn').addEventListener('click', async () => {
+            const success = await setupMicrophone();
+
+            if (success) {
                 // Update button for orientation request
                 document.getElementById('request-mic-btn').textContent = 'Enable Tilt';
                 document.getElementById('request-mic-btn').id = 'request-orientation-btn';
@@ -1802,11 +1831,6 @@
                         }, 300);
                     }
                 });
-
-            } catch (error) {
-                console.error('Permission error:', error);
-                // Don't show alert if permissions were actually granted
-                // Keep overlay visible so user can try again
             }
         });
 
@@ -1855,6 +1879,41 @@
         // Enable orientation button handler
         document.getElementById('enable-orientation-btn').addEventListener('click', async () => {
             await requestOrientationPermission();
+        });
+
+        // ============================================================================
+        // PAGE VISIBILITY - Stop microphone when app is in background
+        // ============================================================================
+
+        document.addEventListener('visibilitychange', async () => {
+            if (document.hidden) {
+                console.log('Page hidden - stopping microphone access');
+
+                // Stop any active recording
+                if (mediaRecorder && mediaRecorder.state === 'recording') {
+                    console.log('Stopping active recording due to page hide');
+                    stopRecording();
+                }
+
+                // Stop media stream to release microphone
+                if (mediaStream) {
+                    console.log('Stopping media stream tracks');
+                    mediaStream.getTracks().forEach(track => {
+                        track.stop();
+                        console.log(`Stopped track: ${track.kind}`);
+                    });
+                    mediaStream = null;
+                    mediaRecorder = null;
+                }
+            } else {
+                console.log('Page visible again');
+
+                // Auto-reconnect microphone if user had previously granted access
+                if (shouldAutoReconnect && !mediaStream && isInitialized) {
+                    console.log('Auto-reconnecting microphone...');
+                    await setupMicrophone();
+                }
+            }
         });
 
         // ============================================================================
