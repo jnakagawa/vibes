@@ -1669,10 +1669,10 @@
             if (!indicator) return;
 
             // Apply 3D perspective tilt based on device orientation
-            // rotateX = pitch (beta) - forward/backward tilt
+            // rotateX = pitch (beta) - forward/backward tilt (negated to match phone direction)
             // rotateY = roll (gamma) - left/right tilt
             // Combine with existing translate transform
-            indicator.style.transform = `translate(-50%, -50%) perspective(600px) rotateX(${beta}deg) rotateY(${gamma}deg)`;
+            indicator.style.transform = `translate(-50%, -50%) perspective(600px) rotateX(${-beta}deg) rotateY(${gamma}deg)`;
         }
 
         // ============================================================================
