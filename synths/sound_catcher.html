@@ -97,7 +97,7 @@
             position: absolute;
             top: 0;
             left: 0;
-            right: 60px;
+            right: 0;
             bottom: 0;
             pointer-events: none;
         }
@@ -1150,14 +1150,20 @@
         function drawAmplitudeWaveform(ctx, audioBuffer, width, height) {
             if (!audioBuffer) return;
 
+            // Match spectrogram mesh bounds (5% to 95% of width)
+            const meshStartPercent = 0.05;
+            const meshEndPercent = 0.95;
+            const meshWidth = width * (meshEndPercent - meshStartPercent);
+            const meshStartX = width * meshStartPercent;
+
             // Get audio data
             const channelData = audioBuffer.getChannelData(0);
             const sampleCount = channelData.length;
-            const samplesPerPixel = Math.floor(sampleCount / width);
+            const samplesPerPixel = Math.floor(sampleCount / meshWidth);
 
             // Calculate downsampled envelope
             const amplitudes = [];
-            for (let x = 0; x < width; x++) {
+            for (let x = 0; x < meshWidth; x++) {
                 const startSample = x * samplesPerPixel;
                 const endSample = Math.min(startSample + samplesPerPixel, sampleCount);
 
@@ -1177,20 +1183,22 @@
             ctx.lineWidth = 1.5;
             ctx.beginPath();
 
-            // Draw top envelope
+            // Draw top envelope (offset by meshStartX)
             for (let x = 0; x < amplitudes.length; x++) {
+                const screenX = meshStartX + x;
                 const y = centerY - (amplitudes[x] * amplitudeScale);
                 if (x === 0) {
-                    ctx.moveTo(x, y);
+                    ctx.moveTo(screenX, y);
                 } else {
-                    ctx.lineTo(x, y);
+                    ctx.lineTo(screenX, y);
                 }
             }
 
-            // Draw bottom envelope (mirror)
+            // Draw bottom envelope (mirror, offset by meshStartX)
             for (let x = amplitudes.length - 1; x >= 0; x--) {
+                const screenX = meshStartX + x;
                 const y = centerY + (amplitudes[x] * amplitudeScale);
-                ctx.lineTo(x, y);
+                ctx.lineTo(screenX, y);
             }
 
             ctx.closePath();
@@ -1198,12 +1206,12 @@
             ctx.fill();
             ctx.stroke();
 
-            // Draw center line
+            // Draw center line (only in mesh area)
             ctx.strokeStyle = 'rgba(0, 255, 255, 0.3)';
             ctx.lineWidth = 1;
             ctx.beginPath();
-            ctx.moveTo(0, centerY);
-            ctx.lineTo(width, centerY);
+            ctx.moveTo(meshStartX, centerY);
+            ctx.lineTo(meshStartX + meshWidth, centerY);
             ctx.stroke();
         }
 
