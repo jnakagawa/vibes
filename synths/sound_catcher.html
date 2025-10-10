@@ -1664,14 +1664,15 @@
             yawGroup.appendChild(arrow);
         }
 
-        function updateCircleTilt(gamma) {
+        function updateCircleTilt(beta, gamma) {
             const indicator = document.getElementById('playback-indicator');
             if (!indicator) return;
 
-            // Apply 3D perspective tilt based on device roll (gamma)
-            // rotateY = rotates around Y-axis (vertical axis, top to bottom)
+            // Apply 3D perspective tilt based on device orientation
+            // rotateX = pitch (beta) - forward/backward tilt
+            // rotateY = roll (gamma) - left/right tilt
             // Combine with existing translate transform
-            indicator.style.transform = `translate(-50%, -50%) perspective(600px) rotateY(${gamma}deg)`;
+            indicator.style.transform = `translate(-50%, -50%) perspective(600px) rotateX(${beta}deg) rotateY(${gamma}deg)`;
         }
 
         // ============================================================================
@@ -1779,8 +1780,8 @@
             // Update yaw indicator visualization
             updateYawIndicator(yaw);
 
-            // Update circle tilt to match device roll
-            updateCircleTilt(gamma);
+            // Update circle tilt to match device pitch and roll
+            updateCircleTilt(beta, gamma);
 
             // Update active playback
             if (isPlaying) {
