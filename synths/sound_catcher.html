@@ -27,14 +27,13 @@
             height: 100vh;
             display: flex;
             flex-direction: column;
+            position: relative;
         }
 
         #layers-container {
             flex: 1;
-            overflow-y: auto;
-            overflow-x: hidden;
+            overflow: hidden;
             position: relative;
-            padding-bottom: 80px;
         }
 
         .layer {
@@ -47,7 +46,6 @@
         .layer-canvas-container {
             flex: 1;
             position: relative;
-            min-height: 120px;
         }
 
         .layer canvas {
@@ -62,15 +60,24 @@
             display: flex;
             flex-direction: column;
             align-items: center;
+            justify-content: center;
             padding: 10px 5px;
-            gap: 10px;
+            gap: 8px;
+        }
+
+        .volume-label {
+            font-size: 10px;
+            color: #888;
+            text-align: center;
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            letter-spacing: 2px;
         }
 
         .volume-slider {
             writing-mode: bt-lr;
             -webkit-appearance: slider-vertical;
             width: 30px;
-            height: 100px;
             flex-shrink: 0;
         }
 
@@ -717,6 +724,10 @@
             const controls = document.createElement('div');
             controls.className = 'layer-controls';
 
+            const volumeLabel = document.createElement('div');
+            volumeLabel.className = 'volume-label';
+            volumeLabel.textContent = 'GAIN';
+
             const volumeSlider = document.createElement('input');
             volumeSlider.type = 'range';
             volumeSlider.min = '0';
@@ -739,6 +750,7 @@
             reRecordBtn.addEventListener('click', () => reRecordLayer(layer));
 
             if (layer.audioBuffer) {
+                controls.appendChild(volumeLabel);
                 controls.appendChild(volumeSlider);
                 controls.appendChild(reRecordBtn);
             }
@@ -756,17 +768,33 @@
             adjustLayerHeights();
         }
 
+        function updateContainerHeight() {
+            // Get the actual visible viewport dimensions
+            const viewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+
+            // Set body and app height to actual viewport height (override 100vh CSS)
+            document.body.style.height = `${viewportHeight}px`;
+            const app = document.getElementById('app');
+            if (app) {
+                app.style.height = `${viewportHeight}px`;
+            }
+        }
+
         function adjustLayerHeights() {
             const container = document.getElementById('layers-container');
-            const containerHeight = window.innerHeight - 80; // Minus toolbar
+            const viewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+            const containerHeight = viewportHeight - 80; // Minus toolbar
             const layerDivs = container.querySelectorAll('.layer');
+
+            // Update container height to match viewport
+            updateContainerHeight();
 
             // Calculate height per layer (only count layers with audio)
             const numLayersWithAudio = layers.filter(l => l.audioBuffer).length;
             if (numLayersWithAudio === 0) return;
 
-            // Lower minimum height to fit 5 layers
-            const layerHeight = Math.max(80, Math.floor(containerHeight / numLayersWithAudio));
+            // Minimum height reduced to 30px to fit 5 layers
+            const layerHeight = Math.max(30, Math.floor(containerHeight / numLayersWithAudio));
 
             layerDivs.forEach((div, idx) => {
                 const canvasContainer = div.querySelector('.layer-canvas-container');
@@ -776,6 +804,13 @@
                 // Update canvas dimensions to match container
                 canvas.width = window.innerWidth - 60;
                 canvas.height = layerHeight;
+
+                // Update volume slider height to 50% of layer height
+                const volumeSlider = div.querySelector('.volume-slider');
+                if (volumeSlider) {
+                    const sliderHeight = Math.floor(layerHeight * 0.5);
+                    volumeSlider.style.height = `${sliderHeight}px`;
+                }
 
                 // Redraw if layer has data
                 if (layers[idx] && layers[idx].audioBuffer) {
@@ -1881,8 +1916,17 @@
 
         // Window resize handler
         window.addEventListener('resize', () => {
+            updateContainerHeight();
             adjustLayerHeights();
         });
+
+        // Visual viewport handler for mobile Safari address bar
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', () => {
+                updateContainerHeight();
+                adjustLayerHeights();
+            });
+        }
 
         // Enable orientation button handler
         document.getElementById('enable-orientation-btn').addEventListener('click', async () => {
@@ -1928,7 +1972,10 @@
         // STARTUP
         // ============================================================================
 
-        window.addEventListener('load', init);
+        window.addEventListener('load', () => {
+            init();
+            updateContainerHeight();
+        });
     </script>
 </body>
 </html>
