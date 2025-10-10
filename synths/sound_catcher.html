@@ -27,14 +27,13 @@
             height: 100vh;
             display: flex;
             flex-direction: column;
+            position: relative;
         }
 
         #layers-container {
             flex: 1;
-            overflow-y: auto;
-            overflow-x: hidden;
+            overflow: hidden;
             position: relative;
-            padding-bottom: 80px;
         }
 
         .layer {
@@ -47,7 +46,6 @@
         .layer-canvas-container {
             flex: 1;
             position: relative;
-            min-height: 120px;
         }
 
         .layer canvas {
@@ -62,15 +60,24 @@
             display: flex;
             flex-direction: column;
             align-items: center;
+            justify-content: center;
             padding: 10px 5px;
-            gap: 10px;
+            gap: 8px;
+        }
+
+        .volume-label {
+            font-size: 10px;
+            color: #888;
+            text-align: center;
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            letter-spacing: 2px;
         }
 
         .volume-slider {
             writing-mode: bt-lr;
             -webkit-appearance: slider-vertical;
             width: 30px;
-            height: 100px;
             flex-shrink: 0;
         }
 
@@ -97,7 +104,7 @@
             position: absolute;
             top: 0;
             left: 0;
-            right: 60px;
+            right: 0;
             bottom: 0;
             pointer-events: none;
         }
@@ -430,6 +437,10 @@
                 <div class="button-icon">▶</div>
                 <div class="button-label">Play</div>
             </button>
+            <button class="toolbar-button" id="reset-orientation-btn">
+                <div class="button-icon">⊙</div>
+                <div class="button-label">Reset Tilt</div>
+            </button>
             <button class="toolbar-button" id="nuke-btn" disabled>
                 <div class="button-icon">✕</div>
                 <div class="button-label">Clear All</div>
@@ -473,6 +484,7 @@
         let currentRecordingLayer = null;
         let mediaStream = null;
         let isInitialized = false;
+        let shouldAutoReconnect = false; // Track if we should auto-reconnect on visibility change
 
         let layers = [];
         let isPlaying = false;
@@ -488,6 +500,13 @@
             filterFreq: 1000 // Hz
         };
 
+        // Store initial orientation as zero point
+        let orientationZero = {
+            beta: null,   // Initial pitch
+            gamma: null,  // Initial roll
+            alpha: null   // Initial yaw
+        };
+
         let convolver;
         let masterGain;
 
@@ -498,6 +517,14 @@
         // ============================================================================
         // INITIALIZATION
         // ============================================================================
+
+        // Convert linear slider value (0-100) to logarithmic gain (0-1)
+        // Human hearing is logarithmic, so this provides better volume control
+        function sliderToGain(sliderValue) {
+            if (sliderValue === 0) return 0;
+            // Exponential curve: 50% slider = -20dB, 75% = -10dB, 100% = 0dB
+            return Math.pow(10, ((sliderValue / 100) - 1) * 2);
+        }
 
         // Helper for debug logging (safe if debug overlay is commented out)
         function debugLog(elementId, text, className = null) {
@@ -515,8 +542,9 @@
                     sampleRate: SAMPLE_RATE
                 });
 
-                // Create master gain
+                // Create master gain with reasonable default (0.3 = -10dB)
                 masterGain = audioContext.createGain();
+                masterGain.gain.value = 0.3;
                 masterGain.connect(audioContext.destination);
 
                 // Create convolver for reverb
@@ -612,7 +640,7 @@
             const layer = {
                 id: Date.now() + layerIndex,
                 audioBuffer: audioBuffer,
-                volume: 1.0,
+                volume: sliderToGain(80), // Default to 80% slider position (~0.4 gain)
                 selection: { start: 0, end: 1 }, // Normalized 0-1
                 sourceNode: null,
                 gainNode: null,
@@ -707,16 +735,22 @@
             const controls = document.createElement('div');
             controls.className = 'layer-controls';
 
+            const volumeLabel = document.createElement('div');
+            volumeLabel.className = 'volume-label';
+            volumeLabel.textContent = 'GAIN';
+
             const volumeSlider = document.createElement('input');
             volumeSlider.type = 'range';
             volumeSlider.min = '0';
             volumeSlider.max = '100';
-            volumeSlider.value = '100';
+            volumeSlider.value = '80'; // Default to 80% (roughly -6dB)
             volumeSlider.className = 'volume-slider';
             volumeSlider.addEventListener('input', (e) => {
-                layer.volume = e.target.value / 100;
+                const sliderValue = parseInt(e.target.value);
+                const gain = sliderToGain(sliderValue);
+                layer.volume = gain;
                 if (layer.gainNode) {
-                    layer.gainNode.gain.setValueAtTime(layer.volume, audioContext.currentTime);
+                    layer.gainNode.gain.setValueAtTime(gain, audioContext.currentTime);
                 }
             });
 
@@ -727,6 +761,7 @@
             reRecordBtn.addEventListener('click', () => reRecordLayer(layer));
 
             if (layer.audioBuffer) {
+                controls.appendChild(volumeLabel);
                 controls.appendChild(volumeSlider);
                 controls.appendChild(reRecordBtn);
             }
@@ -744,17 +779,33 @@
             adjustLayerHeights();
         }
 
+        function updateContainerHeight() {
+            // Get the actual visible viewport dimensions
+            const viewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+
+            // Set body and app height to actual viewport height (override 100vh CSS)
+            document.body.style.height = `${viewportHeight}px`;
+            const app = document.getElementById('app');
+            if (app) {
+                app.style.height = `${viewportHeight}px`;
+            }
+        }
+
         function adjustLayerHeights() {
             const container = document.getElementById('layers-container');
-            const containerHeight = window.innerHeight - 80; // Minus toolbar
+            const viewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+            const containerHeight = viewportHeight - 80; // Minus toolbar
             const layerDivs = container.querySelectorAll('.layer');
+
+            // Update container height to match viewport
+            updateContainerHeight();
 
             // Calculate height per layer (only count layers with audio)
             const numLayersWithAudio = layers.filter(l => l.audioBuffer).length;
             if (numLayersWithAudio === 0) return;
 
-            // Lower minimum height to fit 5 layers
-            const layerHeight = Math.max(80, Math.floor(containerHeight / numLayersWithAudio));
+            // Minimum height reduced to 30px to fit 5 layers
+            const layerHeight = Math.max(30, Math.floor(containerHeight / numLayersWithAudio));
 
             layerDivs.forEach((div, idx) => {
                 const canvasContainer = div.querySelector('.layer-canvas-container');
@@ -764,6 +815,13 @@
                 // Update canvas dimensions to match container
                 canvas.width = window.innerWidth - 60;
                 canvas.height = layerHeight;
+
+                // Update volume slider height to 50% of layer height
+                const volumeSlider = div.querySelector('.volume-slider');
+                if (volumeSlider) {
+                    const sliderHeight = Math.floor(layerHeight * 0.5);
+                    volumeSlider.style.height = `${sliderHeight}px`;
+                }
 
                 // Redraw if layer has data
                 if (layers[idx] && layers[idx].audioBuffer) {
@@ -1021,6 +1079,13 @@
             // Draw 3D mesh
             draw3DSpectrogram(ctx, spectrogramData, width, height);
 
+            // Apply darkening overlay to push spectrogram into background
+            ctx.fillStyle = 'rgba(10, 10, 10, 0.7)'; // Dark semi-transparent overlay
+            ctx.fillRect(0, 0, width, height);
+
+            // Draw amplitude waveform on top
+            drawAmplitudeWaveform(ctx, layer.audioBuffer, width, height);
+
             debugLog('debug-spectrogram', `Spectro: ✓ ${timeSteps}x${freqBins}`);
         }
 
@@ -1126,6 +1191,74 @@
                     }
                 }
             }
+        }
+
+        function drawAmplitudeWaveform(ctx, audioBuffer, width, height) {
+            if (!audioBuffer) return;
+
+            // Match spectrogram mesh bounds (5% to 95% of width)
+            const meshStartPercent = 0.05;
+            const meshEndPercent = 0.95;
+            const meshWidth = width * (meshEndPercent - meshStartPercent);
+            const meshStartX = width * meshStartPercent;
+
+            // Get audio data
+            const channelData = audioBuffer.getChannelData(0);
+            const sampleCount = channelData.length;
+            const samplesPerPixel = Math.floor(sampleCount / meshWidth);
+
+            // Calculate downsampled envelope
+            const amplitudes = [];
+            for (let x = 0; x < meshWidth; x++) {
+                const startSample = x * samplesPerPixel;
+                const endSample = Math.min(startSample + samplesPerPixel, sampleCount);
+
+                // Find peak amplitude in this window
+                let max = 0;
+                for (let i = startSample; i < endSample; i++) {
+                    max = Math.max(max, Math.abs(channelData[i]));
+                }
+                amplitudes.push(max);
+            }
+
+            // Draw waveform
+            const centerY = height / 2;
+            const amplitudeScale = height * 0.35; // Use 35% of height for amplitude range
+
+            ctx.strokeStyle = 'rgba(0, 255, 255, 0.9)'; // Cyan with high opacity
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+
+            // Draw top envelope (offset by meshStartX)
+            for (let x = 0; x < amplitudes.length; x++) {
+                const screenX = meshStartX + x;
+                const y = centerY - (amplitudes[x] * amplitudeScale);
+                if (x === 0) {
+                    ctx.moveTo(screenX, y);
+                } else {
+                    ctx.lineTo(screenX, y);
+                }
+            }
+
+            // Draw bottom envelope (mirror, offset by meshStartX)
+            for (let x = amplitudes.length - 1; x >= 0; x--) {
+                const screenX = meshStartX + x;
+                const y = centerY + (amplitudes[x] * amplitudeScale);
+                ctx.lineTo(screenX, y);
+            }
+
+            ctx.closePath();
+            ctx.fillStyle = 'rgba(0, 255, 255, 0.15)'; // Light cyan fill
+            ctx.fill();
+            ctx.stroke();
+
+            // Draw center line (only in mesh area)
+            ctx.strokeStyle = 'rgba(0, 255, 255, 0.3)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(meshStartX, centerY);
+            ctx.lineTo(meshStartX + meshWidth, centerY);
+            ctx.stroke();
         }
 
         function performSimpleFFT(samples, outputSize, minBin, maxBin, bufferLength) {
@@ -1531,14 +1664,15 @@
             yawGroup.appendChild(arrow);
         }
 
-        function updateCircleTilt(gamma) {
+        function updateCircleTilt(beta, gamma) {
             const indicator = document.getElementById('playback-indicator');
             if (!indicator) return;
 
-            // Apply 3D perspective tilt based on device roll (gamma)
-            // rotateY = rotates around Y-axis (vertical axis, top to bottom)
+            // Apply 3D perspective tilt based on device orientation
+            // rotateX = pitch (beta) - forward/backward tilt (negated to match phone direction)
+            // rotateY = roll (gamma) - left/right tilt
             // Combine with existing translate transform
-            indicator.style.transform = `translate(-50%, -50%) perspective(600px) rotateY(${gamma}deg)`;
+            indicator.style.transform = `translate(-50%, -50%) perspective(600px) rotateX(${-beta}deg) rotateY(${gamma}deg)`;
         }
 
         // ============================================================================
@@ -1549,9 +1683,25 @@
         const ORIENTATION_LOG_INTERVAL = 1000; // Log every 1 second
 
         function handleOrientation(event) {
-            const beta = event.beta || 0;   // Pitch: -180 to 180
-            const gamma = event.gamma || 0; // Roll: -90 to 90
-            const alpha = event.alpha || 0; // Yaw: 0 to 360
+            const rawBeta = event.beta || 0;   // Pitch: -180 to 180
+            const rawGamma = event.gamma || 0; // Roll: -90 to 90
+            const rawAlpha = event.alpha || 0; // Yaw: 0 to 360
+
+            // Capture initial orientation as zero point on first reading
+            if (orientationZero.beta === null) {
+                orientationZero.beta = rawBeta;
+                orientationZero.gamma = rawGamma;
+                orientationZero.alpha = rawAlpha;
+                console.log(`Zero point set: β=${rawBeta.toFixed(1)}° γ=${rawGamma.toFixed(1)}° α=${rawAlpha.toFixed(1)}°`);
+            }
+
+            // Calculate relative orientation (current - zero point)
+            const beta = rawBeta - orientationZero.beta;
+            const gamma = rawGamma - orientationZero.gamma;
+            // Alpha (yaw) requires wraparound handling
+            let alpha = rawAlpha - orientationZero.alpha;
+            if (alpha > 180) alpha -= 360;
+            if (alpha < -180) alpha += 360;
 
             // Speed control (pitch) - full range mapping
             // Face up (beta ~0) = 1x
@@ -1584,10 +1734,8 @@
             orientationData.reverb = reverb;
 
             // Filter control (yaw)
-            // Convert alpha to -180 to 180 range and reverse so arrow matches phone direction
-            let yaw = alpha;
-            if (yaw > 180) yaw -= 360;
-            yaw = -yaw; // Reverse so positive yaw = phone pointing right
+            // Alpha is already relative to zero point, just reverse for direction
+            let yaw = -alpha; // Reverse so positive yaw = phone pointing right
 
             const FILTER_DEAD_ZONE = 10;
             let filterType = 'allpass';
@@ -1632,8 +1780,8 @@
             // Update yaw indicator visualization
             updateYawIndicator(yaw);
 
-            // Update circle tilt to match device roll
-            updateCircleTilt(gamma);
+            // Update circle tilt to match device pitch and roll
+            updateCircleTilt(beta, gamma);
 
             // Update active playback
             if (isPlaying) {
@@ -1698,8 +1846,8 @@
             document.getElementById('nuke-btn').disabled = !hasAudio;
         }
 
-        // Permission overlay handlers
-        document.getElementById('request-mic-btn').addEventListener('click', async () => {
+        // Helper function to setup microphone
+        async function setupMicrophone() {
             try {
                 // Ensure audioContext is initialized first
                 if (!audioContext) {
@@ -1719,6 +1867,23 @@
                 };
                 mediaRecorder.onstop = handleRecordingComplete;
 
+                // Mark that we should auto-reconnect on visibility changes
+                shouldAutoReconnect = true;
+
+                console.log('Microphone setup complete');
+                return true;
+            } catch (error) {
+                console.error('Microphone setup error:', error);
+                shouldAutoReconnect = false;
+                return false;
+            }
+        }
+
+        // Permission overlay handlers
+        document.getElementById('request-mic-btn').addEventListener('click', async () => {
+            const success = await setupMicrophone();
+
+            if (success) {
                 // Update button for orientation request
                 document.getElementById('request-mic-btn').textContent = 'Enable Tilt';
                 document.getElementById('request-mic-btn').id = 'request-orientation-btn';
@@ -1735,11 +1900,6 @@
                         }, 300);
                     }
                 });
-
-            } catch (error) {
-                console.error('Permission error:', error);
-                // Don't show alert if permissions were actually granted
-                // Keep overlay visible so user can try again
             }
         });
 
@@ -1759,6 +1919,22 @@
         });
 
         document.getElementById('play-btn').addEventListener('click', togglePlayback);
+
+        document.getElementById('reset-orientation-btn').addEventListener('click', () => {
+            // Reset orientation zero point
+            orientationZero.beta = null;
+            orientationZero.gamma = null;
+            orientationZero.alpha = null;
+            console.log('Orientation zero point reset - will recalibrate on next tilt event');
+
+            // Visual feedback
+            const btn = document.getElementById('reset-orientation-btn');
+            const originalIcon = btn.querySelector('.button-icon').textContent;
+            btn.querySelector('.button-icon').textContent = '✓';
+            setTimeout(() => {
+                btn.querySelector('.button-icon').textContent = originalIcon;
+            }, 500);
+        });
 
         document.getElementById('nuke-btn').addEventListener('click', nukeAllLayers);
 
@@ -1782,8 +1958,17 @@
 
         // Window resize handler
         window.addEventListener('resize', () => {
+            updateContainerHeight();
             adjustLayerHeights();
         });
+
+        // Visual viewport handler for mobile Safari address bar
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', () => {
+                updateContainerHeight();
+                adjustLayerHeights();
+            });
+        }
 
         // Enable orientation button handler
         document.getElementById('enable-orientation-btn').addEventListener('click', async () => {
@@ -1791,10 +1976,48 @@
         });
 
         // ============================================================================
+        // PAGE VISIBILITY - Stop microphone when app is in background
+        // ============================================================================
+
+        document.addEventListener('visibilitychange', async () => {
+            if (document.hidden) {
+                console.log('Page hidden - stopping microphone access');
+
+                // Stop any active recording
+                if (mediaRecorder && mediaRecorder.state === 'recording') {
+                    console.log('Stopping active recording due to page hide');
+                    stopRecording();
+                }
+
+                // Stop media stream to release microphone
+                if (mediaStream) {
+                    console.log('Stopping media stream tracks');
+                    mediaStream.getTracks().forEach(track => {
+                        track.stop();
+                        console.log(`Stopped track: ${track.kind}`);
+                    });
+                    mediaStream = null;
+                    mediaRecorder = null;
+                }
+            } else {
+                console.log('Page visible again');
+
+                // Auto-reconnect microphone if user had previously granted access
+                if (shouldAutoReconnect && !mediaStream && isInitialized) {
+                    console.log('Auto-reconnecting microphone...');
+                    await setupMicrophone();
+                }
+            }
+        });
+
+        // ============================================================================
         // STARTUP
         // ============================================================================
 
-        window.addEventListener('load', init);
+        window.addEventListener('load', () => {
+            init();
+            updateContainerHeight();
+        });
     </script>
 </body>
 </html>
