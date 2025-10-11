@@ -1980,28 +1980,34 @@
         }
 
         // Permission overlay handlers
-        document.getElementById('request-mic-btn').addEventListener('click', async () => {
-            const success = await setupMicrophone();
+        const requestMicBtn = document.getElementById('request-mic-btn');
+        if (requestMicBtn) {
+            requestMicBtn.addEventListener('click', async () => {
+                const success = await setupMicrophone();
 
-            if (success) {
-                // Update button for orientation request
-                document.getElementById('request-mic-btn').textContent = 'Enable Tilt';
-                document.getElementById('request-mic-btn').id = 'request-orientation-btn';
+                if (success) {
+                    // Update button for orientation request
+                    requestMicBtn.textContent = 'Enable Tilt';
+                    requestMicBtn.id = 'request-orientation-btn';
 
-                // Orientation button handler
-                document.getElementById('request-orientation-btn').addEventListener('click', async () => {
-                    const granted = await requestOrientationPermission();
-                    document.getElementById('permissions-overlay').classList.remove('active');
-                    isInitialized = true;
+                    // Orientation button handler
+                    requestMicBtn.addEventListener('click', async () => {
+                        const granted = await requestOrientationPermission();
+                        const permissionsOverlay = document.getElementById('permissions-overlay');
+                        if (permissionsOverlay) {
+                            permissionsOverlay.classList.remove('active');
+                        }
+                        isInitialized = true;
 
-                    if (!granted) {
-                        setTimeout(() => {
-                            alert('Tilt controls could not be enabled. You can still use the looper normally.');
-                        }, 300);
-                    }
-                });
-            }
-        });
+                        if (!granted) {
+                            setTimeout(() => {
+                                alert('Tilt controls could not be enabled. You can still use the looper normally.');
+                            }, 300);
+                        }
+                    });
+                }
+            });
+        }
 
         // Event Listeners
         document.getElementById('record-btn').addEventListener('click', () => {
@@ -2070,44 +2076,92 @@
             });
         }
 
-        // Enable orientation button handler
-        document.getElementById('enable-orientation-btn').addEventListener('click', async () => {
-            await requestOrientationPermission();
-        });
+        // Enable orientation button handler (only if element exists)
+        const enableOrientationBtn = document.getElementById('enable-orientation-btn');
+        if (enableOrientationBtn) {
+            enableOrientationBtn.addEventListener('click', async () => {
+                await requestOrientationPermission();
+            });
+        }
 
         // ============================================================================
         // PAGE VISIBILITY - Stop microphone when app is in background
         // ============================================================================
 
-        document.addEventListener('visibilitychange', async () => {
-            if (document.hidden) {
-                console.log('Page hidden - stopping microphone access');
+        // Helper to pause everything
+        async function pauseEverything() {
+            console.log('🛑 PAUSING EVERYTHING');
+            console.log('  AudioContext state:', audioContext?.state);
+            console.log('  MediaStream active:', !!mediaStream);
+            console.log('  MediaRecorder state:', mediaRecorder?.state);
 
-                // Stop any active recording
-                if (mediaRecorder && mediaRecorder.state === 'recording') {
-                    console.log('Stopping active recording due to page hide');
+            // Suspend audio context immediately (pauses all playback)
+            if (audioContext) {
+                await audioContext.suspend();
+                console.log('  ✓ Audio context suspended, new state:', audioContext.state);
+            }
+
+            // Stop media stream first to release microphone
+            if (mediaStream) {
+                console.log('  Stopping media stream tracks...');
+                mediaStream.getTracks().forEach(track => {
+                    console.log(`    Stopping track: ${track.kind}, current state: ${track.readyState}`);
+                    track.stop();
+                    console.log(`    Track stopped, new state: ${track.readyState}`);
+                });
+                mediaStream = null;
+                console.log('  ✓ Media stream nulled');
+            }
+
+            // Stop any active recording after stopping stream
+            if (mediaRecorder) {
+                if (mediaRecorder.state === 'recording') {
+                    console.log('  Stopping active recording...');
                     stopRecording();
                 }
-
-                // Stop media stream to release microphone
-                if (mediaStream) {
-                    console.log('Stopping media stream tracks');
-                    mediaStream.getTracks().forEach(track => {
-                        track.stop();
-                        console.log(`Stopped track: ${track.kind}`);
-                    });
-                    mediaStream = null;
-                    mediaRecorder = null;
-                }
-            } else {
-                console.log('Page visible again');
-
-                // Auto-reconnect microphone if user had previously granted access
-                if (shouldAutoReconnect && !mediaStream && isInitialized) {
-                    console.log('Auto-reconnecting microphone...');
-                    await setupMicrophone();
-                }
+                mediaRecorder = null;
+                console.log('  ✓ Media recorder nulled');
             }
+        }
+
+        // Helper to resume everything
+        async function resumeEverything() {
+            console.log('▶️ RESUMING EVERYTHING');
+            console.log('  AudioContext state:', audioContext?.state);
+
+            // Resume audio context (continues playback)
+            if (audioContext && audioContext.state === 'suspended') {
+                await audioContext.resume();
+                console.log('  ✓ Audio context resumed, new state:', audioContext.state);
+            }
+
+            // Auto-reconnect microphone if user had previously granted access
+            if (shouldAutoReconnect && !mediaStream && isInitialized) {
+                console.log('  Auto-reconnecting microphone...');
+                await setupMicrophone();
+            }
+        }
+
+        // Primary handler: visibilitychange
+        document.addEventListener('visibilitychange', async () => {
+            console.log('👁️ VISIBILITYCHANGE EVENT - document.hidden:', document.hidden);
+
+            if (document.hidden) {
+                await pauseEverything();
+            } else {
+                await resumeEverything();
+            }
+        });
+
+        // Fallback handler: blur/focus (in case visibilitychange doesn't work)
+        window.addEventListener('blur', async () => {
+            console.log('💨 BLUR EVENT - window lost focus');
+            await pauseEverything();
+        });
+
+        window.addEventListener('focus', async () => {
+            console.log('🎯 FOCUS EVENT - window gained focus');
+            await resumeEverything();
         });
 
         // ============================================================================
