@@ -421,10 +421,12 @@
 
         <div id="layers-container"></div>
 
-        <svg id="playback-indicator" width="300" height="300" viewBox="0 0 300 300">
+        <svg id="playback-indicator" width="300" height="300" viewBox="0 0 300 300" overflow="visible">
             <g id="reverb-circles"></g>
             <circle cx="150" cy="150" r="140" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="2"/>
             <g id="yaw-indicator"></g>
+            <g id="filter-label"></g>
+            <g id="speed-label"></g>
             <circle id="playback-dot" cx="150" cy="10" r="8" fill="#00ffff"/>
         </svg>
 
@@ -1597,12 +1599,14 @@
             }
         }
 
-        function updateYawIndicator(yaw) {
+        function updateYawIndicator(yaw, filterType, filterFreq) {
             const yawGroup = document.getElementById('yaw-indicator');
+            const filterLabel = document.getElementById('filter-label');
             if (!yawGroup) return;
 
             // Clear previous indicator
             yawGroup.innerHTML = '';
+            if (filterLabel) filterLabel.innerHTML = '';
 
             const FILTER_DEAD_ZONE = 10;
 
@@ -1662,6 +1666,38 @@
             arrow.setAttribute('points', `${arrowTipX},${arrowTipY} ${baseX1},${baseY1} ${baseX2},${baseY2}`);
             arrow.setAttribute('fill', '#ff3333');
             yawGroup.appendChild(arrow);
+
+            // Add filter frequency label if filter is active
+            if (filterLabel && filterType !== 'allpass') {
+                // Format frequency
+                let labelText = '';
+                if (filterType === 'lowpass') {
+                    labelText = filterFreq >= 1000
+                        ? `lo-pass: ${(filterFreq/1000).toFixed(1)}kHz`
+                        : `lo-pass: ${Math.round(filterFreq)}Hz`;
+                } else if (filterType === 'highpass') {
+                    labelText = filterFreq >= 1000
+                        ? `hi-pass: ${(filterFreq/1000).toFixed(1)}kHz`
+                        : `hi-pass: ${Math.round(filterFreq)}Hz`;
+                }
+
+                // Position label radially outward from arrow (about 20px further)
+                const labelRadius = radius + 28;
+                const labelX = centerX + labelRadius * Math.cos(arrowAngle);
+                const labelY = centerY + labelRadius * Math.sin(arrowAngle);
+
+                // Create text element
+                const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                text.setAttribute('x', labelX);
+                text.setAttribute('y', labelY);
+                text.setAttribute('fill', '#ff3333');
+                text.setAttribute('font-size', '11');
+                text.setAttribute('font-family', 'sans-serif');
+                text.setAttribute('text-anchor', 'middle');
+                text.setAttribute('dominant-baseline', 'middle');
+                text.textContent = labelText;
+                filterLabel.appendChild(text);
+            }
         }
 
         function updateCircleTilt(beta, gamma) {
@@ -1673,6 +1709,64 @@
             // rotateY = roll (gamma) - left/right tilt
             // Combine with existing translate transform
             indicator.style.transform = `translate(-50%, -50%) perspective(600px) rotateX(${-beta}deg) rotateY(${gamma}deg)`;
+        }
+
+        function updateSpeedLabel(speed) {
+            const speedLabel = document.getElementById('speed-label');
+            if (!speedLabel) return;
+
+            // Clear previous label
+            speedLabel.innerHTML = '';
+
+            // Only show if speed is significantly different from 1.0x
+            const SPEED_THRESHOLD = 0.05;
+            if (Math.abs(speed - 1.0) <= SPEED_THRESHOLD) return;
+
+            // Position on left side of circle
+            const centerX = 150;
+            const centerY = 150;
+            const labelX = -10;
+            const labelY = centerY;
+
+            // Format speed text
+            let speedText;
+            if (speed >= 10) {
+                speedText = `${Math.round(speed)}x`;
+            } else {
+                speedText = `${speed.toFixed(1)}x`;
+            }
+
+            // Create text element
+            const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            text.setAttribute('x', labelX);
+            text.setAttribute('y', labelY);
+            text.setAttribute('fill', '#00ffff');
+            text.setAttribute('font-size', '11');
+            text.setAttribute('font-family', 'sans-serif');
+            text.setAttribute('text-anchor', 'middle');
+            text.setAttribute('dominant-baseline', 'middle');
+            text.textContent = speedText;
+            speedLabel.appendChild(text);
+
+            // Add directional arrow
+            const arrowSize = 3; // Half of base width
+            const arrowHeight = 5;
+
+            if (speed > 1.0) {
+                // Up arrow (faster) - above text
+                const arrowY = labelY - 10;
+                const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+                arrow.setAttribute('points', `${labelX},${arrowY} ${labelX - arrowSize},${arrowY + arrowHeight} ${labelX + arrowSize},${arrowY + arrowHeight}`);
+                arrow.setAttribute('fill', '#00ffff');
+                speedLabel.appendChild(arrow);
+            } else {
+                // Down arrow (slower) - below text
+                const arrowY = labelY + 10;
+                const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+                arrow.setAttribute('points', `${labelX},${arrowY} ${labelX - arrowSize},${arrowY - arrowHeight} ${labelX + arrowSize},${arrowY - arrowHeight}`);
+                arrow.setAttribute('fill', '#00ffff');
+                speedLabel.appendChild(arrow);
+            }
         }
 
         // ============================================================================
@@ -1705,18 +1799,21 @@
 
             // Speed control (pitch) - full range mapping
             // Face up (beta ~0) = 1x
-            // Tilted forward (beta -> 180) = 20x
-            // Tilted back (beta -> -180) = 0.05x (1/20th)
+            // Tilted forward (phone top away, beta -> 180) = 20x (faster)
+            // Tilted toward user (phone top toward you, beta -> -180) = 0.05x (slower)
             const DEAD_ZONE = 5;
             let speed = 1.0;
 
-            if (beta > DEAD_ZONE) {
+            // Negate beta so forward tilt = faster, backward tilt = slower
+            const reversedBeta = -beta;
+
+            if (reversedBeta > DEAD_ZONE) {
                 // Forward tilt: 0 to 180 degrees maps to 1x to 20x
-                const normalizedBeta = Math.min(beta, 180) / 180;
+                const normalizedBeta = Math.min(reversedBeta, 180) / 180;
                 speed = 1 + normalizedBeta * 19;
-            } else if (beta < -DEAD_ZONE) {
+            } else if (reversedBeta < -DEAD_ZONE) {
                 // Backward tilt: 0 to -180 degrees maps to 1x to 0.05x
-                const normalizedBeta = Math.max(beta, -180) / 180; // -1 to 0
+                const normalizedBeta = Math.max(reversedBeta, -180) / 180; // -1 to 0
                 speed = Math.max(0.05, 1 + normalizedBeta * 0.95);
             }
 
@@ -1777,8 +1874,11 @@
                 lastOrientationLog = now;
             }
 
-            // Update yaw indicator visualization
-            updateYawIndicator(yaw);
+            // Update yaw indicator visualization with filter info
+            updateYawIndicator(yaw, orientationData.filterType, orientationData.filterFreq);
+
+            // Update speed label on left side
+            updateSpeedLabel(orientationData.speed);
 
             // Update circle tilt to match device pitch and roll
             updateCircleTilt(beta, gamma);
@@ -1880,28 +1980,34 @@
         }
 
         // Permission overlay handlers
-        document.getElementById('request-mic-btn').addEventListener('click', async () => {
-            const success = await setupMicrophone();
+        const requestMicBtn = document.getElementById('request-mic-btn');
+        if (requestMicBtn) {
+            requestMicBtn.addEventListener('click', async () => {
+                const success = await setupMicrophone();
 
-            if (success) {
-                // Update button for orientation request
-                document.getElementById('request-mic-btn').textContent = 'Enable Tilt';
-                document.getElementById('request-mic-btn').id = 'request-orientation-btn';
+                if (success) {
+                    // Update button for orientation request
+                    requestMicBtn.textContent = 'Enable Tilt';
+                    requestMicBtn.id = 'request-orientation-btn';
 
-                // Orientation button handler
-                document.getElementById('request-orientation-btn').addEventListener('click', async () => {
-                    const granted = await requestOrientationPermission();
-                    document.getElementById('permissions-overlay').classList.remove('active');
-                    isInitialized = true;
+                    // Orientation button handler
+                    requestMicBtn.addEventListener('click', async () => {
+                        const granted = await requestOrientationPermission();
+                        const permissionsOverlay = document.getElementById('permissions-overlay');
+                        if (permissionsOverlay) {
+                            permissionsOverlay.classList.remove('active');
+                        }
+                        isInitialized = true;
 
-                    if (!granted) {
-                        setTimeout(() => {
-                            alert('Tilt controls could not be enabled. You can still use the looper normally.');
-                        }, 300);
-                    }
-                });
-            }
-        });
+                        if (!granted) {
+                            setTimeout(() => {
+                                alert('Tilt controls could not be enabled. You can still use the looper normally.');
+                            }, 300);
+                        }
+                    });
+                }
+            });
+        }
 
         // Event Listeners
         document.getElementById('record-btn').addEventListener('click', () => {
@@ -1970,44 +2076,92 @@
             });
         }
 
-        // Enable orientation button handler
-        document.getElementById('enable-orientation-btn').addEventListener('click', async () => {
-            await requestOrientationPermission();
-        });
+        // Enable orientation button handler (only if element exists)
+        const enableOrientationBtn = document.getElementById('enable-orientation-btn');
+        if (enableOrientationBtn) {
+            enableOrientationBtn.addEventListener('click', async () => {
+                await requestOrientationPermission();
+            });
+        }
 
         // ============================================================================
         // PAGE VISIBILITY - Stop microphone when app is in background
         // ============================================================================
 
-        document.addEventListener('visibilitychange', async () => {
-            if (document.hidden) {
-                console.log('Page hidden - stopping microphone access');
+        // Helper to pause everything
+        async function pauseEverything() {
+            console.log('🛑 PAUSING EVERYTHING');
+            console.log('  AudioContext state:', audioContext?.state);
+            console.log('  MediaStream active:', !!mediaStream);
+            console.log('  MediaRecorder state:', mediaRecorder?.state);
 
-                // Stop any active recording
-                if (mediaRecorder && mediaRecorder.state === 'recording') {
-                    console.log('Stopping active recording due to page hide');
+            // Suspend audio context immediately (pauses all playback)
+            if (audioContext) {
+                await audioContext.suspend();
+                console.log('  ✓ Audio context suspended, new state:', audioContext.state);
+            }
+
+            // Stop media stream first to release microphone
+            if (mediaStream) {
+                console.log('  Stopping media stream tracks...');
+                mediaStream.getTracks().forEach(track => {
+                    console.log(`    Stopping track: ${track.kind}, current state: ${track.readyState}`);
+                    track.stop();
+                    console.log(`    Track stopped, new state: ${track.readyState}`);
+                });
+                mediaStream = null;
+                console.log('  ✓ Media stream nulled');
+            }
+
+            // Stop any active recording after stopping stream
+            if (mediaRecorder) {
+                if (mediaRecorder.state === 'recording') {
+                    console.log('  Stopping active recording...');
                     stopRecording();
                 }
-
-                // Stop media stream to release microphone
-                if (mediaStream) {
-                    console.log('Stopping media stream tracks');
-                    mediaStream.getTracks().forEach(track => {
-                        track.stop();
-                        console.log(`Stopped track: ${track.kind}`);
-                    });
-                    mediaStream = null;
-                    mediaRecorder = null;
-                }
-            } else {
-                console.log('Page visible again');
-
-                // Auto-reconnect microphone if user had previously granted access
-                if (shouldAutoReconnect && !mediaStream && isInitialized) {
-                    console.log('Auto-reconnecting microphone...');
-                    await setupMicrophone();
-                }
+                mediaRecorder = null;
+                console.log('  ✓ Media recorder nulled');
             }
+        }
+
+        // Helper to resume everything
+        async function resumeEverything() {
+            console.log('▶️ RESUMING EVERYTHING');
+            console.log('  AudioContext state:', audioContext?.state);
+
+            // Resume audio context (continues playback)
+            if (audioContext && audioContext.state === 'suspended') {
+                await audioContext.resume();
+                console.log('  ✓ Audio context resumed, new state:', audioContext.state);
+            }
+
+            // Auto-reconnect microphone if user had previously granted access
+            if (shouldAutoReconnect && !mediaStream && isInitialized) {
+                console.log('  Auto-reconnecting microphone...');
+                await setupMicrophone();
+            }
+        }
+
+        // Primary handler: visibilitychange
+        document.addEventListener('visibilitychange', async () => {
+            console.log('👁️ VISIBILITYCHANGE EVENT - document.hidden:', document.hidden);
+
+            if (document.hidden) {
+                await pauseEverything();
+            } else {
+                await resumeEverything();
+            }
+        });
+
+        // Fallback handler: blur/focus (in case visibilitychange doesn't work)
+        window.addEventListener('blur', async () => {
+            console.log('💨 BLUR EVENT - window lost focus');
+            await pauseEverything();
+        });
+
+        window.addEventListener('focus', async () => {
+            console.log('🎯 FOCUS EVENT - window gained focus');
+            await resumeEverything();
         });
 
         // ============================================================================
