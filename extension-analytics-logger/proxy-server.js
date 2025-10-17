@@ -26,7 +26,10 @@ const INTERCEPT_PATTERNS = [
   'pie-staging.org/v1/batch',
   'segment.io/v1/batch',
   'segment.io/v1/track',
-  'segment.com/v1/batch'
+  'segment.com/v1/batch',
+  'reddit.com/events',
+  'reddit.com/svc/shreddit/events',
+  '/log?format=json'
 ];
 
 function shouldIntercept(requestUrl) {
@@ -67,33 +70,77 @@ const proxyServer = http.createServer((clientReq, clientRes) => {
       if (body) {
         console.log(`[Proxy] Intercepted analytics request to: ${clientReq.url}`);
 
+        let eventsToCapture = [];
+
         // Parse Segment batch format
         if (body.batch && Array.isArray(body.batch)) {
-          body.batch.forEach(event => {
-            const captured = {
-              id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-              timestamp: event.timestamp || event.sentAt || new Date().toISOString(),
-              event: event.event || event.type,
-              properties: event.properties || {},
-              context: event.context || {},
-              type: event.type || 'track',
-              userId: event.userId,
-              anonymousId: event.anonymousId,
+          eventsToCapture = body.batch.map(event => ({
+            id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+            timestamp: event.timestamp || event.sentAt || new Date().toISOString(),
+            event: event.event || event.type,
+            properties: event.properties || {},
+            context: event.context || {},
+            type: event.type || 'track',
+            userId: event.userId,
+            anonymousId: event.anonymousId,
+            _metadata: {
               url: clientReq.url,
-              capturedAt: new Date().toISOString(),
-              parser: 'proxy-interceptor'
-            };
-
-            capturedEvents.unshift(captured);
-
-            // Maintain max size
-            if (capturedEvents.length > MAX_EVENTS) {
-              capturedEvents.length = MAX_EVENTS;
-            }
-
-            console.log(`[Proxy] Captured event: ${captured.event}`);
-          });
+              capturedAt: new Date().toISOString()
+            },
+            _parser: 'proxy-segment'
+          }));
         }
+        // Parse Reddit events format
+        else if (clientReq.url.includes('reddit.com')) {
+          // Reddit sends individual events or arrays
+          const events = Array.isArray(body) ? body : [body];
+
+          eventsToCapture = events.map(event => ({
+            id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+            timestamp: event.client_timestamp || new Date().toISOString(),
+            event: event.action || event.event || 'reddit_event',
+            properties: {
+              action_info: event.action_info,
+              source: event.source,
+              ...event
+            },
+            context: {},
+            type: 'track',
+            _metadata: {
+              url: clientReq.url,
+              capturedAt: new Date().toISOString()
+            },
+            _parser: 'proxy-reddit'
+          }));
+        }
+        // Generic JSON format
+        else {
+          eventsToCapture = [{
+            id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+            timestamp: new Date().toISOString(),
+            event: body.event || 'custom_event',
+            properties: body,
+            context: {},
+            type: 'track',
+            _metadata: {
+              url: clientReq.url,
+              capturedAt: new Date().toISOString()
+            },
+            _parser: 'proxy-generic'
+          }];
+        }
+
+        // Add captured events
+        eventsToCapture.forEach(captured => {
+          capturedEvents.unshift(captured);
+
+          // Maintain max size
+          if (capturedEvents.length > MAX_EVENTS) {
+            capturedEvents.length = MAX_EVENTS;
+          }
+
+          console.log(`[Proxy] Captured event: ${captured.event}`);
+        });
       }
     }
 
@@ -141,7 +188,7 @@ proxyServer.on('connect', (req, clientSocket, head) => {
 const apiServer = http.createServer((req, res) => {
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') {
@@ -158,8 +205,9 @@ const apiServer = http.createServer((req, res) => {
     }));
   } else if (req.url === '/clear' && req.method === 'POST') {
     capturedEvents.length = 0;
+    console.log('[Proxy API] Cleared all captured events');
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ success: true }));
+    res.end(JSON.stringify({ success: true, message: 'Events cleared' }));
   } else {
     res.writeHead(404);
     res.end();

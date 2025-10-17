@@ -356,9 +356,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       break;
 
     case 'clearEvents':
-      storage.clear();
-      sendResponse({ success: true });
-      break;
+      storage.clearAll().then(async (success) => {
+        // Also clear proxy server events if proxy mode is active
+        if (settings.useProxy) {
+          try {
+            await fetch('http://localhost:8889/clear', { method: 'POST' });
+            console.log('[Analytics Logger] Cleared proxy server events');
+          } catch (err) {
+            console.log('[Analytics Logger] Could not clear proxy events (proxy may not be running)');
+          }
+        }
+
+        // Notify panels that events were cleared
+        notifyPanels('eventsCleared', {});
+        sendResponse({ success });
+      }).catch(err => {
+        console.error('[Analytics Logger] Error clearing events:', err);
+        sendResponse({ success: false, error: err.message });
+      });
+      return true; // Keep channel open for async response
 
     case 'exportJSON':
       sendResponse({

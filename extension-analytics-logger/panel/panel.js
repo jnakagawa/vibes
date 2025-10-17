@@ -452,6 +452,12 @@ class AnalyticsLoggerUI {
       `)
       .join('');
 
+    // Sync the textarea with the current patterns
+    const textareaElement = document.getElementById('urlPatternsSetting');
+    if (textareaElement) {
+      textareaElement.value = this.urlPatterns.join(', ');
+    }
+
     // Add click listeners to remove buttons
     this.elements.patternsList.querySelectorAll('.pattern-tag-remove').forEach(btn => {
       btn.addEventListener('click', (e) => {
@@ -486,6 +492,14 @@ class AnalyticsLoggerUI {
         this.events.unshift(...message.data);
         this.updateEventTypeFilter();
         this.applyFilters();
+      } else if (message.action === 'eventsCleared') {
+        // Events were cleared (possibly by another panel or external action)
+        this.events = [];
+        this.filteredEvents = [];
+        this.updateEventTypeFilter();
+        this.applyFilters();
+        this.updateStats();
+        console.log('[Panel] Events cleared by background');
       }
     });
 
@@ -617,18 +631,59 @@ class AnalyticsLoggerUI {
 
     // Add click listeners to toggle expansion
     this.elements.eventsList.querySelectorAll('.event-card').forEach((card) => {
-      card.addEventListener('click', () => {
-        card.classList.toggle('expanded');
+      card.addEventListener('click', (e) => {
+        // Don't toggle expansion if clicking on the toggle button or expandable sections
+        if (!e.target.closest('.view-toggle-btn') && !e.target.closest('.json-expandable')) {
+          card.classList.toggle('expanded');
+        }
       });
+    });
+
+    // Add click listeners for view toggle buttons
+    this.elements.eventsList.querySelectorAll('.view-toggle-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const eventId = btn.dataset.eventId;
+        const structuredView = document.querySelector(`.structured-view[data-event-id="${eventId}"]`);
+        const rawView = document.querySelector(`.raw-view[data-event-id="${eventId}"]`);
+
+        if (structuredView && rawView) {
+          const isShowingStructured = structuredView.style.display !== 'none';
+
+          if (isShowingStructured) {
+            // Switch to raw view
+            structuredView.style.display = 'none';
+            rawView.style.display = 'block';
+            btn.textContent = 'Show Structured View';
+          } else {
+            // Switch to structured view
+            structuredView.style.display = 'block';
+            rawView.style.display = 'none';
+            btn.textContent = 'Show Raw JSON';
+          }
+        }
+      });
+    });
+
+    // Add click listeners for expandable JSON sections
+    this.elements.eventsList.querySelectorAll('.json-expandable').forEach((expandable) => {
+      const header = expandable.querySelector('.json-expand-header');
+      if (header) {
+        header.addEventListener('click', (e) => {
+          e.stopPropagation();
+          expandable.classList.toggle('expanded');
+        });
+      }
     });
   }
 
   renderEventCard(event) {
     const timestamp = new Date(event.timestamp).toLocaleString();
     const parser = event._parser || 'unknown';
+    const eventId = event.id || `event-${Math.random().toString(36).substr(2, 9)}`;
 
     return `
-      <div class="event-card" data-id="${event.id}">
+      <div class="event-card" data-id="${eventId}">
         <div class="event-header">
           <div class="event-name">${this.escapeHtml(event.event || 'Unknown Event')}</div>
           <span class="event-badge ${parser}">${parser}</span>
@@ -656,21 +711,46 @@ class AnalyticsLoggerUI {
           <div class="event-url">${this.escapeHtml(event._metadata.url)}</div>
         ` : ''}
         <div class="event-details">
-          ${event.properties && Object.keys(event.properties).length > 0 ? `
+          <button class="view-toggle-btn" data-event-id="${eventId}">Show Raw JSON</button>
+
+          <!-- Structured View (default) -->
+          <div class="structured-view" data-event-id="${eventId}">
+            ${event.properties && Object.keys(event.properties).length > 0 ? `
+              <div class="event-section">
+                <div class="event-section-title">Properties</div>
+                <div class="structured-json">${this.renderStructuredJSON(event.properties)}</div>
+              </div>
+            ` : ''}
+            ${event.context && Object.keys(event.context).length > 0 ? `
+              <div class="event-section">
+                <div class="event-section-title">Context</div>
+                <div class="structured-json">${this.renderStructuredJSON(event.context)}</div>
+              </div>
+            ` : ''}
             <div class="event-section">
-              <div class="event-section-title">Properties</div>
-              <div class="event-json">${this.formatJSON(event.properties)}</div>
+              <div class="event-section-title">Full Event Data</div>
+              <div class="structured-json">${this.renderStructuredJSON(event)}</div>
             </div>
-          ` : ''}
-          ${event.context && Object.keys(event.context).length > 0 ? `
+          </div>
+
+          <!-- Raw JSON View (hidden by default) -->
+          <div class="raw-view" data-event-id="${eventId}" style="display: none;">
+            ${event.properties && Object.keys(event.properties).length > 0 ? `
+              <div class="event-section">
+                <div class="event-section-title">Properties</div>
+                <div class="event-json">${this.formatJSON(event.properties)}</div>
+              </div>
+            ` : ''}
+            ${event.context && Object.keys(event.context).length > 0 ? `
+              <div class="event-section">
+                <div class="event-section-title">Context</div>
+                <div class="event-json">${this.formatJSON(event.context)}</div>
+              </div>
+            ` : ''}
             <div class="event-section">
-              <div class="event-section-title">Context</div>
-              <div class="event-json">${this.formatJSON(event.context)}</div>
+              <div class="event-section-title">Full Event Data</div>
+              <div class="event-json">${this.formatJSON(event)}</div>
             </div>
-          ` : ''}
-          <div class="event-section">
-            <div class="event-section-title">Full Event Data</div>
-            <div class="event-json">${this.formatJSON(event)}</div>
           </div>
         </div>
       </div>
@@ -679,6 +759,237 @@ class AnalyticsLoggerUI {
 
   formatJSON(obj) {
     return this.escapeHtml(JSON.stringify(obj, null, 2));
+  }
+
+  /**
+   * Render structured, interactive JSON view with collapsible sections and tables
+   */
+  renderStructuredJSON(obj, depth = 0, parentKey = '') {
+    if (obj === null) {
+      return this.renderPrimitive(null, 'null');
+    }
+
+    const type = Array.isArray(obj) ? 'array' : typeof obj;
+
+    switch (type) {
+      case 'object':
+        return this.renderObject(obj, depth, parentKey);
+      case 'array':
+        return this.renderArray(obj, depth, parentKey);
+      case 'string':
+      case 'number':
+      case 'boolean':
+        return this.renderPrimitive(obj, type);
+      default:
+        return this.renderPrimitive(obj, 'unknown');
+    }
+  }
+
+  /**
+   * Render a primitive value with type indicator and icon
+   */
+  renderPrimitive(value, type) {
+    const icons = {
+      string: '📝',
+      number: '🔢',
+      boolean: value ? '✅' : '❌',
+      null: '∅'
+    };
+
+    const icon = icons[type] || '?';
+    const displayValue = type === 'string' ? `"${this.escapeHtml(value)}"` : this.escapeHtml(String(value));
+    const cssClass = `json-${type}-value`;
+
+    return `
+      <span class="json-primitive">
+        <span class="json-icon">${icon}</span>
+        <span class="${cssClass}">${displayValue}</span>
+      </span>
+    `;
+  }
+
+  /**
+   * Render an object as a table or expandable section
+   */
+  renderObject(obj, depth, parentKey) {
+    const keys = Object.keys(obj);
+
+    if (keys.length === 0) {
+      return '<div class="json-empty-message">Empty object</div>';
+    }
+
+    // Use table format for simple key-value pairs at depth 0
+    if (depth === 0) {
+      return this.renderObjectAsTable(obj, depth);
+    }
+
+    // Use expandable section for nested objects
+    return this.renderObjectAsExpandable(obj, depth, parentKey);
+  }
+
+  /**
+   * Render object as a table
+   */
+  renderObjectAsTable(obj, depth) {
+    const keys = Object.keys(obj);
+    const rows = keys.map(key => {
+      const value = obj[key];
+      const valueType = this.getValueType(value);
+      const renderedValue = this.renderStructuredJSON(value, depth + 1, key);
+
+      return `
+        <tr>
+          <td>
+            <div class="json-key">${this.escapeHtml(key)}</div>
+          </td>
+          <td>
+            <div class="json-value">${renderedValue}</div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    return `
+      <table class="json-table">
+        <thead>
+          <tr>
+            <th>Property</th>
+            <th>Value</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows}
+        </tbody>
+      </table>
+    `;
+  }
+
+  /**
+   * Render object as expandable section
+   */
+  renderObjectAsExpandable(obj, depth, parentKey) {
+    const keys = Object.keys(obj);
+    const uniqueId = `json-${Math.random().toString(36).substr(2, 9)}`;
+    const label = parentKey || 'Object';
+    const count = `${keys.length} ${keys.length === 1 ? 'property' : 'properties'}`;
+
+    const content = keys.map(key => {
+      const value = obj[key];
+      const renderedValue = this.renderStructuredJSON(value, depth + 1, key);
+
+      return `
+        <div class="json-item">
+          <div class="json-key-value">
+            <div class="json-key">${this.escapeHtml(key)}:</div>
+            <div class="json-value">${renderedValue}</div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    return `
+      <div class="json-expandable" data-id="${uniqueId}">
+        <div class="json-expand-header">
+          <span class="json-expand-icon">▶</span>
+          <span class="json-expand-label">📦 ${this.escapeHtml(label)}</span>
+          <span class="json-expand-count">${count}</span>
+        </div>
+        <div class="json-expand-content">
+          ${content}
+        </div>
+      </div>
+    `;
+  }
+
+  /**
+   * Render an array
+   */
+  renderArray(arr, depth, parentKey) {
+    if (arr.length === 0) {
+      return '<div class="json-empty-message">Empty array</div>';
+    }
+
+    // Check if array contains only primitives
+    const allPrimitives = arr.every(item => {
+      const type = typeof item;
+      return item === null || type === 'string' || type === 'number' || type === 'boolean';
+    });
+
+    if (allPrimitives) {
+      return this.renderArrayAsList(arr, depth);
+    }
+
+    // Otherwise, render as expandable section
+    return this.renderArrayAsExpandable(arr, depth, parentKey);
+  }
+
+  /**
+   * Render array as a simple list
+   */
+  renderArrayAsList(arr, depth) {
+    const items = arr.map((item, index) => {
+      const type = item === null ? 'null' : typeof item;
+      const renderedValue = this.renderPrimitive(item, type);
+
+      return `
+        <div class="json-item">
+          <div class="json-key-value">
+            <div class="json-key">[${index}]:</div>
+            <div class="json-value">${renderedValue}</div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    return `
+      <div class="json-array">
+        ${items}
+      </div>
+    `;
+  }
+
+  /**
+   * Render array as expandable section
+   */
+  renderArrayAsExpandable(arr, depth, parentKey) {
+    const uniqueId = `json-${Math.random().toString(36).substr(2, 9)}`;
+    const label = parentKey || 'Array';
+    const count = `${arr.length} ${arr.length === 1 ? 'item' : 'items'}`;
+
+    const content = arr.map((item, index) => {
+      const renderedValue = this.renderStructuredJSON(item, depth + 1, `[${index}]`);
+
+      return `
+        <div class="json-item">
+          <div class="json-key-value">
+            <div class="json-key">[${index}]:</div>
+            <div class="json-value">${renderedValue}</div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    return `
+      <div class="json-expandable" data-id="${uniqueId}">
+        <div class="json-expand-header">
+          <span class="json-expand-icon">▶</span>
+          <span class="json-expand-label">📋 ${this.escapeHtml(label)}</span>
+          <span class="json-expand-count">${count}</span>
+        </div>
+        <div class="json-expand-content">
+          ${content}
+        </div>
+      </div>
+    `;
+  }
+
+  /**
+   * Get value type for display
+   */
+  getValueType(value) {
+    if (value === null) return 'null';
+    if (Array.isArray(value)) return 'array';
+    return typeof value;
   }
 
   escapeHtml(text) {
@@ -697,12 +1008,15 @@ class AnalyticsLoggerUI {
 
       if (response.success) {
         this.events = [];
+        this.filteredEvents = [];
+        this.updateEventTypeFilter(); // Clear the event type dropdown
         this.applyFilters();
         this.updateStats();
         console.log('[Panel] Events cleared');
       }
     } catch (err) {
       console.error('[Panel] Error clearing events:', err);
+      alert('Error clearing events: ' + err.message);
     }
   }
 
