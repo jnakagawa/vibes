@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "Extension Analytics Logger",
+  "version": "1.0.0",
+  "description": "Automatically captures and displays analytics events from Chrome extensions",
+  "permissions": [
+    "webRequest",
+    "storage",
+    "tabs",
+    "activeTab",
+    "sidePanel",
+    "debugger",
+    "nativeMessaging"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "side_panel": {
+    "default_path": "panel/panel.html"
+  },
+  "action": {
+    "default_title": "Extension Analytics Logger"
+  },
+  "externally_connectable": {
+    "ids": ["*"]
+  }
+}
