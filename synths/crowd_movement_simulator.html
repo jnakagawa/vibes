@@ -277,7 +277,7 @@
             document.getElementById('instructions').classList.add('hidden');
             game.running = true;
             resetLevel();
-            gameLoop();
+            requestAnimationFrame(gameLoop);
         }
 
         function resetLevel() {
@@ -542,6 +542,23 @@
                 // Apply drift force
                 particle.vx += Math.cos(particle.driftAngle) * particle.driftSpeed;
                 particle.vy += Math.sin(particle.driftAngle) * particle.driftSpeed;
+
+                // Boundary repulsion to prevent edge accumulation
+                const boundaryPadding = 80;
+                const boundaryForce = 0.15;
+
+                if (particle.x < boundaryPadding) {
+                    particle.vx += (boundaryPadding - particle.x) / boundaryPadding * boundaryForce;
+                }
+                if (particle.x > game.width - boundaryPadding) {
+                    particle.vx -= (particle.x - (game.width - boundaryPadding)) / boundaryPadding * boundaryForce;
+                }
+                if (particle.y < boundaryPadding) {
+                    particle.vy += (boundaryPadding - particle.y) / boundaryPadding * boundaryForce;
+                }
+                if (particle.y > game.height - boundaryPadding) {
+                    particle.vy -= (particle.y - (game.height - boundaryPadding)) / boundaryPadding * boundaryForce;
+                }
 
                 // Apply damping
                 particle.vx *= crowdConfig.damping;
