@@ -58,6 +58,28 @@
             opacity: 0.9;
         }
 
+        #timer {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 48px;
+            font-weight: bold;
+            color: rgba(255, 255, 255, 0.3);
+            pointer-events: none;
+            text-shadow: 0 2px 8px rgba(0,0,0,0.5);
+        }
+
+        #timer.warning {
+            color: rgba(255, 100, 100, 0.8);
+            animation: pulse 0.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: translate(-50%, -50%) scale(1); }
+            50% { transform: translate(-50%, -50%) scale(1.1); }
+        }
+
         #instructions {
             position: absolute;
             top: 50%;
@@ -146,13 +168,14 @@
             <div id="level">Level 1</div>
             <div id="progress">Progress: 0%</div>
         </div>
+        <div id="timer">30</div>
     </div>
 
     <div id="instructions">
         <h2>Crowd Simulator</h2>
         <p>Touch and hold to move your circle (blue) through the crowd.</p>
-        <p>Reach the other side to win!</p>
-        <p><strong>Warning:</strong> Moving too fast makes the crowd denser and harder to pass through.</p>
+        <p>Reach the other side in <strong>30 seconds</strong> to win!</p>
+        <p><strong>Tip:</strong> Moving too fast makes the crowd denser and harder to pass through.</p>
         <button id="startBtn">Start Game</button>
     </div>
 
@@ -174,7 +197,10 @@
             level: 1,
             touchActive: false,
             touchX: 0,
-            touchY: 0
+            touchY: 0,
+            timeLimit: 30,
+            timeRemaining: 30,
+            lastFrameTime: 0
         };
 
         // Player
@@ -261,6 +287,12 @@
             player.vy = 0;
             player.speed = 0;
 
+            // Reset timer
+            game.timeRemaining = game.timeLimit;
+            game.lastFrameTime = performance.now();
+            document.getElementById('timer').textContent = Math.ceil(game.timeRemaining);
+            document.getElementById('timer').classList.remove('warning');
+
             // Generate crowd
             crowd = [];
             const crowdCount = config.crowdCount;
@@ -277,8 +309,8 @@
                     baseX: 0,
                     baseY: 0,
                     driftAngle: angle,
-                    driftSpeed: 0.1 + Math.random() * 0.2,
-                    driftChangeTimer: Math.random() * 100
+                    driftSpeed: 0.01 + Math.random() * 0.02,
+                    driftChangeTimer: Math.random() * 200
                 };
 
                 // Store base position for density clustering
@@ -499,9 +531,9 @@
                 // Add random drift movement
                 particle.driftChangeTimer--;
                 if (particle.driftChangeTimer <= 0) {
-                    // Change drift direction occasionally
-                    particle.driftAngle += (Math.random() - 0.5) * 0.5;
-                    particle.driftChangeTimer = 50 + Math.random() * 100;
+                    // Change drift direction occasionally (very subtle)
+                    particle.driftAngle += (Math.random() - 0.5) * 0.3;
+                    particle.driftChangeTimer = 100 + Math.random() * 200;
                 }
 
                 // Apply drift force
@@ -600,20 +632,60 @@
         function winLevel() {
             game.running = false;
             document.getElementById('winMessage').style.display = 'block';
+            document.getElementById('winMessage').style.background = 'rgba(0,212,255,0.95)';
+            document.getElementById('winMessage').querySelector('h2').textContent = 'Level Complete!';
             document.getElementById('winText').textContent =
-                `You navigated through ${crowd.length} people to reach the goal!`;
+                `You navigated through ${crowd.length} people in ${(game.timeLimit - game.timeRemaining).toFixed(1)}s!`;
+        }
+
+        function loseLevel() {
+            game.running = false;
+            document.getElementById('winMessage').style.display = 'block';
+            document.getElementById('winMessage').style.background = 'rgba(255,100,100,0.95)';
+            document.getElementById('winMessage').querySelector('h2').textContent = 'Time\'s Up!';
+            document.getElementById('winText').textContent =
+                `You ran out of time! Try again and move faster through the crowd.`;
+            document.getElementById('nextBtn').textContent = 'Try Again';
         }
 
         function nextLevel() {
             document.getElementById('winMessage').style.display = 'none';
-            game.level++;
-            document.getElementById('level').textContent = `Level ${game.level}`;
+
+            // Check if we failed - if so, retry same level
+            if (document.getElementById('nextBtn').textContent === 'Try Again') {
+                document.getElementById('nextBtn').textContent = 'Next Level';
+            } else {
+                // Move to next level
+                game.level++;
+                document.getElementById('level').textContent = `Level ${game.level}`;
+            }
+
             game.running = true;
             resetLevel();
         }
 
-        function gameLoop() {
+        function gameLoop(currentTime) {
             if (!game.running) return;
+
+            // Update timer
+            const deltaTime = (currentTime - game.lastFrameTime) / 1000;
+            game.lastFrameTime = currentTime;
+            game.timeRemaining -= deltaTime;
+
+            // Update timer display
+            const timeDisplay = Math.ceil(game.timeRemaining);
+            document.getElementById('timer').textContent = timeDisplay;
+
+            // Add warning style when time is low
+            if (game.timeRemaining <= 10) {
+                document.getElementById('timer').classList.add('warning');
+            }
+
+            // Check if time ran out
+            if (game.timeRemaining <= 0) {
+                loseLevel();
+                return;
+            }
 
             updatePlayer();
             updateCrowd();
