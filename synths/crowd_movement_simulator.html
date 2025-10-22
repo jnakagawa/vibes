@@ -552,22 +552,23 @@
                 particle.x += particle.vx;
                 particle.y += particle.vy;
 
-                // Boundary collision
+                // Soft boundary - just clamp position, no bouncing
+                // With home spring, particles should naturally stay away from edges
                 if (particle.x < particle.radius) {
                     particle.x = particle.radius;
-                    particle.vx *= -0.5;
+                    particle.vx = 0;
                 }
                 if (particle.x > game.width - particle.radius) {
                     particle.x = game.width - particle.radius;
-                    particle.vx *= -0.5;
+                    particle.vx = 0;
                 }
                 if (particle.y < particle.radius) {
                     particle.y = particle.radius;
-                    particle.vy *= -0.5;
+                    particle.vy = 0;
                 }
                 if (particle.y > game.height - particle.radius) {
                     particle.y = game.height - particle.radius;
-                    particle.vy *= -0.5;
+                    particle.vy = 0;
                 }
             });
         }
