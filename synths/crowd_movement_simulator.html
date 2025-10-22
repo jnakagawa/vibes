@@ -301,7 +301,6 @@
             const crowdCount = config.crowdCount;
 
             for (let i = 0; i < crowdCount; i++) {
-                const angle = Math.random() * Math.PI * 2;
                 const particle = {
                     x: Math.random() * (game.width - 100) + 50,
                     y: Math.random() * game.height,
@@ -309,22 +308,25 @@
                     vy: 0,
                     radius: crowdConfig.radius,
                     color: crowdConfig.colors[Math.floor(Math.random() * crowdConfig.colors.length)],
-                    baseX: 0,
-                    baseY: 0,
-                    driftAngle: angle,
-                    driftSpeed: 0.01 + Math.random() * 0.02,
-                    driftChangeTimer: Math.random() * 200
+                    homeX: 0,
+                    homeY: 0
                 };
 
-                // Store base position for density clustering
-                particle.baseX = particle.x;
-                particle.baseY = particle.y;
+                // Store home position (will be set after clustering)
+                particle.homeX = particle.x;
+                particle.homeY = particle.y;
 
                 crowd.push(particle);
             }
 
             // Apply initial density clustering
             applyDensityClustering(config.crowdDensity);
+
+            // Update home positions after clustering
+            crowd.forEach(particle => {
+                particle.homeX = particle.x;
+                particle.homeY = particle.y;
+            });
 
             debugLog(`Level ${game.level} started with ${crowdCount} crowd members`);
         }
@@ -531,34 +533,16 @@
                     }
                 });
 
-                // Add random drift movement
-                particle.driftChangeTimer--;
-                if (particle.driftChangeTimer <= 0) {
-                    // Change drift direction occasionally (very subtle)
-                    particle.driftAngle += (Math.random() - 0.5) * 0.3;
-                    particle.driftChangeTimer = 100 + Math.random() * 200;
-                }
+                // Brownian motion - random jitter that averages to zero
+                particle.vx += (Math.random() - 0.5) * 0.04;
+                particle.vy += (Math.random() - 0.5) * 0.04;
 
-                // Apply drift force
-                particle.vx += Math.cos(particle.driftAngle) * particle.driftSpeed;
-                particle.vy += Math.sin(particle.driftAngle) * particle.driftSpeed;
-
-                // Boundary repulsion to prevent edge accumulation
-                const boundaryPadding = 80;
-                const boundaryForce = 0.15;
-
-                if (particle.x < boundaryPadding) {
-                    particle.vx += (boundaryPadding - particle.x) / boundaryPadding * boundaryForce;
-                }
-                if (particle.x > game.width - boundaryPadding) {
-                    particle.vx -= (particle.x - (game.width - boundaryPadding)) / boundaryPadding * boundaryForce;
-                }
-                if (particle.y < boundaryPadding) {
-                    particle.vy += (boundaryPadding - particle.y) / boundaryPadding * boundaryForce;
-                }
-                if (particle.y > game.height - boundaryPadding) {
-                    particle.vy -= (particle.y - (game.height - boundaryPadding)) / boundaryPadding * boundaryForce;
-                }
+                // Home position spring - gentle pull back to starting position
+                const homeSpring = 0.002;
+                const dx = particle.homeX - particle.x;
+                const dy = particle.homeY - particle.y;
+                particle.vx += dx * homeSpring;
+                particle.vy += dy * homeSpring;
 
                 // Apply damping
                 particle.vx *= crowdConfig.damping;
