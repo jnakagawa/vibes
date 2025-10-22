@@ -239,6 +239,8 @@
 
         // Initialize game
         function init() {
+            debugLog('Initializing game...');
+
             game.canvas = document.getElementById('gameCanvas');
             game.ctx = game.canvas.getContext('2d');
 
@@ -254,10 +256,24 @@
             game.canvas.addEventListener('mouseup', handleMouseUp);
 
             // UI buttons
-            document.getElementById('startBtn').addEventListener('click', startGame);
-            document.getElementById('nextBtn').addEventListener('click', nextLevel);
+            const startBtn = document.getElementById('startBtn');
+            const nextBtn = document.getElementById('nextBtn');
 
-            debugLog('Game initialized');
+            if (startBtn) {
+                startBtn.addEventListener('click', startGame);
+                debugLog('Start button listener attached');
+            } else {
+                console.error('Start button not found!');
+            }
+
+            if (nextBtn) {
+                nextBtn.addEventListener('click', nextLevel);
+                debugLog('Next button listener attached');
+            } else {
+                console.error('Next button not found!');
+            }
+
+            debugLog('Game initialized successfully');
         }
 
         function resizeCanvas() {
@@ -274,10 +290,19 @@
         }
 
         function startGame() {
-            document.getElementById('instructions').classList.add('hidden');
-            game.running = true;
-            resetLevel();
-            requestAnimationFrame(gameLoop);
+            debugLog('Start Game button clicked');
+            try {
+                document.getElementById('instructions').classList.add('hidden');
+                game.running = true;
+                debugLog('Calling resetLevel...');
+                resetLevel();
+                debugLog('Starting game loop...');
+                requestAnimationFrame(gameLoop);
+                debugLog('Game started successfully');
+            } catch (error) {
+                console.error('Error starting game:', error);
+                alert('Error starting game: ' + error.message);
+            }
         }
 
         function resetLevel() {
