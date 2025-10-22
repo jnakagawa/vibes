@@ -158,6 +158,27 @@
         .hidden {
             display: none !important;
         }
+
+        #debugOutput {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.8);
+            color: #0f0;
+            font-family: monospace;
+            font-size: 12px;
+            padding: 10px;
+            max-height: 150px;
+            overflow-y: auto;
+            border-radius: 5px;
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        #debugOutput div {
+            margin: 2px 0;
+        }
     </style>
 </head>
 <body>
@@ -170,6 +191,8 @@
         </div>
         <div id="timer">30</div>
     </div>
+
+    <div id="debugOutput"></div>
 
     <div id="instructions">
         <h2>Crowd Simulator</h2>
@@ -290,25 +313,34 @@
         }
 
         function startGame() {
-            debugLog('Start Game button clicked');
+            debugLog('>>> START GAME BUTTON CLICKED <<<');
             try {
+                debugLog('Hiding instructions...');
                 document.getElementById('instructions').classList.add('hidden');
+
+                debugLog('Setting game.running = true');
                 game.running = true;
+
                 debugLog('Calling resetLevel...');
                 resetLevel();
-                debugLog('Starting game loop...');
+
+                debugLog('Starting game loop with requestAnimationFrame...');
                 requestAnimationFrame(gameLoop);
-                debugLog('Game started successfully');
+
+                debugLog('✓ GAME STARTED SUCCESSFULLY!');
             } catch (error) {
                 console.error('Error starting game:', error);
-                alert('Error starting game: ' + error.message);
+                debugLog('❌ ERROR: ' + error.message);
+                debugLog('Stack: ' + error.stack);
             }
         }
 
         function resetLevel() {
+            debugLog(`resetLevel: Starting level ${game.level}`);
             const config = levelConfig[game.level] || levelConfig[5];
 
             // Position player on left side
+            debugLog('resetLevel: Positioning player');
             player.x = 50;
             player.y = game.height / 2;
             player.vx = 0;
@@ -316,12 +348,14 @@
             player.speed = 0;
 
             // Reset timer
+            debugLog('resetLevel: Resetting timer');
             game.timeRemaining = game.timeLimit;
             game.lastFrameTime = 0;  // Will be initialized on first frame
             document.getElementById('timer').textContent = Math.ceil(game.timeRemaining);
             document.getElementById('timer').classList.remove('warning');
 
             // Generate crowd
+            debugLog(`resetLevel: Generating ${config.crowdCount} crowd particles`);
             crowd = [];
             const crowdCount = config.crowdCount;
 
@@ -345,15 +379,17 @@
             }
 
             // Apply initial density clustering
+            debugLog('resetLevel: Applying density clustering');
             applyDensityClustering(config.crowdDensity);
 
             // Update home positions after clustering
+            debugLog('resetLevel: Setting home positions');
             crowd.forEach(particle => {
                 particle.homeX = particle.x;
                 particle.homeY = particle.y;
             });
 
-            debugLog(`Level ${game.level} started with ${crowdCount} crowd members`);
+            debugLog(`✓ resetLevel: Complete! Level ${game.level} with ${crowdCount} crowd members`);
         }
 
         function applyDensityClustering(density) {
@@ -731,6 +767,20 @@
 
         function debugLog(message) {
             console.log(`[Crowd Simulator] ${message}`);
+
+            // Also display on screen
+            const debugDiv = document.getElementById('debugOutput');
+            if (debugDiv) {
+                const line = document.createElement('div');
+                line.textContent = `${new Date().toLocaleTimeString()}: ${message}`;
+                debugDiv.appendChild(line);
+                debugDiv.scrollTop = debugDiv.scrollHeight;
+
+                // Keep only last 20 messages
+                while (debugDiv.children.length > 20) {
+                    debugDiv.removeChild(debugDiv.firstChild);
+                }
+            }
         }
 
         // Start initialization
