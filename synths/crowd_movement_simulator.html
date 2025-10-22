@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Crowd Movement Simulator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            background: #1a1a2e;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            touch-action: none;
+            position: fixed;
+        }
+
+        #gameCanvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            touch-action: none;
+        }
+
+        #ui {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 20px;
+            color: white;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        #stats {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 16px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+        }
+
+        #level {
+            font-weight: bold;
+            font-size: 18px;
+        }
+
+        #progress {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        #instructions {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            background: rgba(0,0,0,0.8);
+            padding: 30px;
+            border-radius: 15px;
+            max-width: 300px;
+            pointer-events: auto;
+        }
+
+        #instructions h2 {
+            margin-bottom: 15px;
+            color: #00d4ff;
+        }
+
+        #instructions p {
+            margin-bottom: 10px;
+            line-height: 1.6;
+            font-size: 14px;
+        }
+
+        #startBtn {
+            margin-top: 20px;
+            padding: 12px 30px;
+            font-size: 18px;
+            background: #00d4ff;
+            color: #1a1a2e;
+            border: none;
+            border-radius: 25px;
+            font-weight: bold;
+            cursor: pointer;
+            touch-action: manipulation;
+            min-width: 44px;
+            min-height: 44px;
+        }
+
+        #startBtn:active {
+            transform: scale(0.95);
+        }
+
+        #winMessage {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            background: rgba(0,212,255,0.95);
+            color: #1a1a2e;
+            padding: 30px;
+            border-radius: 15px;
+            display: none;
+            pointer-events: auto;
+        }
+
+        #winMessage h2 {
+            margin-bottom: 15px;
+        }
+
+        #nextBtn {
+            margin-top: 15px;
+            padding: 12px 30px;
+            font-size: 18px;
+            background: #1a1a2e;
+            color: white;
+            border: none;
+            border-radius: 25px;
+            font-weight: bold;
+            cursor: pointer;
+            min-width: 44px;
+            min-height: 44px;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="ui">
+        <div id="stats">
+            <div id="level">Level 1</div>
+            <div id="progress">Progress: 0%</div>
+        </div>
+    </div>
+
+    <div id="instructions">
+        <h2>Crowd Simulator</h2>
+        <p>Touch and hold to move your circle (blue) through the crowd.</p>
+        <p>Reach the other side to win!</p>
+        <p><strong>Warning:</strong> Moving too fast makes the crowd denser and harder to pass through.</p>
+        <button id="startBtn">Start Game</button>
+    </div>
+
+    <div id="winMessage">
+        <h2>Level Complete!</h2>
+        <p id="winText">You made it through the crowd!</p>
+        <button id="nextBtn">Next Level</button>
+    </div>
+
+    <script>
+        // Game state
+        const game = {
+            canvas: null,
+            ctx: null,
+            width: 0,
+            height: 0,
+            dpr: window.devicePixelRatio || 1,
+            running: false,
+            level: 1,
+            touchActive: false,
+            touchX: 0,
+            touchY: 0
+        };
+
+        // Player
+        const player = {
+            x: 0,
+            y: 0,
+            radius: 15,
+            color: '#00d4ff',
+            vx: 0,
+            vy: 0,
+            speed: 0,
+            maxSpeed: 5,
+            moveForce: 0.3
+        };
+
+        // Crowd particles
+        let crowd = [];
+        const crowdConfig = {
+            baseCount: 150,
+            radius: 6,
+            colors: ['#ff6b6b', '#ffd93d', '#6bcf7f', '#a29bfe', '#fd79a8'],
+            repulsion: 0.5,
+            damping: 0.95,
+            densityRadius: 60,
+            maxDensity: 8
+        };
+
+        // Level configuration
+        const levelConfig = {
+            1: { crowdCount: 150, crowdDensity: 0.6 },
+            2: { crowdCount: 200, crowdDensity: 0.7 },
+            3: { crowdCount: 250, crowdDensity: 0.8 },
+            4: { crowdCount: 300, crowdDensity: 0.85 },
+            5: { crowdCount: 350, crowdDensity: 0.9 }
+        };
+
+        // Initialize game
+        function init() {
+            game.canvas = document.getElementById('gameCanvas');
+            game.ctx = game.canvas.getContext('2d');
+
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+
+            // Touch/pointer events
+            game.canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+            game.canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+            game.canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
+            game.canvas.addEventListener('mousedown', handleMouseDown);
+            game.canvas.addEventListener('mousemove', handleMouseMove);
+            game.canvas.addEventListener('mouseup', handleMouseUp);
+
+            // UI buttons
+            document.getElementById('startBtn').addEventListener('click', startGame);
+            document.getElementById('nextBtn').addEventListener('click', nextLevel);
+
+            debugLog('Game initialized');
+        }
+
+        function resizeCanvas() {
+            game.width = window.innerWidth;
+            game.height = window.innerHeight;
+            game.canvas.width = game.width * game.dpr;
+            game.canvas.height = game.height * game.dpr;
+            game.canvas.style.width = game.width + 'px';
+            game.canvas.style.height = game.height + 'px';
+            game.ctx.scale(game.dpr, game.dpr);
+        }
+
+        function startGame() {
+            document.getElementById('instructions').classList.add('hidden');
+            game.running = true;
+            resetLevel();
+            gameLoop();
+        }
+
+        function resetLevel() {
+            const config = levelConfig[game.level] || levelConfig[5];
+
+            // Position player on left side
+            player.x = 50;
+            player.y = game.height / 2;
+            player.vx = 0;
+            player.vy = 0;
+            player.speed = 0;
+
+            // Generate crowd
+            crowd = [];
+            const crowdCount = config.crowdCount;
+
+            for (let i = 0; i < crowdCount; i++) {
+                const particle = {
+                    x: Math.random() * (game.width - 100) + 50,
+                    y: Math.random() * game.height,
+                    vx: 0,
+                    vy: 0,
+                    radius: crowdConfig.radius,
+                    color: crowdConfig.colors[Math.floor(Math.random() * crowdConfig.colors.length)],
+                    baseX: 0,
+                    baseY: 0
+                };
+
+                // Store base position for density clustering
+                particle.baseX = particle.x;
+                particle.baseY = particle.y;
+
+                crowd.push(particle);
+            }
+
+            // Apply initial density clustering
+            applyDensityClustering(config.crowdDensity);
+
+            debugLog(`Level ${game.level} started with ${crowdCount} crowd members`);
+        }
+
+        function applyDensityClustering(density) {
+            // Create clusters of varying density
+            const clusterCount = 5 + Math.floor(game.level * 2);
+            const clusters = [];
+
+            for (let i = 0; i < clusterCount; i++) {
+                clusters.push({
+                    x: Math.random() * (game.width - 200) + 100,
+                    y: Math.random() * game.height,
+                    radius: 50 + Math.random() * 100,
+                    strength: 0.3 + Math.random() * density
+                });
+            }
+
+            // Pull particles towards clusters
+            crowd.forEach(particle => {
+                clusters.forEach(cluster => {
+                    const dx = cluster.x - particle.x;
+                    const dy = cluster.y - particle.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < cluster.radius) {
+                        const force = cluster.strength * (1 - dist / cluster.radius);
+                        particle.x += dx * force * 0.5;
+                        particle.y += dy * force * 0.5;
+                    }
+                });
+            });
+        }
+
+        function handleTouchStart(e) {
+            e.preventDefault();
+            const touch = e.touches[0];
+            game.touchActive = true;
+            game.touchX = touch.clientX;
+            game.touchY = touch.clientY;
+        }
+
+        function handleTouchMove(e) {
+            e.preventDefault();
+            if (game.touchActive) {
+                const touch = e.touches[0];
+                game.touchX = touch.clientX;
+                game.touchY = touch.clientY;
+            }
+        }
+
+        function handleTouchEnd(e) {
+            e.preventDefault();
+            game.touchActive = false;
+        }
+
+        function handleMouseDown(e) {
+            game.touchActive = true;
+            game.touchX = e.clientX;
+            game.touchY = e.clientY;
+        }
+
+        function handleMouseMove(e) {
+            if (game.touchActive) {
+                game.touchX = e.clientX;
+                game.touchY = e.clientY;
+            }
+        }
+
+        function handleMouseUp(e) {
+            game.touchActive = false;
+        }
+
+        function updatePlayer() {
+            if (game.touchActive) {
+                // Move towards touch point
+                const dx = game.touchX - player.x;
+                const dy = game.touchY - player.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist > 5) {
+                    const dirX = dx / dist;
+                    const dirY = dy / dist;
+
+                    // Calculate local crowd density
+                    const density = calculateLocalDensity(player.x, player.y);
+                    const densityFactor = Math.max(0.1, 1 - (density / crowdConfig.maxDensity));
+
+                    // Apply movement force, reduced by density
+                    player.vx += dirX * player.moveForce * densityFactor;
+                    player.vy += dirY * player.moveForce * densityFactor;
+                }
+            }
+
+            // Calculate speed
+            player.speed = Math.sqrt(player.vx * player.vx + player.vy * player.vy);
+
+            // Apply damping
+            player.vx *= 0.9;
+            player.vy *= 0.9;
+
+            // Limit speed
+            if (player.speed > player.maxSpeed) {
+                const scale = player.maxSpeed / player.speed;
+                player.vx *= scale;
+                player.vy *= scale;
+                player.speed = player.maxSpeed;
+            }
+
+            // Update position
+            player.x += player.vx;
+            player.y += player.vy;
+
+            // Boundary collision
+            if (player.x < player.radius) {
+                player.x = player.radius;
+                player.vx *= -0.5;
+            }
+            if (player.x > game.width - player.radius) {
+                player.x = game.width - player.radius;
+                player.vx *= -0.5;
+            }
+            if (player.y < player.radius) {
+                player.y = player.radius;
+                player.vy *= -0.5;
+            }
+            if (player.y > game.height - player.radius) {
+                player.y = game.height - player.radius;
+                player.vy *= -0.5;
+            }
+
+            // Check win condition (reached right side)
+            const progress = ((player.x - 50) / (game.width - 100)) * 100;
+            document.getElementById('progress').textContent = `Progress: ${Math.floor(progress)}%`;
+
+            if (player.x > game.width - 50) {
+                winLevel();
+            }
+        }
+
+        function calculateLocalDensity(x, y) {
+            let count = 0;
+            const checkRadius = crowdConfig.densityRadius;
+
+            crowd.forEach(particle => {
+                const dx = x - particle.x;
+                const dy = y - particle.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist < checkRadius) {
+                    count++;
+                }
+            });
+
+            return count;
+        }
+
+        function updateCrowd() {
+            // Player speed affects crowd density
+            const speedFactor = player.speed / player.maxSpeed;
+            const compressionForce = speedFactor * 0.3;
+
+            // Update each particle
+            crowd.forEach(particle => {
+                // Calculate distance to player
+                const dx = particle.x - player.x;
+                const dy = particle.y - player.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                const minDist = player.radius + particle.radius;
+
+                // Player pushes crowd particles
+                if (dist < minDist + 30) {
+                    const force = (minDist + 30 - dist) / (minDist + 30);
+                    const pushX = (dx / dist) * force * crowdConfig.repulsion;
+                    const pushY = (dy / dist) * force * crowdConfig.repulsion;
+
+                    particle.vx += pushX;
+                    particle.vy += pushY;
+
+                    // Compression effect when player moves fast
+                    if (speedFactor > 0.5) {
+                        particle.vx -= pushX * compressionForce;
+                        particle.vy -= pushY * compressionForce;
+                    }
+                }
+
+                // Particle-to-particle repulsion
+                crowd.forEach(other => {
+                    if (particle === other) return;
+
+                    const dx2 = particle.x - other.x;
+                    const dy2 = particle.y - other.y;
+                    const dist2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+                    const minDist2 = particle.radius + other.radius;
+
+                    if (dist2 < minDist2 + 5) {
+                        const force = (minDist2 + 5 - dist2) / (minDist2 + 5);
+                        const pushX = (dx2 / dist2) * force * 0.2;
+                        const pushY = (dy2 / dist2) * force * 0.2;
+
+                        particle.vx += pushX;
+                        particle.vy += pushY;
+                    }
+                });
+
+                // Apply damping
+                particle.vx *= crowdConfig.damping;
+                particle.vy *= crowdConfig.damping;
+
+                // Update position
+                particle.x += particle.vx;
+                particle.y += particle.vy;
+
+                // Boundary collision
+                if (particle.x < particle.radius) {
+                    particle.x = particle.radius;
+                    particle.vx *= -0.5;
+                }
+                if (particle.x > game.width - particle.radius) {
+                    particle.x = game.width - particle.radius;
+                    particle.vx *= -0.5;
+                }
+                if (particle.y < particle.radius) {
+                    particle.y = particle.radius;
+                    particle.vy *= -0.5;
+                }
+                if (particle.y > game.height - particle.radius) {
+                    particle.y = game.height - particle.radius;
+                    particle.vy *= -0.5;
+                }
+            });
+        }
+
+        function render() {
+            // Clear canvas
+            game.ctx.fillStyle = '#1a1a2e';
+            game.ctx.fillRect(0, 0, game.width, game.height);
+
+            // Draw goal zone (right side)
+            game.ctx.fillStyle = 'rgba(0, 255, 0, 0.1)';
+            game.ctx.fillRect(game.width - 50, 0, 50, game.height);
+
+            // Draw crowd particles
+            crowd.forEach(particle => {
+                game.ctx.beginPath();
+                game.ctx.arc(particle.x, particle.y, particle.radius, 0, Math.PI * 2);
+                game.ctx.fillStyle = particle.color;
+                game.ctx.fill();
+
+                // Add subtle glow
+                game.ctx.strokeStyle = particle.color;
+                game.ctx.lineWidth = 1;
+                game.ctx.globalAlpha = 0.3;
+                game.ctx.stroke();
+                game.ctx.globalAlpha = 1;
+            });
+
+            // Draw player with glow effect
+            const density = calculateLocalDensity(player.x, player.y);
+            const glowSize = 5 + (density / crowdConfig.maxDensity) * 15;
+
+            game.ctx.beginPath();
+            game.ctx.arc(player.x, player.y, player.radius + glowSize, 0, Math.PI * 2);
+            game.ctx.fillStyle = `rgba(0, 212, 255, ${0.1 + (density / crowdConfig.maxDensity) * 0.2})`;
+            game.ctx.fill();
+
+            game.ctx.beginPath();
+            game.ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+            game.ctx.fillStyle = player.color;
+            game.ctx.fill();
+            game.ctx.strokeStyle = 'white';
+            game.ctx.lineWidth = 2;
+            game.ctx.stroke();
+
+            // Draw touch indicator
+            if (game.touchActive) {
+                game.ctx.beginPath();
+                game.ctx.arc(game.touchX, game.touchY, 20, 0, Math.PI * 2);
+                game.ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                game.ctx.lineWidth = 2;
+                game.ctx.stroke();
+
+                // Draw line to player
+                game.ctx.beginPath();
+                game.ctx.moveTo(player.x, player.y);
+                game.ctx.lineTo(game.touchX, game.touchY);
+                game.ctx.strokeStyle = 'rgba(0, 212, 255, 0.3)';
+                game.ctx.lineWidth = 2;
+                game.ctx.setLineDash([5, 5]);
+                game.ctx.stroke();
+                game.ctx.setLineDash([]);
+            }
+        }
+
+        function winLevel() {
+            game.running = false;
+            document.getElementById('winMessage').style.display = 'block';
+            document.getElementById('winText').textContent =
+                `You navigated through ${crowd.length} people to reach the goal!`;
+        }
+
+        function nextLevel() {
+            document.getElementById('winMessage').style.display = 'none';
+            game.level++;
+            document.getElementById('level').textContent = `Level ${game.level}`;
+            game.running = true;
+            resetLevel();
+        }
+
+        function gameLoop() {
+            if (!game.running) return;
+
+            updatePlayer();
+            updateCrowd();
+            render();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function debugLog(message) {
+            console.log(`[Crowd Simulator] ${message}`);
+        }
+
+        // Start initialization
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
+        }
+    </script>
+</body>
+</html>
