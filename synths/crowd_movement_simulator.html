@@ -230,11 +230,11 @@
 
         // Level configuration
         const levelConfig = {
-            1: { crowdCount: 150, crowdDensity: 0.6 },
-            2: { crowdCount: 200, crowdDensity: 0.7 },
-            3: { crowdCount: 250, crowdDensity: 0.8 },
-            4: { crowdCount: 300, crowdDensity: 0.85 },
-            5: { crowdCount: 350, crowdDensity: 0.9 }
+            1: { crowdCount: 400, crowdDensity: 0.7 },
+            2: { crowdCount: 500, crowdDensity: 0.75 },
+            3: { crowdCount: 600, crowdDensity: 0.8 },
+            4: { crowdCount: 700, crowdDensity: 0.85 },
+            5: { crowdCount: 800, crowdDensity: 0.9 }
         };
 
         // Initialize game
@@ -267,6 +267,9 @@
             game.canvas.height = game.height * game.dpr;
             game.canvas.style.width = game.width + 'px';
             game.canvas.style.height = game.height + 'px';
+
+            // Reset transform before scaling to prevent accumulation
+            game.ctx.setTransform(1, 0, 0, 1, 0, 0);
             game.ctx.scale(game.dpr, game.dpr);
         }
 
@@ -289,7 +292,7 @@
 
             // Reset timer
             game.timeRemaining = game.timeLimit;
-            game.lastFrameTime = performance.now();
+            game.lastFrameTime = 0;  // Will be initialized on first frame
             document.getElementById('timer').textContent = Math.ceil(game.timeRemaining);
             document.getElementById('timer').classList.remove('warning');
 
@@ -666,6 +669,11 @@
 
         function gameLoop(currentTime) {
             if (!game.running) return;
+
+            // Initialize lastFrameTime on first frame
+            if (game.lastFrameTime === 0) {
+                game.lastFrameTime = currentTime;
+            }
 
             // Update timer
             const deltaTime = (currentTime - game.lastFrameTime) / 1000;
