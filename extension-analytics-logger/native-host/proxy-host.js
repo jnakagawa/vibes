@@ -129,8 +129,11 @@ function actuallyStartProxy() {
         // Wait for cert generation, then install it
         setTimeout(() => {
           exec(`security add-trusted-cert -d -r trustRoot -k ~/Library/Keychains/login.keychain-db "${certPath}" 2>&1 | grep -v "already present" || true`, () => {
-            // Launch Chrome with --ignore-certificate-errors as backup
-            const chromeCommand = '/Applications/Google\\ Chrome.app/Contents/MacOS/Google\\ Chrome --proxy-server="http://127.0.0.1:8888" --user-data-dir="/tmp/chrome-proxy-profile" --ignore-certificate-errors > /dev/null 2>&1 &';
+            // Get the extension path (parent directory of native-host)
+            const extensionPath = path.join(__dirname, '..');
+
+            // Launch Chrome with extension loaded
+            const chromeCommand = `/Applications/Google\\ Chrome.app/Contents/MacOS/Google\\ Chrome --proxy-server="http://127.0.0.1:8888" --user-data-dir="/tmp/chrome-proxy-profile" --load-extension="${extensionPath}" --ignore-certificate-errors > /dev/null 2>&1 &`;
 
             exec(chromeCommand, (launchErr) => {
               if (launchErr) {
@@ -142,7 +145,7 @@ function actuallyStartProxy() {
               } else {
                 sendMessage({
                   success: true,
-                  message: 'MITM Proxy started! Can now intercept HTTPS from extensions.',
+                  message: 'MITM Proxy started! Extension loaded. Can now intercept HTTPS.',
                   pid: proxyProcess.pid,
                   autoLaunched: true
                 });

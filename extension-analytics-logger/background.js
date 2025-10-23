@@ -3,9 +3,14 @@
 
 import { AnalyticsParser } from './parsers.js';
 import { EventStorage } from './storage.js';
+import { ConfigManager } from './config/config-manager.js';
+import { SourceConfig } from './config/source-config.js';
 
 // Initialize storage
 const storage = new EventStorage(1000);
+
+// Initialize configuration manager
+const configManager = new ConfigManager();
 
 // Settings
 let settings = {
@@ -30,13 +35,20 @@ let settings = {
     'pie.org',        // Pie production domain
     'pie-staging',    // Pie staging domain
     '/collect',       // Google Analytics
-    '/events'         // Common analytics endpoint
+    '/events',        // Common analytics endpoint
+    'reddit',         // Reddit analytics
+    'shreddit'        // Reddit new stack
   ]
 };
 
 // Load settings on startup and then register listener
 async function initialize() {
   console.log('[Analytics Logger] Initializing...');
+
+  // Load configuration manager (sources)
+  await configManager.load();
+  const configStats = configManager.getStats();
+  console.log('[Analytics Logger] Loaded', configStats.totalSources, 'analytics sources');
 
   // Load settings first
   const result = await chrome.storage.local.get('settings');
@@ -52,8 +64,11 @@ async function initialize() {
     await storage.loadFromStorage();
   }
 
-  console.log('[Analytics Logger] Initialization complete');
-  console.log('[Analytics Logger] Active URL patterns:', settings.urlPatterns);
+  console.log('[Analytics Logger] ✅ Initialization complete');
+  console.log('[Analytics Logger] 📋 Extension enabled:', settings.enabled);
+  console.log('[Analytics Logger] 📋 Active sources:', configStats.enabledSources);
+  console.log('[Analytics Logger] 📋 Proxy mode:', settings.useProxy);
+  console.log('[Analytics Logger] 📋 Debugger mode:', settings.useDebugger);
 
   // Start debugger mode if enabled
   if (settings.useDebugger && settings.debuggerTabId) {
@@ -74,14 +89,30 @@ const PROXY_POLL_INTERVAL = 2000; // 2 seconds
 function startProxyPolling() {
   if (proxyPollingInterval) return;
 
-  console.log('[Analytics Logger] Starting proxy polling...');
+  console.log('[Analytics Logger] ✅ Starting proxy polling...');
+  console.log('[Analytics Logger] Proxy URL:', PROXY_URL);
+  console.log('[Analytics Logger] Poll interval:', PROXY_POLL_INTERVAL, 'ms');
+
+  let pollCount = 0;
 
   proxyPollingInterval = setInterval(async () => {
+    pollCount++;
+
     try {
       const response = await fetch(PROXY_URL);
-      if (!response.ok) return;
+
+      if (!response.ok) {
+        if (pollCount % 30 === 0) { // Log every minute (30 * 2 seconds)
+          console.log('[Analytics Logger] [Proxy] Polling... (status:', response.status, ')');
+        }
+        return;
+      }
 
       const data = await response.json();
+
+      if (pollCount % 30 === 0) { // Log every minute
+        console.log(`[Analytics Logger] [Proxy] Poll #${pollCount}: ${data.count || 0} total events in proxy`);
+      }
 
       if (data.events && data.events.length > 0) {
         // Get events we haven't seen yet
@@ -90,13 +121,16 @@ function startProxyPolling() {
         });
 
         if (newEvents.length > 0) {
-          console.log(`[Analytics Logger] [Proxy] Received ${newEvents.length} new events`);
+          console.log(`[Analytics Logger] [Proxy] ✓ Received ${newEvents.length} new events from proxy`);
+          newEvents.forEach(e => console.log(`[Analytics Logger] [Proxy]   - ${e.event} (${e._parser})`));
           storage.addEvents(newEvents);
           notifyPanels('eventsAdded', newEvents);
         }
       }
     } catch (err) {
-      // Silent fail - proxy might not be running
+      if (pollCount === 1) { // Only log on first attempt
+        console.log('[Analytics Logger] [Proxy] Cannot connect to proxy server (this is normal if proxy is not running)');
+      }
     }
   }, PROXY_POLL_INTERVAL);
 }
@@ -241,41 +275,41 @@ chrome.webRequest.onBeforeRequest.addListener(
       return;
     }
 
-    // DEBUG: Log ALL POST requests to help with debugging
-    console.log('[Analytics Logger] POST request detected:', {
-      url: details.url,
-      initiator: details.initiator,
-      type: details.type,
-      frameId: details.frameId,
-      tabId: details.tabId,
-      hasBody: !!details.requestBody
-    });
+    // Find matching source using ConfigManager
+    const source = configManager.findSourceForUrl(details.url);
 
-    // Check if URL matches any patterns
-    const matchesPattern = settings.urlPatterns.some(pattern =>
-      details.url.toLowerCase().includes(pattern.toLowerCase())
-    );
-
-    if (!matchesPattern) {
-      console.log('[Analytics Logger] URL does not match patterns:', details.url);
+    if (!source) {
+      // No source matched, skip silently
       return;
     }
 
-    console.log('[Analytics Logger] URL matches! Parsing...');
+    console.log(`[Analytics Logger] ✅ Matched source "${source.name}" for:`, details.url);
 
-    // Parse the request
+    // Parse the request using the source's parser
     try {
       const events = AnalyticsParser.parseRequest(
         details.url,
         details.requestBody,
-        details.initiator
+        details.initiator,
+        source
       );
 
-      console.log('[Analytics Logger] Parsed events:', events);
-
       if (events.length > 0) {
-        console.log(`[Analytics Logger] ✓ Captured ${events.length} event(s) from:`, details.url);
+        console.log(`[Analytics Logger] ✓ Captured ${events.length} event(s) from ${source.name}`);
+
+        // Add source metadata to events
+        events.forEach(event => {
+          event._source = source.id;
+          event._sourceName = source.name;
+          event._sourceIcon = source.icon;
+          event._sourceColor = source.color;
+        });
+
         storage.addEvents(events);
+
+        // Update source statistics
+        source.recordCapture();
+        configManager.save();
 
         // Persist if enabled
         if (settings.persistEvents) {
@@ -291,7 +325,7 @@ chrome.webRequest.onBeforeRequest.addListener(
       console.error('[Analytics Logger] Error parsing request:', err);
       console.error('[Analytics Logger] Request details:', {
         url: details.url,
-        requestBody: details.requestBody
+        source: source.name
       });
     }
   },
@@ -446,6 +480,75 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ success });
       });
       return true; // Keep channel open for async response
+
+    // Source configuration management
+    case 'getSources':
+      sendResponse({
+        success: true,
+        sources: configManager.getAllSources().map(s => s.toJSON()),
+        stats: configManager.getStats()
+      });
+      break;
+
+    case 'getSource':
+      const source = configManager.getSource(message.id);
+      sendResponse({
+        success: !!source,
+        source: source ? source.toJSON() : null
+      });
+      break;
+
+    case 'addSource':
+      configManager.addSource(SourceConfig.fromJSON(message.source)).then(() => {
+        sendResponse({ success: true });
+      }).catch(err => {
+        sendResponse({ success: false, error: err.message });
+      });
+      return true;
+
+    case 'updateSource':
+      configManager.addSource(SourceConfig.fromJSON(message.source)).then(() => {
+        sendResponse({ success: true });
+      }).catch(err => {
+        sendResponse({ success: false, error: err.message });
+      });
+      return true;
+
+    case 'removeSource':
+      configManager.removeSource(message.id).then(success => {
+        sendResponse({ success });
+      });
+      return true;
+
+    case 'exportSources':
+      sendResponse({
+        success: true,
+        data: configManager.export()
+      });
+      break;
+
+    case 'importSources':
+      configManager.import(message.data).then(count => {
+        sendResponse({ success: true, count });
+      }).catch(err => {
+        sendResponse({ success: false, error: err.message });
+      });
+      return true;
+
+    case 'resetSources':
+      configManager.resetToDefaults().then(() => {
+        sendResponse({ success: true });
+      });
+      return true;
+
+    case 'createSourceFromSample':
+      const newSource = configManager.createFromSample(message.url, message.payload);
+      if (newSource) {
+        sendResponse({ success: true, source: newSource.toJSON() });
+      } else {
+        sendResponse({ success: false, error: 'Failed to create source from sample' });
+      }
+      break;
 
     default:
       sendResponse({ success: false, error: 'Unknown action' });

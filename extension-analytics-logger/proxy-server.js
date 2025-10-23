@@ -171,6 +171,12 @@ const proxyServer = http.createServer((clientReq, clientRes) => {
 proxyServer.on('connect', (req, clientSocket, head) => {
   const { port, hostname } = url.parse(`//${req.url}`, false, true);
 
+  // Log HTTPS connections for debugging
+  if (hostname.includes('reddit')) {
+    console.log(`[Proxy] HTTPS CONNECT to Reddit: ${hostname}`);
+    console.log(`[Proxy] ⚠️  Cannot intercept HTTPS POST bodies without MITM proxy`);
+  }
+
   const serverSocket = require('net').connect(port || 443, hostname, () => {
     clientSocket.write('HTTP/1.1 200 Connection Established\r\n\r\n');
     serverSocket.write(head);

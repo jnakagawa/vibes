@@ -4,20 +4,49 @@
 export class AnalyticsParser {
   /**
    * Main parsing function - detects format and extracts events
+   * @param {string} url - Request URL
+   * @param {object} requestBody - Request body
+   * @param {string} initiator - Request initiator
+   * @param {SourceConfig} source - Source configuration (optional)
    */
-  static parseRequest(url, requestBody, initiator) {
+  static parseRequest(url, requestBody, initiator, source = null) {
     const events = [];
 
-    // Try different parsers based on URL patterns
-    if (url.includes('segment.') || url.includes('/v1/batch') || url.includes('/v1/track')) {
-      events.push(...this.parseSegment(requestBody));
-    } else if (url.includes('google-analytics.com') || url.includes('/collect')) {
-      events.push(...this.parseGoogleAnalytics(requestBody));
-    } else if (url.includes('graphql') || this.looksLikeGraphQL(requestBody)) {
-      events.push(...this.parseGraphQL(requestBody));
+    // Use source-specific parser if available
+    if (source && source.parser) {
+      switch (source.parser) {
+        case 'segment':
+          events.push(...this.parseSegment(requestBody));
+          break;
+        case 'google-analytics':
+          events.push(...this.parseGoogleAnalytics(requestBody));
+          break;
+        case 'reddit':
+          events.push(...this.parseReddit(requestBody));
+          break;
+        case 'graphql':
+          events.push(...this.parseGraphQL(requestBody));
+          break;
+        case 'generic':
+          events.push(...this.parseGenericJSON(requestBody, source));
+          break;
+        default:
+          // Unknown parser, fall back to generic
+          events.push(...this.parseGenericJSON(requestBody, source));
+      }
     } else {
-      // Generic JSON parser
-      events.push(...this.parseGenericJSON(requestBody));
+      // Legacy behavior - auto-detect based on URL
+      if (url.includes('segment.') || url.includes('/v1/batch') || url.includes('/v1/track')) {
+        events.push(...this.parseSegment(requestBody));
+      } else if (url.includes('google-analytics.com') || url.includes('/collect')) {
+        events.push(...this.parseGoogleAnalytics(requestBody));
+      } else if (url.includes('reddit.com') && (url.includes('/events') || url.includes('/svc/shreddit'))) {
+        events.push(...this.parseReddit(requestBody));
+      } else if (url.includes('graphql') || this.looksLikeGraphQL(requestBody)) {
+        events.push(...this.parseGraphQL(requestBody));
+      } else {
+        events.push(...this.parseGenericJSON(requestBody, source));
+      }
     }
 
     // Add metadata to all events
@@ -27,7 +56,7 @@ export class AnalyticsParser {
         capturedAt: new Date().toISOString(),
         url: url,
         initiator: initiator,
-        parser: event._parser || 'unknown'
+        parser: event._parser || (source ? source.parser : 'unknown')
       }
     }));
   }
@@ -133,6 +162,55 @@ export class AnalyticsParser {
   }
 
   /**
+   * Parse Reddit analytics format
+   * Handles /events and /svc/shreddit/events endpoints
+   */
+  static parseReddit(requestBody) {
+    try {
+      const data = this.decodeRequestBody(requestBody);
+      const events = [];
+
+      // Skip if not an object
+      if (typeof data !== 'object' || data === null) {
+        return [];
+      }
+
+      // Reddit can send individual events or arrays
+      const redditEvents = Array.isArray(data) ? data : [data];
+
+      redditEvents.forEach(item => {
+        // Reddit event structure
+        const event = {
+          id: this.generateId(),
+          timestamp: item.client_timestamp || item.timestamp || new Date().toISOString(),
+          type: 'track',
+          event: item.action || item.event || item.noun || 'reddit_event',
+          properties: {
+            action: item.action,
+            action_info: item.action_info,
+            source: item.source,
+            noun: item.noun,
+            ...item
+          },
+          context: {
+            user_agent: item.user_agent,
+            screen: item.screen,
+            viewport: item.viewport
+          },
+          _parser: 'reddit'
+        };
+
+        events.push(event);
+      });
+
+      return events;
+    } catch (err) {
+      console.error('Error parsing Reddit data:', err);
+      return [];
+    }
+  }
+
+  /**
    * Parse GraphQL requests that contain analytics data
    */
   static parseGraphQL(requestBody) {
@@ -184,8 +262,10 @@ export class AnalyticsParser {
   /**
    * Generic JSON parser for custom analytics
    * Looks for common event patterns
+   * @param {object} requestBody - Request body
+   * @param {SourceConfig} source - Source configuration (optional)
    */
-  static parseGenericJSON(requestBody) {
+  static parseGenericJSON(requestBody, source = null) {
     try {
       const data = this.decodeRequestBody(requestBody);
       const events = [];
@@ -195,19 +275,37 @@ export class AnalyticsParser {
         return [];
       }
 
-      // Look for common event field names
-      const eventFields = ['event', 'eventName', 'event_name', 'type', 'action'];
-      const eventField = eventFields.find(field => data[field]);
+      // If source has field mappings, use them
+      if (source && source.fieldMappings) {
+        const extracted = source.extractFields(data);
 
-      if (eventField) {
-        events.push({
-          id: this.generateId(),
-          timestamp: data.timestamp || data.time || data.sentAt || new Date().toISOString(),
-          type: 'custom',
-          event: data[eventField],
-          properties: this.extractProperties(data, [eventField, 'timestamp', 'time', 'sentAt']),
-          _parser: 'generic-json'
-        });
+        // Only create event if we found an event name
+        if (extracted.eventName) {
+          events.push({
+            id: this.generateId(),
+            timestamp: extracted.timestamp || new Date().toISOString(),
+            type: 'custom',
+            event: extracted.eventName,
+            properties: extracted.properties || data,
+            userId: extracted.userId,
+            _parser: 'generic-config'
+          });
+        }
+      } else {
+        // Legacy behavior - look for common event field names
+        const eventFields = ['event', 'eventName', 'event_name', 'type', 'action', 'eventType'];
+        const eventField = eventFields.find(field => data[field]);
+
+        if (eventField) {
+          events.push({
+            id: this.generateId(),
+            timestamp: data.timestamp || data.time || data.sentAt || new Date().toISOString(),
+            type: 'custom',
+            event: data[eventField],
+            properties: this.extractProperties(data, [eventField, 'timestamp', 'time', 'sentAt']),
+            _parser: 'generic-json'
+          });
+        }
       }
 
       return events;

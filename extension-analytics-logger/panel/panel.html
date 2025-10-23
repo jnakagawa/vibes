@@ -88,7 +88,17 @@
           <h2>Settings</h2>
           <button id="closeSettingsBtn" class="btn-close">✕</button>
         </div>
+
+        <!-- Settings Tabs -->
+        <div class="modal-tabs">
+          <button class="tab-btn active" data-tab="general">General</button>
+          <button class="tab-btn" data-tab="sources">Sources</button>
+          <button class="tab-btn" data-tab="proxy">Proxy</button>
+        </div>
+
         <div class="modal-body">
+          <!-- General Settings Tab -->
+          <div id="generalTab" class="tab-content active">
           <div class="setting-group">
             <label class="setting-label">
               <input type="checkbox" id="enabledSetting">
@@ -103,6 +113,52 @@
             </label>
           </div>
 
+          <div class="setting-group">
+            <label class="setting-label">
+              Max Events (Ring Buffer Size):
+            </label>
+            <input type="number" id="maxEventsSetting" min="100" max="10000" step="100" value="1000">
+          </div>
+
+          <div class="setting-group">
+            <h3>Capture Sources</h3>
+            <label class="setting-label">
+              <input type="checkbox" id="captureSegmentSetting">
+              <span>Segment Analytics</span>
+            </label>
+            <label class="setting-label">
+              <input type="checkbox" id="captureGASetting">
+              <span>Google Analytics</span>
+            </label>
+            <label class="setting-label">
+              <input type="checkbox" id="captureGraphQLSetting">
+              <span>GraphQL</span>
+            </label>
+            <label class="setting-label">
+              <input type="checkbox" id="captureCustomSetting">
+              <span>Custom JSON</span>
+            </label>
+          </div>
+          </div><!-- End General Tab -->
+
+          <!-- Sources Tab -->
+          <div id="sourcesTab" class="tab-content">
+            <div class="sources-header">
+              <h3>Analytics Sources</h3>
+              <div style="display: flex; gap: 8px;">
+                <button id="addSourceBtn" class="btn btn-primary btn-small">+ Add Source</button>
+                <button id="importSourcesBtn" class="btn btn-secondary btn-small">Import</button>
+                <button id="exportSourcesBtn" class="btn btn-secondary btn-small">Export</button>
+              </div>
+            </div>
+
+            <div id="sourcesList" class="sources-list">
+              <!-- Sources will be populated here -->
+            </div>
+          </div><!-- End Sources Tab -->
+
+          <!-- Proxy Tab -->
+          <div id="proxyTab" class="tab-content">
           <div class="setting-group" style="background: #e8f5e9; padding: 12px; border-radius: 4px; border: 1px solid #4caf50;">
             <h3 style="color: #2e7d32; margin-bottom: 8px;">🔌 MITM Proxy Mode (Like Charles Proxy)</h3>
             <p style="font-size: 12px; color: #666; margin-bottom: 12px;">
@@ -162,13 +218,6 @@
           </div>
 
           <div class="setting-group">
-            <label class="setting-label">
-              Max Events (Ring Buffer Size):
-            </label>
-            <input type="number" id="maxEventsSetting" min="100" max="10000" step="100" value="1000">
-          </div>
-
-          <div class="setting-group">
             <h3>URL Pattern Manager</h3>
             <p style="font-size: 12px; color: #666; margin-bottom: 8px;">
               Paste an example URL from your extension's analytics requests:
@@ -188,31 +237,98 @@
               <textarea id="urlPatternsSetting" rows="3" placeholder="segment, analytics, graphql" style="margin-top: 8px;"></textarea>
             </details>
           </div>
+          </div><!-- End Proxy Tab -->
 
-          <div class="setting-group">
-            <h3>Capture Sources</h3>
-            <label class="setting-label">
-              <input type="checkbox" id="captureSegmentSetting">
-              <span>Segment Analytics</span>
-            </label>
-            <label class="setting-label">
-              <input type="checkbox" id="captureGASetting">
-              <span>Google Analytics</span>
-            </label>
-            <label class="setting-label">
-              <input type="checkbox" id="captureGraphQLSetting">
-              <span>GraphQL</span>
-            </label>
-            <label class="setting-label">
-              <input type="checkbox" id="captureCustomSetting">
-              <span>Custom JSON</span>
-            </label>
-          </div>
-        </div>
+        </div><!-- End modal-body -->
         <div class="modal-footer">
           <button id="saveSettingsBtn" class="btn btn-primary">Save Settings</button>
           <button id="cancelSettingsBtn" class="btn btn-secondary">Cancel</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Source Editor Modal -->
+  <div id="sourceEditorModal" class="modal" style="display: none;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="sourceEditorTitle">Edit Source</h2>
+        <button id="closeSourceEditorBtn" class="btn-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="setting-group">
+          <label class="setting-label">Name</label>
+          <input type="text" id="sourceName" placeholder="e.g., Reddit, My App">
+        </div>
+
+        <div class="setting-group" style="display: flex; gap: 12px;">
+          <div style="flex: 1;">
+            <label class="setting-label">Icon</label>
+            <input type="text" id="sourceIcon" placeholder="📊" maxlength="2">
+          </div>
+          <div style="flex: 1;">
+            <label class="setting-label">Color</label>
+            <input type="color" id="sourceColor" value="#6366F1">
+          </div>
+        </div>
+
+        <div class="setting-group">
+          <label class="setting-label">
+            <input type="checkbox" id="sourceEnabled" checked>
+            <span>Enabled</span>
+          </label>
+        </div>
+
+        <div class="setting-group">
+          <label class="setting-label">URL Patterns</label>
+          <div id="urlPatternsList" class="patterns-list">
+            <!-- Patterns will be added here -->
+          </div>
+          <button id="addPatternBtn" class="btn btn-secondary btn-small">+ Add Pattern</button>
+        </div>
+
+        <div class="setting-group">
+          <label class="setting-label">Parser</label>
+          <select id="sourceParser">
+            <option value="generic">Generic (auto-detect fields)</option>
+            <option value="segment">Segment</option>
+            <option value="reddit">Reddit</option>
+            <option value="google-analytics">Google Analytics</option>
+            <option value="graphql">GraphQL</option>
+          </select>
+        </div>
+
+        <div class="setting-group">
+          <label class="setting-label">Field Mappings (comma-separated, tried in order)</label>
+          <div style="display: grid; gap: 8px;">
+            <div>
+              <label style="font-size: 12px; color: #666;">Event Name:</label>
+              <input type="text" id="fieldEventName" placeholder="event, eventName, action, type">
+            </div>
+            <div>
+              <label style="font-size: 12px; color: #666;">Timestamp:</label>
+              <input type="text" id="fieldTimestamp" placeholder="timestamp, time, ts, client_timestamp">
+            </div>
+            <div>
+              <label style="font-size: 12px; color: #666;">User ID:</label>
+              <input type="text" id="fieldUserId" placeholder="user_id, userId, uid">
+            </div>
+          </div>
+        </div>
+
+        <div class="setting-group" id="sourceStats" style="display: none;">
+          <label class="setting-label">Statistics</label>
+          <div style="font-size: 13px; color: #666;">
+            <div>Events Captured: <span id="statsEventsCapture">0</span></div>
+            <div>Last Captured: <span id="statsLastCaptured">Never</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="deleteSourceBtn" class="btn btn-danger" style="margin-right: auto;">Delete</button>
+        <button id="testSourceBtn" class="btn btn-secondary">Test Pattern</button>
+        <button id="saveSourceBtn" class="btn btn-primary">Save</button>
+        <button id="cancelSourceBtn" class="btn btn-secondary">Cancel</button>
       </div>
     </div>
   </div>

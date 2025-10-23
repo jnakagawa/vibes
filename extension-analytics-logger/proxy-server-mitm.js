@@ -2,11 +2,12 @@
  * MITM Proxy for Analytics (like Charles Proxy)
  *
  * This proxy intercepts HTTPS traffic (including from extension service workers)
- * and captures analytics events.
+ * and captures analytics events using ConfigManager for universal source matching.
  */
 
 const MitmProxy = require('http-mitm-proxy').Proxy;
 const http = require('http');
+const { ConfigManagerNode } = require('./config/config-manager-node.js');
 
 const PROXY_PORT = 8888;
 const API_PORT = 8889;
@@ -15,18 +16,11 @@ const API_PORT = 8889;
 const capturedEvents = [];
 const MAX_EVENTS = 1000;
 
-// Patterns to intercept
-const INTERCEPT_PATTERNS = [
-  'pie.org/v1/batch',
-  'pie-staging.org/v1/batch',
-  'segment.io/v1/batch',
-  'segment.io/v1/track',
-  'segment.com/v1/batch'
-];
+// Initialize configuration manager
+const configManager = new ConfigManagerNode();
+configManager.load();
 
-function shouldIntercept(url) {
-  return INTERCEPT_PATTERNS.some(pattern => url.includes(pattern));
-}
+console.log('[MITM Proxy] Loaded', configManager.getAllSources().length, 'analytics sources');
 
 // Create MITM proxy
 const proxy = new MitmProxy();
@@ -35,14 +29,94 @@ proxy.onError((ctx, err) => {
   console.error('[MITM Proxy] Error:', err.message);
 });
 
+// Helper function to parse events based on source configuration
+function parseEventFromSource(source, data, fullUrl) {
+  const events = [];
+
+  // Handle Segment/Pie batch format
+  if (source.parser === 'segment' && data.batch && Array.isArray(data.batch)) {
+    data.batch.forEach(event => {
+      events.push({
+        id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+        timestamp: event.timestamp || event.sentAt || new Date().toISOString(),
+        event: event.event || event.type,
+        properties: event.properties || {},
+        context: event.context || {},
+        type: event.type || 'track',
+        userId: event.userId,
+        anonymousId: event.anonymousId,
+        _source: source.id,
+        _sourceName: source.name,
+        _sourceIcon: source.icon,
+        _sourceColor: source.color,
+        _metadata: {
+          url: fullUrl,
+          capturedAt: new Date().toISOString(),
+          parser: source.parser
+        }
+      });
+    });
+  }
+  // Handle Reddit format
+  else if (source.parser === 'reddit') {
+    const redditEvents = Array.isArray(data) ? data : [data];
+
+    redditEvents.forEach(item => {
+      const extracted = source.extractFields(item);
+      events.push({
+        id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+        timestamp: extracted.timestamp || new Date().toISOString(),
+        event: extracted.eventName || 'reddit_event',
+        properties: extracted.properties || item,
+        userId: extracted.userId,
+        _source: source.id,
+        _sourceName: source.name,
+        _sourceIcon: source.icon,
+        _sourceColor: source.color,
+        _metadata: {
+          url: fullUrl,
+          capturedAt: new Date().toISOString(),
+          parser: source.parser
+        }
+      });
+    });
+  }
+  // Generic parser using field mappings
+  else {
+    const extracted = source.extractFields(data);
+    if (extracted.eventName) {
+      events.push({
+        id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+        timestamp: extracted.timestamp || new Date().toISOString(),
+        event: extracted.eventName,
+        properties: extracted.properties || data,
+        userId: extracted.userId,
+        _source: source.id,
+        _sourceName: source.name,
+        _sourceIcon: source.icon,
+        _sourceColor: source.color,
+        _metadata: {
+          url: fullUrl,
+          capturedAt: new Date().toISOString(),
+          parser: source.parser
+        }
+      });
+    }
+  }
+
+  return events;
+}
+
 // Intercept HTTPS requests
 proxy.onRequest((ctx, callback) => {
   const url = ctx.clientToProxyRequest.url;
   const fullUrl = `${ctx.isSSL ? 'https' : 'http'}://${ctx.clientToProxyRequest.headers.host}${url}`;
 
-  // Check if this is an analytics request we want to capture
-  if (shouldIntercept(fullUrl) && ctx.clientToProxyRequest.method === 'POST') {
-    console.log(`[MITM Proxy] Intercepting analytics request: ${fullUrl}`);
+  // Find matching source using ConfigManager
+  const source = configManager.findSourceForUrl(fullUrl);
+
+  if (source && ctx.clientToProxyRequest.method === 'POST') {
+    console.log(`[MITM Proxy] Matched source "${source.name}" for: ${fullUrl}`);
 
     // Collect request body
     let body = '';
@@ -55,37 +129,23 @@ proxy.onRequest((ctx, callback) => {
       // Parse and store the analytics event
       try {
         const data = JSON.parse(body);
+        const events = parseEventFromSource(source, data, fullUrl);
 
-        // Parse Segment batch format
-        if (data.batch && Array.isArray(data.batch)) {
-          data.batch.forEach(event => {
-            const captured = {
-              id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-              timestamp: event.timestamp || event.sentAt || new Date().toISOString(),
-              event: event.event || event.type,
-              properties: event.properties || {},
-              context: event.context || {},
-              type: event.type || 'track',
-              userId: event.userId,
-              anonymousId: event.anonymousId,
-              _metadata: {
-                url: fullUrl,
-                capturedAt: new Date().toISOString(),
-                source: 'mitm-proxy',
-                initiator: ctx.clientToProxyRequest.headers['user-agent']
-              },
-              _parser: 'mitm-proxy-interceptor'
-            };
+        events.forEach(captured => {
+          capturedEvents.unshift(captured);
 
-            capturedEvents.unshift(captured);
+          // Maintain max size
+          if (capturedEvents.length > MAX_EVENTS) {
+            capturedEvents.length = MAX_EVENTS;
+          }
 
-            // Maintain max size
-            if (capturedEvents.length > MAX_EVENTS) {
-              capturedEvents.length = MAX_EVENTS;
-            }
+          console.log(`[MITM Proxy] ✅ Captured event: ${captured.event} from ${source.name}`);
+        });
 
-            console.log(`[MITM Proxy] ✅ Captured event: ${captured.event}`);
-          });
+        // Update source statistics
+        if (events.length > 0) {
+          source.recordCapture();
+          configManager.save();
         }
       } catch (err) {
         console.error('[MITM Proxy] Error parsing body:', err.message);

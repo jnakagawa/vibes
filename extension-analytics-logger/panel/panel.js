@@ -1,6 +1,8 @@
 // Panel UI Logic
 // Handles event display, filtering, real-time updates, and exports
 
+import { SourceManager } from './source-manager.js';
+
 class AnalyticsLoggerUI {
   constructor() {
     this.events = [];
@@ -18,6 +20,9 @@ class AnalyticsLoggerUI {
 
   async init() {
     console.log('[Panel] Initializing...');
+
+    // Initialize Source Manager
+    this.sourceManager = new SourceManager();
 
     // Get DOM elements
     this.elements = {
