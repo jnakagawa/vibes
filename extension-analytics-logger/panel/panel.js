@@ -37,6 +37,7 @@ class AnalyticsLoggerUI {
       exportJSONBtn: document.getElementById('exportJSONBtn'),
       exportCSVBtn: document.getElementById('exportCSVBtn'),
       settingsBtn: document.getElementById('settingsBtn'),
+      pauseBtn: document.getElementById('pauseBtn'),
       totalEvents: document.getElementById('totalEvents'),
       filteredEvents: document.getElementById('filteredEvents'),
       storageUsage: document.getElementById('storageUsage'),
@@ -62,6 +63,9 @@ class AnalyticsLoggerUI {
 
     // Proxy state
     this.proxyRunning = false;
+
+    // Pause/Play state
+    this.isPaused = false;
 
     // Set up event listeners
     this.setupEventListeners();
@@ -116,6 +120,11 @@ class AnalyticsLoggerUI {
     // Settings
     this.elements.settingsBtn.addEventListener('click', () => {
       this.openSettings();
+    });
+
+    // Pause/Play
+    this.elements.pauseBtn.addEventListener('click', () => {
+      this.togglePause();
     });
 
     this.elements.closeSettingsBtn.addEventListener('click', () => {
@@ -493,6 +502,12 @@ class AnalyticsLoggerUI {
       console.log('[Panel] Received message:', message.action);
 
       if (message.action === 'eventsAdded' && message.data) {
+        // Check if paused - if so, discard events
+        if (this.isPaused) {
+          console.log('[Panel] Discarded', message.data.length, 'events (paused)');
+          return;
+        }
+
         // New events added
         this.events.unshift(...message.data);
         this.updateEventTypeFilter();
@@ -513,6 +528,24 @@ class AnalyticsLoggerUI {
       // Attempt to reconnect after a delay
       setTimeout(() => this.connectToBackground(), 1000);
     });
+  }
+
+  togglePause() {
+    this.isPaused = !this.isPaused;
+    this.updatePauseButton();
+    console.log('[Panel] Event collection', this.isPaused ? 'paused' : 'resumed');
+  }
+
+  updatePauseButton() {
+    if (this.isPaused) {
+      this.elements.pauseBtn.innerHTML = '▶️ Resume';
+      this.elements.pauseBtn.classList.add('paused');
+      this.elements.pauseBtn.title = 'Resume event collection';
+    } else {
+      this.elements.pauseBtn.innerHTML = '⏸️ Pause';
+      this.elements.pauseBtn.classList.remove('paused');
+      this.elements.pauseBtn.title = 'Pause event collection';
+    }
   }
 
   async loadEvents() {
@@ -637,8 +670,10 @@ class AnalyticsLoggerUI {
     // Add click listeners to toggle expansion
     this.elements.eventsList.querySelectorAll('.event-card').forEach((card) => {
       card.addEventListener('click', (e) => {
-        // Don't toggle expansion if clicking on the toggle button or expandable sections
-        if (!e.target.closest('.view-toggle-btn') && !e.target.closest('.json-expandable')) {
+        // Don't toggle expansion if clicking on the toggle button, expandable sections, or collapsible sections
+        if (!e.target.closest('.view-toggle-btn') &&
+            !e.target.closest('.json-expandable') &&
+            !e.target.closest('.collapsible-section')) {
           card.classList.toggle('expanded');
         }
       });
@@ -677,6 +712,17 @@ class AnalyticsLoggerUI {
         header.addEventListener('click', (e) => {
           e.stopPropagation();
           expandable.classList.toggle('expanded');
+        });
+      }
+    });
+
+    // Add click listeners for collapsible sections (Full Event Data)
+    this.elements.eventsList.querySelectorAll('.collapsible-section').forEach((section) => {
+      const header = section.querySelector('.event-section-header');
+      if (header) {
+        header.addEventListener('click', (e) => {
+          e.stopPropagation();
+          section.classList.toggle('expanded');
         });
       }
     });
@@ -723,7 +769,7 @@ class AnalyticsLoggerUI {
             ${event.properties && Object.keys(event.properties).length > 0 ? `
               <div class="event-section">
                 <div class="event-section-title">Properties</div>
-                <div class="structured-json">${this.renderStructuredJSON(event.properties)}</div>
+                <div class="structured-json">${this.renderStructuredJSON(event.properties, 0, '', 'properties')}</div>
               </div>
             ` : ''}
             ${event.context && Object.keys(event.context).length > 0 ? `
@@ -732,9 +778,14 @@ class AnalyticsLoggerUI {
                 <div class="structured-json">${this.renderStructuredJSON(event.context)}</div>
               </div>
             ` : ''}
-            <div class="event-section">
-              <div class="event-section-title">Full Event Data</div>
-              <div class="structured-json">${this.renderStructuredJSON(event)}</div>
+            <div class="event-section collapsible-section">
+              <div class="event-section-header">
+                <span class="section-expand-icon">▶</span>
+                <div class="event-section-title">Full Event Data</div>
+              </div>
+              <div class="event-section-content">
+                <div class="structured-json">${this.renderStructuredJSON(event)}</div>
+              </div>
             </div>
           </div>
 
@@ -752,9 +803,14 @@ class AnalyticsLoggerUI {
                 <div class="event-json">${this.formatJSON(event.context)}</div>
               </div>
             ` : ''}
-            <div class="event-section">
-              <div class="event-section-title">Full Event Data</div>
-              <div class="event-json">${this.formatJSON(event)}</div>
+            <div class="event-section collapsible-section">
+              <div class="event-section-header">
+                <span class="section-expand-icon">▶</span>
+                <div class="event-section-title">Full Event Data</div>
+              </div>
+              <div class="event-section-content">
+                <div class="event-json">${this.formatJSON(event)}</div>
+              </div>
             </div>
           </div>
         </div>
@@ -769,7 +825,7 @@ class AnalyticsLoggerUI {
   /**
    * Render structured, interactive JSON view with collapsible sections and tables
    */
-  renderStructuredJSON(obj, depth = 0, parentKey = '') {
+  renderStructuredJSON(obj, depth = 0, parentKey = '', parentSection = '') {
     if (obj === null) {
       return this.renderPrimitive(null, 'null');
     }
@@ -778,9 +834,9 @@ class AnalyticsLoggerUI {
 
     switch (type) {
       case 'object':
-        return this.renderObject(obj, depth, parentKey);
+        return this.renderObject(obj, depth, parentKey, parentSection);
       case 'array':
-        return this.renderArray(obj, depth, parentKey);
+        return this.renderArray(obj, depth, parentKey, parentSection);
       case 'string':
       case 'number':
       case 'boolean':
@@ -816,7 +872,7 @@ class AnalyticsLoggerUI {
   /**
    * Render an object as a table or expandable section
    */
-  renderObject(obj, depth, parentKey) {
+  renderObject(obj, depth, parentKey, parentSection = '') {
     const keys = Object.keys(obj);
 
     if (keys.length === 0) {
@@ -825,22 +881,22 @@ class AnalyticsLoggerUI {
 
     // Use table format for simple key-value pairs at depth 0
     if (depth === 0) {
-      return this.renderObjectAsTable(obj, depth);
+      return this.renderObjectAsTable(obj, depth, parentSection);
     }
 
     // Use expandable section for nested objects
-    return this.renderObjectAsExpandable(obj, depth, parentKey);
+    return this.renderObjectAsExpandable(obj, depth, parentKey, parentSection);
   }
 
   /**
    * Render object as a table
    */
-  renderObjectAsTable(obj, depth) {
+  renderObjectAsTable(obj, depth, parentSection = '') {
     const keys = Object.keys(obj);
     const rows = keys.map(key => {
       const value = obj[key];
       const valueType = this.getValueType(value);
-      const renderedValue = this.renderStructuredJSON(value, depth + 1, key);
+      const renderedValue = this.renderStructuredJSON(value, depth + 1, key, parentSection);
 
       return `
         <tr>
@@ -872,7 +928,7 @@ class AnalyticsLoggerUI {
   /**
    * Render object as expandable section
    */
-  renderObjectAsExpandable(obj, depth, parentKey) {
+  renderObjectAsExpandable(obj, depth, parentKey, parentSection = '') {
     const keys = Object.keys(obj);
     const uniqueId = `json-${Math.random().toString(36).substr(2, 9)}`;
     const label = parentKey || 'Object';
@@ -880,7 +936,7 @@ class AnalyticsLoggerUI {
 
     const content = keys.map(key => {
       const value = obj[key];
-      const renderedValue = this.renderStructuredJSON(value, depth + 1, key);
+      const renderedValue = this.renderStructuredJSON(value, depth + 1, key, parentSection);
 
       return `
         <div class="json-item">
@@ -892,8 +948,11 @@ class AnalyticsLoggerUI {
       `;
     }).join('');
 
+    // Auto-expand if this is inside the Properties section
+    const expandedClass = parentSection === 'properties' ? 'expanded' : '';
+
     return `
-      <div class="json-expandable" data-id="${uniqueId}">
+      <div class="json-expandable ${expandedClass}" data-id="${uniqueId}">
         <div class="json-expand-header">
           <span class="json-expand-icon">▶</span>
           <span class="json-expand-label">📦 ${this.escapeHtml(label)}</span>
@@ -909,7 +968,7 @@ class AnalyticsLoggerUI {
   /**
    * Render an array
    */
-  renderArray(arr, depth, parentKey) {
+  renderArray(arr, depth, parentKey, parentSection = '') {
     if (arr.length === 0) {
       return '<div class="json-empty-message">Empty array</div>';
     }
@@ -925,7 +984,7 @@ class AnalyticsLoggerUI {
     }
 
     // Otherwise, render as expandable section
-    return this.renderArrayAsExpandable(arr, depth, parentKey);
+    return this.renderArrayAsExpandable(arr, depth, parentKey, parentSection);
   }
 
   /**
@@ -956,13 +1015,13 @@ class AnalyticsLoggerUI {
   /**
    * Render array as expandable section
    */
-  renderArrayAsExpandable(arr, depth, parentKey) {
+  renderArrayAsExpandable(arr, depth, parentKey, parentSection = '') {
     const uniqueId = `json-${Math.random().toString(36).substr(2, 9)}`;
     const label = parentKey || 'Array';
     const count = `${arr.length} ${arr.length === 1 ? 'item' : 'items'}`;
 
     const content = arr.map((item, index) => {
-      const renderedValue = this.renderStructuredJSON(item, depth + 1, `[${index}]`);
+      const renderedValue = this.renderStructuredJSON(item, depth + 1, `[${index}]`, parentSection);
 
       return `
         <div class="json-item">
@@ -974,8 +1033,11 @@ class AnalyticsLoggerUI {
       `;
     }).join('');
 
+    // Auto-expand if this is inside the Properties section
+    const expandedClass = parentSection === 'properties' ? 'expanded' : '';
+
     return `
-      <div class="json-expandable" data-id="${uniqueId}">
+      <div class="json-expandable ${expandedClass}" data-id="${uniqueId}">
         <div class="json-expand-header">
           <span class="json-expand-icon">▶</span>
           <span class="json-expand-label">📋 ${this.escapeHtml(label)}</span>

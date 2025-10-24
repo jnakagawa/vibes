@@ -159,6 +159,19 @@ body {
   background: #d0d0d0;
 }
 
+/* Pause button */
+#pauseBtn.paused {
+  background: linear-gradient(135deg, #f44336 0%, #e91e63 100%);
+  color: white;
+  font-weight: 600;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
 .btn-danger {
   background: #f44336;
   color: white;
@@ -329,6 +342,46 @@ body {
   color: #666;
   text-transform: uppercase;
   margin-bottom: 6px;
+}
+
+/* Collapsible sections (Full Event Data) */
+.collapsible-section .event-section-header {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  padding: 8px;
+  background: #f8f8f8;
+  border-radius: 4px;
+  transition: background 0.2s;
+  margin-bottom: 0;
+}
+
+.collapsible-section .event-section-header:hover {
+  background: #f0f0f0;
+}
+
+.collapsible-section .event-section-header .event-section-title {
+  margin-bottom: 0;
+}
+
+.section-expand-icon {
+  margin-right: 8px;
+  font-size: 12px;
+  transition: transform 0.2s;
+  color: #667eea;
+}
+
+.collapsible-section.expanded .section-expand-icon {
+  transform: rotate(90deg);
+}
+
+.collapsible-section .event-section-content {
+  display: none;
+  margin-top: 8px;
+}
+
+.collapsible-section.expanded .event-section-content {
+  display: block;
 }
 
 .event-json {
