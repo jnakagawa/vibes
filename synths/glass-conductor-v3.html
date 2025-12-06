@@ -1,0 +1,1463 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Glass Conductor — Gestural Particle Instrument</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@300;400&family=JetBrains+Mono:wght@300&display=swap');
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: #030308;
+      overflow: hidden;
+      font-family: 'JetBrains Mono', monospace;
+      color: #e8e4df;
+    }
+
+    #canvas-container {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 1;
+    }
+
+    #video-container {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      width: 200px;
+      height: 150px;
+      border-radius: 8px;
+      overflow: hidden;
+      z-index: 100;
+      opacity: 0.6;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    #video-container video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1);
+    }
+
+    #ui-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      padding: 40px;
+      z-index: 50;
+      pointer-events: none;
+    }
+
+    h1 {
+      font-family: 'Playfair Display', serif;
+      font-weight: 300;
+      font-size: 2rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: rgba(232, 228, 223, 0.7);
+      margin-bottom: 6px;
+    }
+
+    .subtitle {
+      font-size: 0.65rem;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      color: rgba(232, 228, 223, 0.3);
+    }
+
+    #start-button {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 200;
+      background: transparent;
+      border: 1px solid rgba(232, 228, 223, 0.2);
+      color: rgba(232, 228, 223, 0.8);
+      font-family: 'Playfair Display', serif;
+      font-size: 1.1rem;
+      font-weight: 300;
+      letter-spacing: 0.2em;
+      padding: 18px 45px;
+      cursor: pointer;
+      transition: all 0.4s ease;
+    }
+
+    #start-button:hover {
+      background: rgba(232, 228, 223, 0.05);
+      border-color: rgba(232, 228, 223, 0.4);
+    }
+
+    #start-button.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    #hand-status {
+      position: fixed;
+      bottom: 30px;
+      left: 30px;
+      z-index: 50;
+      display: flex;
+      gap: 30px;
+      opacity: 0.7;
+    }
+
+    .hand-indicator {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .hand-label {
+      font-size: 0.55rem;
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      color: rgba(232, 228, 223, 0.25);
+    }
+
+    .hand-data {
+      font-size: 0.7rem;
+      color: rgba(232, 228, 223, 0.5);
+    }
+
+    .left-hand .hand-data {
+      color: rgba(255, 160, 100, 0.6);
+    }
+
+    .right-hand .hand-data {
+      color: rgba(100, 160, 255, 0.6);
+    }
+
+    #instructions {
+      position: fixed;
+      top: 50%;
+      left: 30px;
+      transform: translateY(-50%);
+      z-index: 50;
+      max-width: 240px;
+      opacity: 0;
+      transition: opacity 1.5s ease;
+    }
+
+    #instructions.visible {
+      opacity: 1;
+    }
+
+    #instructions h3 {
+      font-family: 'Playfair Display', serif;
+      font-weight: 300;
+      font-size: 0.9rem;
+      letter-spacing: 0.1em;
+      margin-bottom: 15px;
+      color: rgba(232, 228, 223, 0.5);
+    }
+
+    #instructions ul {
+      list-style: none;
+      font-size: 0.6rem;
+      line-height: 2.2;
+      color: rgba(232, 228, 223, 0.35);
+    }
+
+    #instructions li::before {
+      content: '—';
+      margin-right: 8px;
+      color: rgba(232, 228, 223, 0.15);
+    }
+
+    .loading-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: #030308;
+      z-index: 300;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 20px;
+      transition: opacity 1s ease;
+    }
+
+    .loading-overlay.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .loading-text {
+      font-size: 0.65rem;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      color: rgba(232, 228, 223, 0.4);
+    }
+
+    .loading-bar {
+      width: 180px;
+      height: 1px;
+      background: rgba(232, 228, 223, 0.1);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .loading-bar::after {
+      content: '';
+      position: absolute;
+      left: -50%;
+      width: 50%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(232, 228, 223, 0.5), transparent);
+      animation: loading 1.8s infinite;
+    }
+
+    @keyframes loading {
+      0% {
+        left: -50%;
+      }
+
+      100% {
+        left: 100%;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="loading-overlay" id="loading">
+    <div class="loading-text">Entering the Nebula</div>
+    <div class="loading-bar"></div>
+  </div>
+
+  <div id="ui-overlay">
+    <h1>Glass Conductor</h1>
+  </div>
+
+  <button id="start-button">Begin</button>
+
+  <div id="instructions">
+    <h3>Controls</h3>
+    <ul>
+      <li><strong>Left Hand</strong>: Arpeggios</li>
+      <li><strong>Right Hand</strong>: Chords</li>
+      <li><strong>Move Outwards</strong>: Increase Volume</li>
+      <li><strong>Move Up/Down</strong>: Change Pitch</li>
+      <li><strong>Rotate Hands</strong>: Distortion</li>
+    </ul>
+  </div>
+
+  <div id="hand-status">
+    <div class="hand-indicator left-hand">
+      <div class="hand-label">Left — Arpeggio</div>
+      <div class="hand-data" id="left-data">...</div>
+    </div>
+    <div class="hand-indicator right-hand">
+      <div class="hand-label">Right — Chords</div>
+      <div class="hand-data" id="right-data">...</div>
+    </div>
+  </div>
+
+  <div id="canvas-container"></div>
+
+  <div id="video-container">
+    <video id="video" playsinline></video>
+  </div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+    import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+    import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+    // ═══════════════════════════════════════════════════════════════
+    // AUDIO ENGINE — Arpeggios (Left) + Chords (Right)
+    // ═══════════════════════════════════════════════════════════════
+
+    class GlassAudioEngine {
+      constructor() {
+        this.ctx = null;
+        this.masterGain = null;
+        this.compressor = null;
+        this.reverbNode = null;
+        this.leftDistortion = null;
+        this.rightDistortion = null;
+        this.leftDry = null;
+        this.leftWet = null;
+        this.rightDry = null;
+        this.rightWet = null;
+        this.isPlaying = false;
+        this.onNotePlay = null;
+        this.onChordPlay = null;
+
+        // Base frequency (G3)
+        this.baseFreq = 196.00;
+
+        // 5 Distinct Root Notes (Pentatonic-ish for harmony)
+        // G2, C3, D3, G3, B3
+        this.rootNotes = [98.00, 130.81, 146.83, 196.00, 246.94];
+
+        // Left hand arpeggio patterns - 6 levels (fist=0, then +1 per finger)
+        // Philip Glass inspired - increasingly complex and extended
+        this.arpeggioPatterns = [
+          [0, 7, 0, 7],                                     // Fist: Simple octave pulse
+          [0, 4, 7, 4],                                     // 1 finger: Basic triad
+          [0, 4, 7, 12, 7, 4],                              // 2 fingers: Triad + octave
+          [0, 4, 7, 11, 12, 11, 7, 4],                      // 3 fingers: Maj7 cascade
+          [0, 4, 7, 11, 14, 12, 11, 7, 4, 0],               // 4 fingers: Extended 9th
+          [0, 4, 7, 11, 14, 16, 19, 16, 14, 11, 7, 4, 0, -5] // 5 fingers: TRANSCENDENT cascade
+        ];
+
+        // Right hand chord voicings - 6 levels (fist=1, then +1 per finger)
+        // Philip Glass "Rubric" inspired - increasingly maximalist
+        this.chordVoicings = {
+          1: [0, 7, 12],                                    // Fist: Power chord
+          2: [0, 4, 7, 12],                                 // 1 finger: Major triad + octave
+          3: [-12, 0, 4, 7, 12, 16],                        // 2 fingers: Octave below + 10th
+          4: [-12, 0, 4, 7, 11, 14, 19],                    // 3 fingers: Maj7 + 9th + 12th
+          5: [-24, -12, 0, 4, 7, 11, 14, 19, 24, 28],       // 4 fingers: Extended doublings
+          6: [                                              // 5 fingers: TRANSCENDENT
+            -36, -24, -19,                                  // Deep foundation
+            -12, -5, 0,                                     // Bass + 5th below + root
+            4, 7, 11, 12,                                   // Maj7 + octave
+            14, 16, 19,                                     // 9th, 10th, 12th
+            24, 26, 28, 31,                                 // 2 octaves + extensions
+            36, 38, 43, 48                                  // 3-4 octaves shimmer
+          ]
+        };
+
+        this.patternIndex = 0;
+        this.lastArpeggioTime = 0;
+
+        // Sustained chord state
+        this.activeOscillators = [];
+        this.chordGain = null;
+        this.currentFingerCount = 0;
+        this.targetChordVolume = 0;
+        this.currentChordVolume = 0;
+        this.lastRootIndex = -1; // Track root note changes for revoicing
+
+        this.handState = {
+          left: { active: false, openness: 0, fingers: 0, height: 0.5, rotation: 0, distance: 0.5, x: 0.5 },
+          right: { active: false, openness: 0, fingers: 0, height: 0.5, rotation: 0, distance: 0.5, x: 0.5 }
+        };
+      }
+
+      async init() {
+        this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+
+        this.compressor = this.ctx.createDynamicsCompressor();
+        this.compressor.threshold.value = -24;
+        this.compressor.knee.value = 30;
+        this.compressor.ratio.value = 12;
+        this.compressor.attack.value = 0.003;
+        this.compressor.release.value = 0.25;
+
+        this.masterGain = this.ctx.createGain();
+        this.masterGain.gain.value = 0.4;
+
+        // Effects
+        // Effects: Independent Distortion
+        this.leftDistortion = this.ctx.createWaveShaper();
+        this.leftDistortion.curve = this.makeDistortionCurve(400);
+        this.leftDistortion.oversample = '4x';
+
+        this.rightDistortion = this.ctx.createWaveShaper();
+        this.rightDistortion.curve = this.makeDistortionCurve(400);
+        this.rightDistortion.oversample = '4x';
+
+        // Mix Gains
+        this.leftDry = this.ctx.createGain();
+        this.leftWet = this.ctx.createGain();
+        this.rightDry = this.ctx.createGain();
+        this.rightWet = this.ctx.createGain();
+
+        // Defaults: Clean
+        this.leftDry.gain.value = 1;
+        this.leftWet.gain.value = 0;
+        this.rightDry.gain.value = 1;
+        this.rightWet.gain.value = 0;
+
+        // Chord Pad Bus
+        this.chordGain = this.ctx.createGain();
+        this.chordGain.gain.value = 0;
+
+        // Routing
+
+        // Left Hand (Arps) -> MasterGain
+        // MasterGain -> Split(Dry, Wet) -> Compressor
+        this.masterGain.connect(this.leftDry);
+        this.leftDry.connect(this.compressor);
+
+        this.masterGain.connect(this.leftDistortion);
+        this.leftDistortion.connect(this.leftWet);
+        this.leftWet.connect(this.compressor);
+
+        // Right Hand (Chords) -> ChordGain
+        // ChordGain -> Split(Dry, Wet) -> Compressor
+        this.chordGain.connect(this.rightDry);
+        this.rightDry.connect(this.compressor);
+
+        this.chordGain.connect(this.rightDistortion);
+        this.rightDistortion.connect(this.rightWet);
+        this.rightWet.connect(this.compressor);
+
+        this.compressor.connect(this.ctx.destination);
+
+        return this;
+      }
+
+
+
+      makeDistortionCurve(amount) {
+        const k = typeof amount === 'number' ? amount : 50;
+        const n_samples = 44100;
+        const curve = new Float32Array(n_samples);
+        const deg = Math.PI / 180;
+
+        for (let i = 0; i < n_samples; ++i) {
+          const x = i * 2 / n_samples - 1;
+          // Soft clipping curve
+          curve[i] = (3 + k) * x * 20 * deg / (Math.PI + k * Math.abs(x));
+        }
+        return curve;
+      }
+
+      getVolumeFromPosition(x, y) {
+        // Calculate distance from vertical center line (x = 0.5)
+        // Ignore Y axis (vertical position)
+        const dx = Math.abs(x - 0.5);
+
+        // Map distance (0 to 0.5) to volume (0 to 1)
+        // Center = 0 volume, Edge = 1 volume
+        const normalizedDist = Math.min(1, dx * 2.0);
+        return Math.pow(normalizedDist, 1.5); // Exponential curve
+      }
+
+      updateHandState(hand, state) {
+        this.handState[hand] = { ...this.handState[hand], ...state };
+        this.updateEffects();
+      }
+
+      updateEffects() {
+        // Independent Glitch Control via Roll
+
+        // Left Hand -> Arpeggios
+        if (this.handState.left.active) {
+          const roll = Math.abs(this.handState.left.rotation) / Math.PI;
+          const mix = Math.max(0, Math.min(1, (roll - 0.15) * 2.5));
+
+          this.leftWet.gain.setTargetAtTime(mix, this.ctx.currentTime, 0.1);
+          this.leftDry.gain.setTargetAtTime(1.0 - mix, this.ctx.currentTime, 0.1);
+        } else {
+          this.leftWet.gain.setTargetAtTime(0, this.ctx.currentTime, 0.5);
+          this.leftDry.gain.setTargetAtTime(1, this.ctx.currentTime, 0.5);
+        }
+
+        // Right Hand -> Chords
+        if (this.handState.right.active) {
+          const roll = Math.abs(this.handState.right.rotation) / Math.PI;
+          const mix = Math.max(0, Math.min(1, (roll - 0.15) * 2.5));
+
+          this.rightWet.gain.setTargetAtTime(mix, this.ctx.currentTime, 0.1);
+          this.rightDry.gain.setTargetAtTime(1.0 - mix, this.ctx.currentTime, 0.1);
+        } else {
+          this.rightWet.gain.setTargetAtTime(0, this.ctx.currentTime, 0.5);
+          this.rightDry.gain.setTargetAtTime(1, this.ctx.currentTime, 0.5);
+        }
+      }
+
+      getRootNote(height) {
+        // Map height (0-1) to one of the 5 root notes
+        // 0 = Bottom (Low), 1 = Top (High)
+        const index = Math.floor(height * this.rootNotes.length);
+        return this.rootNotes[Math.min(index, this.rootNotes.length - 1)];
+      }
+
+      getFreq(semitones, rootFreq) {
+        return rootFreq * Math.pow(2, semitones / 12);
+      }
+
+      // Play a single note with envelope (for left hand arpeggios)
+      playTone(frequency, duration, velocity, pan = 0, type = 'sine', detune = 0) {
+        const now = this.ctx.currentTime;
+
+        const osc = this.ctx.createOscillator();
+        osc.type = type;
+        osc.frequency.value = frequency;
+        osc.detune.value = detune;
+
+        const gain = this.ctx.createGain();
+        const attackTime = 0.08;
+        const releaseTime = duration * 0.6;
+
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(velocity, now + attackTime);
+        gain.gain.setValueAtTime(velocity, now + duration - releaseTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+        const panner = this.ctx.createStereoPanner();
+        panner.pan.value = Math.max(-1, Math.min(1, pan));
+
+        osc.connect(gain);
+        gain.connect(panner);
+        panner.connect(this.masterGain);
+
+        osc.start(now);
+        osc.stop(now + duration + 0.1);
+      }
+
+      // Play arpeggio note (left hand)
+      playArpeggioNote(note) {
+        const state = this.handState.left;
+
+        const rootFreq = this.getRootNote(state.height);
+        const frequency = this.getFreq(note, rootFreq);
+
+        // Volume based on X-axis distance
+        const volume = this.getVolumeFromPosition(state.x, state.y);
+
+        // Slightly reduced volume for arpeggios to let chords shine
+        const velocity = volume * 0.8;
+        // Duration also linked to intensity (longer when loud/edge)
+        const duration = 0.3 + volume * 0.3;
+        const pan = Math.sin(state.rotation) * 0.5 - 0.3;
+
+        if (velocity < 0.01) return;
+
+        this.playTone(frequency, duration, velocity * 0.6, pan, 'triangle', 0);
+        this.playTone(frequency, duration, velocity * 0.3, pan, 'sine', 3);
+        this.playTone(frequency * 0.5, duration, velocity * 0.2, pan, 'sine', 0);
+
+        if (this.onNotePlay) {
+          this.onNotePlay({
+            hand: 'left',
+            frequency,
+            velocity,
+            duration,
+            height: state.height,
+            fingers: state.fingers
+          });
+        }
+      }
+
+      // Update sustained chord (right hand)
+      updateChordPad(fingerCount, openness, height, x, y) {
+        const rootFreq = this.getRootNote(height);
+
+        // If finger count OR root note changed significantly, re-voice
+        // (Simple check: if height moved to a new zone)
+        const currentRootIndex = Math.floor(height * this.rootNotes.length);
+        if (fingerCount !== this.currentFingerCount || this.lastRootIndex !== currentRootIndex) {
+          // 6 levels: fist (0) through 5 fingers all trigger chords
+          this.revoicePad(fingerCount, rootFreq);
+          this.currentFingerCount = fingerCount;
+          this.lastRootIndex = currentRootIndex;
+        }
+
+        // Target volume based on distance from center - Boosted max volume
+        const volume = this.getVolumeFromPosition(x, y);
+        this.targetChordVolume = volume * 0.8;
+
+        this.currentChordVolume += (this.targetChordVolume - this.currentChordVolume) * 0.1;
+        this.chordGain.gain.setTargetAtTime(this.currentChordVolume, this.ctx.currentTime, 0.1);
+
+        if (this.onChordPlay && this.currentChordVolume > 0.01) {
+          this.onChordPlay({
+            hand: 'right',
+            fingers: fingerCount,
+            velocity: this.currentChordVolume,
+            openness: openness
+          });
+        }
+      }
+
+      revoicePad(fingerCount, rootFreq) {
+        // Kill old oscillators
+        this.activeOscillators.forEach(osc => {
+          try {
+            osc.stop(this.ctx.currentTime + 0.5);
+            osc.disconnect();
+          } catch (e) { }
+        });
+        this.activeOscillators = [];
+
+        // 6 levels: fist (0 fingers) = voicing 1, up to 5 fingers = voicing 6
+        const voicingLevel = Math.min(fingerCount + 1, 6);
+        const voicing = this.chordVoicings[voicingLevel] || this.chordVoicings[1];
+
+        voicing.forEach((semitone, i) => {
+          const frequency = this.getFreq(semitone, rootFreq);
+
+          const osc = this.ctx.createOscillator();
+          osc.type = i % 2 === 0 ? 'sine' : 'triangle';
+          osc.frequency.value = frequency;
+
+          osc.detune.value = (Math.random() - 0.5) * 10;
+
+          const gain = this.ctx.createGain();
+          // Boost individual oscillator gain
+          gain.gain.value = 0.15 / voicing.length;
+
+          const panner = this.ctx.createStereoPanner();
+          panner.pan.value = (i / (voicing.length - 1) - 0.5) * 0.8;
+
+          osc.connect(gain);
+          gain.connect(panner);
+          panner.connect(this.chordGain);
+
+          osc.start();
+          this.activeOscillators.push(osc);
+        });
+      }
+
+      generateMusic(timestamp) {
+        if (!this.isPlaying) return;
+
+        // LEFT HAND - Arpeggios
+        const leftState = this.handState.left;
+        if (leftState.active) {
+          const tempo = 120 + leftState.distance * 80;
+          const noteInterval = 60000 / tempo;
+
+          if (timestamp - this.lastArpeggioTime >= noteInterval) {
+            this.lastArpeggioTime = timestamp;
+
+            // 6 levels: fist (0 fingers) = pattern 0, up to 5 fingers = pattern 5
+            const patternIdx = Math.min(leftState.fingers, this.arpeggioPatterns.length - 1);
+            const pattern = this.arpeggioPatterns[Math.max(0, patternIdx)];
+
+            const noteIdx = this.patternIndex % pattern.length;
+            this.patternIndex++;
+
+            this.playArpeggioNote(pattern[noteIdx]);
+          }
+        }
+
+        // RIGHT HAND - Sustained Pad
+        const rightState = this.handState.right;
+        if (rightState.active) {
+          this.updateChordPad(rightState.fingers, rightState.openness, rightState.height, rightState.x, rightState.y);
+        } else {
+          this.targetChordVolume = 0;
+          this.currentChordVolume *= 0.9;
+          this.chordGain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.5);
+        }
+      }
+
+      start() {
+        if (this.ctx.state === 'suspended') this.ctx.resume();
+        this.isPlaying = true;
+      }
+
+      stop() {
+        this.isPlaying = false;
+        this.activeOscillators.forEach(osc => osc.stop());
+        this.activeOscillators = [];
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // NEBULA PARTICLE SYSTEM — Immersive 3D Space
+    // ═══════════════════════════════════════════════════════════════
+
+    class NebulaSystem {
+      constructor(scene, camera) {
+        this.scene = scene;
+        this.camera = camera;
+
+        // Unified Nebula
+        this.particleCount = 15000;
+        this.nebulaMesh = null;
+
+        // Camera/view control
+        this.targetRotation = new THREE.Euler(0, 0, 0);
+        this.currentRotation = new THREE.Euler(0, 0, 0);
+
+        // Zoom control
+        this.targetZoom = 40;
+        this.currentZoom = 40;
+
+        // Sphere Control (Left Hand)
+        this.sphereContraction = 0;
+        this.targetSphereContraction = 0;
+        this.sphereRotation = 0;
+        this.targetSphereRotation = 0;
+        this.sphereEnergy = 0; // Independent energy
+
+        // Ring Control (Right Hand)
+        this.ringCount = 1;
+        this.targetRingCount = 1;
+        this.ringRadius = 1;
+        this.targetRingRadius = 1;
+        this.ringRotation = 0;
+        this.targetRingRotation = 0;
+        this.ringEnergy = 0; // Independent energy
+
+        this.createUnifiedNebula();
+        this.createDistantStars(2000);
+      }
+
+      createUnifiedNebula() {
+        const geometry = new THREE.BufferGeometry();
+
+        const positions = new Float32Array(this.particleCount * 3);
+        const colors = new Float32Array(this.particleCount * 3);
+        const sizes = new Float32Array(this.particleCount);
+        const randoms = new Float32Array(this.particleCount * 3);
+        const types = new Float32Array(this.particleCount); // 0 = Sphere, 1 = Ring
+
+        const colorCenter = new THREE.Color();
+
+        for (let i = 0; i < this.particleCount; i++) {
+          const i3 = i * 3;
+
+          // Decide type: 60% Sphere, 40% Ring
+          const isRing = Math.random() > 0.6;
+          types[i] = isRing ? 1.0 : 0.0;
+
+          // Spherical distribution base for both
+          const theta = Math.random() * Math.PI * 2;
+          const phi = Math.acos(Math.random() * 2 - 1);
+          const r = Math.pow(Math.random(), 0.5) * 25 + 2;
+
+          const x = r * Math.sin(phi) * Math.cos(theta);
+          const y = r * Math.sin(phi) * Math.sin(theta);
+          const z = r * Math.cos(phi);
+
+          positions[i3] = x;
+          positions[i3 + 1] = y;
+          positions[i3 + 2] = z;
+
+          randoms[i3] = (Math.random() - 0.5) * 2;
+          randoms[i3 + 1] = (Math.random() - 0.5) * 2;
+          randoms[i3 + 2] = (Math.random() - 0.5) * 2;
+
+          // Color logic - Start desaturated
+          const hue = (theta / (Math.PI * 2) + Math.random() * 0.1) % 1.0;
+          const saturation = 0.3 + Math.random() * 0.2; // Lower base saturation
+          const lightness = 0.6 + Math.random() * 0.4;
+
+          colorCenter.setHSL(hue, saturation, lightness);
+
+          colors[i3] = colorCenter.r;
+          colors[i3 + 1] = colorCenter.g;
+          colors[i3 + 2] = colorCenter.b;
+
+          sizes[i] = Math.random() * 1.5 + 0.2;
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+        geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 3));
+        geometry.setAttribute('aType', new THREE.BufferAttribute(types, 1));
+
+        const material = new THREE.ShaderMaterial({
+          uniforms: {
+            time: { value: 0 },
+            sphereContraction: { value: 0 },
+            sphereRotation: { value: 0 },
+            sphereEnergy: { value: 0 },
+            ringCount: { value: 1 },
+            ringRadius: { value: 1 },
+            ringRotation: { value: 0 },
+            ringEnergy: { value: 0 }
+          },
+          vertexShader: `
+            attribute float size;
+            attribute vec3 color;
+            attribute vec3 aRandom;
+            attribute float aType; // 0 = Sphere, 1 = Ring
+            
+            varying vec3 vColor;
+            varying float vAlpha;
+            
+            uniform float time;
+            uniform float sphereContraction;
+            uniform float sphereRotation;
+            uniform float sphereEnergy;
+            uniform float ringCount;
+            uniform float ringRadius;
+            uniform float ringRotation;
+            uniform float ringEnergy;
+            
+            // Helper to boost saturation
+            vec3 saturate(vec3 rgb, float adjustment) {
+                const vec3 W = vec3(0.2125, 0.7154, 0.0721);
+                vec3 intensity = vec3(dot(rgb, W));
+                return mix(intensity, rgb, 1.0 + adjustment);
+            }
+            
+            void main() {
+              vec3 pos = position;
+              float activeEnergy = 0.0;
+              float rotationEffect = 0.0;
+              
+              if (aType < 0.5) {
+                // --- SPHERE LOGIC (Left Hand) ---
+                activeEnergy = sphereEnergy;
+                rotationEffect = abs(sphereRotation) * 2.0; // Rotation magnitude
+                
+                // Contraction
+                float dist = length(pos);
+                vec3 dir = normalize(pos);
+                float targetDist = 2.0 + (dist * 0.1); 
+                float currentDist = mix(dist, targetDist, sphereContraction * 0.95);
+                pos = dir * currentDist;
+                
+                // Movement
+                float moveAmp = 0.5 + activeEnergy * 2.0;
+                vec3 movement = vec3(
+                    sin(time * 0.2 + aRandom.x * 5.0),
+                    cos(time * 0.18 + aRandom.y * 5.0),
+                    sin(time * 0.22 + aRandom.z * 5.0)
+                ) * moveAmp * (1.0 - sphereContraction * 0.5);
+                pos += movement;
+                
+                // Sphere Rotation
+                float c = cos(sphereRotation);
+                float s = sin(sphereRotation);
+                float rx = pos.x * c - pos.z * s;
+                float rz = pos.x * s + pos.z * c;
+                pos.x = rx;
+                pos.z = rz;
+                
+              } else {
+                // --- RING LOGIC (Right Hand) ---
+                activeEnergy = ringEnergy;
+                rotationEffect = abs(ringRotation) * 2.0;
+                
+                // Ring formation
+                float dist = length(pos.xz);
+                
+                // Expansion
+                float expansion = 1.0 + ringRadius * 5.0; 
+                pos.x *= expansion;
+                pos.z *= expansion;
+                
+                // Vertical Volume
+                float verticalScale = ringRadius * 10.0; 
+                pos.y = (pos.y * 0.05) + sin(dist * 0.5 + time * 0.5) * verticalScale * 0.5;
+                
+                if (ringRadius > 0.1) {
+                    pos.y += (aRandom.y * ringRadius * 12.0);
+                }
+                
+                // Movement
+                float moveAmp = 0.5 + activeEnergy * 2.0;
+                vec3 movement = vec3(
+                    sin(time * 0.2 + aRandom.x * 5.0),
+                    cos(time * 0.18 + aRandom.y * 5.0),
+                    sin(time * 0.22 + aRandom.z * 5.0)
+                ) * moveAmp;
+                pos += movement;
+                
+                // Ring Rotation
+                float tilt = ringCount * 0.1;
+                float ct = cos(tilt);
+                float st = sin(tilt);
+                float ry = pos.y * ct - pos.z * st;
+                float rz_tilt = pos.y * st + pos.z * ct;
+                pos.y = ry;
+                pos.z = rz_tilt;
+                
+                float c = cos(ringRotation);
+                float s = sin(ringRotation);
+                float rx = pos.x * c - pos.z * s;
+                float rz = pos.x * s + pos.z * c;
+                pos.x = rx;
+                pos.z = rz;
+              }
+              
+              // Color & Saturation Boost
+              // Boost saturation based on rotation (glitch intensity)
+              // Also boost brightness with energy
+              vec3 boostedColor = saturate(color, rotationEffect * 1.5);
+              vColor = boostedColor * (1.0 + activeEnergy * 0.5);
+              
+              vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+              float vDist = -mvPosition.z;
+              
+              vAlpha = (0.4 + activeEnergy * 0.3) * smoothstep(100.0, 2.0, vDist);
+              
+              gl_PointSize = size * (1.0 + activeEnergy * 1.0) * (200.0 / vDist);
+              gl_Position = projectionMatrix * mvPosition;
+            }
+          `,
+          fragmentShader: `
+            varying vec3 vColor;
+            varying float vAlpha;
+            
+            void main() {
+              float d = length(gl_PointCoord - vec2(0.5));
+              if (d > 0.5) discard;
+              
+              float alpha = vAlpha * (1.0 - smoothstep(0.0, 0.5, d));
+              gl_FragColor = vec4(vColor, alpha);
+            }
+          `,
+          transparent: true,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false
+        });
+
+        this.nebulaMesh = new THREE.Points(geometry, material);
+        this.scene.add(this.nebulaMesh);
+      }
+
+      createDistantStars(count) {
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(count * 3);
+        const sizes = new Float32Array(count);
+
+        for (let i = 0; i < count; i++) {
+          const i3 = i * 3;
+          const theta = Math.random() * Math.PI * 2;
+          const phi = Math.acos(Math.random() * 2 - 1);
+          const r = 80 + Math.random() * 60;
+
+          positions[i3] = r * Math.sin(phi) * Math.cos(theta);
+          positions[i3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+          positions[i3 + 2] = r * Math.cos(phi);
+
+          sizes[i] = Math.random() * 0.5 + 0.1;
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+        const material = new THREE.ShaderMaterial({
+          uniforms: { time: { value: 0 } },
+          vertexShader: `
+            attribute float size;
+            varying float vAlpha;
+            uniform float time;
+            void main() {
+              vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+              vAlpha = 0.3 + sin(time * 0.5 + position.x) * 0.1;
+              gl_PointSize = size * (100.0 / -mvPosition.z);
+              gl_Position = projectionMatrix * mvPosition;
+            }
+          `,
+          fragmentShader: `
+            varying float vAlpha;
+            void main() {
+              float d = length(gl_PointCoord - vec2(0.5));
+              if (d > 0.5) discard;
+              gl_FragColor = vec4(0.9, 0.9, 1.0, vAlpha * (1.0 - d * 2.0));
+            }
+          `,
+          transparent: true,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false
+        });
+
+        const points = new THREE.Points(geometry, material);
+        this.scene.add(points);
+      }
+
+      onNotePlay(note) {
+        // Reduced energy jump for smoother reaction (was 0.3)
+        this.sphereEnergy = Math.min(1, this.sphereEnergy + note.velocity * 0.15);
+      }
+
+      onChordPlay(chord) {
+        // Reduced energy jump (was 0.1)
+        this.ringEnergy = Math.min(1, this.ringEnergy + chord.velocity * 0.05);
+      }
+
+      updateFromHands(leftState, rightState) {
+        // Calculate X-Axis Intensity (0 at center, 1 at edge)
+        const leftIntensity = leftState.active ? Math.min(1, Math.abs(leftState.x - 0.5) * 2.0) : 0;
+        const rightIntensity = rightState.active ? Math.min(1, Math.abs(rightState.x - 0.5) * 2.0) : 0;
+
+        // --- LEFT HAND: Sphere Control ---
+        if (leftState.active) {
+          // Contraction: Center (0 intensity) -> Contracted (1)
+          // Edge (1 intensity) -> Expanded (0)
+          this.targetSphereContraction = 1.0 - leftIntensity;
+
+          // Rotation: Map hand rotation to sphere rotation speed or absolute angle
+          // Let's map to absolute angle for direct control
+          this.targetSphereRotation = leftState.rotation * 2.0;
+        } else {
+          this.targetSphereContraction = 0.2;
+          this.targetSphereRotation = 0; // Reset rotation when hand inactive
+        }
+
+        // --- RIGHT HAND: Ring Control ---
+        if (rightState.active) {
+          // Ring Count: Fingers (Keep this as fingers for variety?)
+          // User said "hands open/close doesn't do anything for v3"
+          // Let's keep fingers for count as it's a discrete property, 
+          // but radius is definitely intensity.
+          this.targetRingCount = Math.max(1, rightState.fingers);
+
+          // Ring Radius: Linked to X-Axis Intensity
+          this.targetRingRadius = rightIntensity;
+
+          // Ring Rotation
+          this.targetRingRotation = rightState.rotation * 2.0;
+        } else {
+          this.targetRingCount = 1;
+          this.targetRingRadius = 0.5;
+          this.targetRingRotation = 0; // Reset rotation when hand inactive
+        }
+
+        // --- ZOOM Logic (Combined) ---
+        // If either hand is at edge, zoom in
+        const maxIntensity = Math.max(leftIntensity, rightIntensity);
+
+        this.targetZoom = 40 - (maxIntensity * 35);
+
+        // Camera Control (Combined)
+        let activeHands = 0;
+        let avgRotation = 0;
+        let avgHeight = 0;
+
+        if (leftState.active) {
+          activeHands++;
+          avgRotation += leftState.rotation;
+          avgHeight += leftState.height;
+        }
+        if (rightState.active) {
+          activeHands++;
+          avgRotation += rightState.rotation;
+          avgHeight += rightState.height;
+        }
+
+        if (activeHands > 0) {
+          avgRotation /= activeHands;
+          avgHeight /= activeHands;
+          this.targetRotation.y = avgRotation * 0.5;
+          this.targetRotation.x = (avgHeight - 0.5) * 0.5;
+        } else {
+          this.targetRotation.y = 0;
+          this.targetRotation.x = 0;
+        }
+      }
+
+      update(time, deltaTime) {
+        // Smooth interpolation - Slower factors for fluid feel
+        this.sphereContraction += (this.targetSphereContraction - this.sphereContraction) * 0.03;
+        this.sphereRotation += (this.targetSphereRotation - this.sphereRotation) * 0.03;
+
+        this.ringCount += (this.targetRingCount - this.ringCount) * 0.1; // Keep count snappy
+        this.ringRadius += (this.targetRingRadius - this.ringRadius) * 0.03;
+        this.ringRotation += (this.targetRingRotation - this.ringRotation) * 0.03;
+
+        this.currentZoom += (this.targetZoom - this.currentZoom) * 0.02;
+
+        // Camera smoothing
+        this.currentRotation.x += (this.targetRotation.x - this.currentRotation.x) * 0.02;
+        this.currentRotation.y += (this.targetRotation.y - this.currentRotation.y) * 0.02;
+
+        this.camera.rotation.x = this.currentRotation.x;
+        this.camera.rotation.y = this.currentRotation.y;
+        this.camera.position.z = this.currentZoom;
+
+        // Decay energies - Slower decay for sustain (was 0.95)
+        this.sphereEnergy *= 0.98;
+        this.ringEnergy *= 0.98;
+
+        // Update shader uniforms
+        if (this.nebulaMesh) {
+          this.nebulaMesh.material.uniforms.time.value = time;
+          this.nebulaMesh.material.uniforms.sphereContraction.value = this.sphereContraction;
+          this.nebulaMesh.material.uniforms.sphereRotation.value = this.sphereRotation;
+          this.nebulaMesh.material.uniforms.sphereEnergy.value = this.sphereEnergy;
+
+          this.nebulaMesh.material.uniforms.ringCount.value = this.ringCount;
+          this.nebulaMesh.material.uniforms.ringRadius.value = this.ringRadius;
+          this.nebulaMesh.material.uniforms.ringRotation.value = this.ringRotation;
+          this.nebulaMesh.material.uniforms.ringEnergy.value = this.ringEnergy;
+        }
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // HAND TRACKING
+    // ═══════════════════════════════════════════════════════════════
+
+    class HandTracker {
+      constructor() {
+        this.hands = null;
+        this.camera = null;
+        this.video = document.getElementById('video');
+        this.onUpdate = null;
+      }
+
+      async init() {
+        await this.loadScript('https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js');
+        await this.loadScript('https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js');
+
+        this.hands = new window.Hands({
+          locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+
+        this.hands.setOptions({
+          maxNumHands: 2,
+          modelComplexity: 1,
+          minDetectionConfidence: 0.7,
+          minTrackingConfidence: 0.5
+        });
+
+        this.hands.onResults(this.processResults.bind(this));
+
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: 640, height: 480, facingMode: 'user' }
+        });
+
+        this.video.srcObject = stream;
+        await this.video.play();
+
+        this.camera = new window.Camera(this.video, {
+          onFrame: async () => {
+            await this.hands.send({ image: this.video });
+          },
+          width: 640,
+          height: 480
+        });
+
+        await this.camera.start();
+        return this;
+      }
+
+      loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      processResults(results) {
+        const handData = {
+          left: { active: false },
+          right: { active: false }
+        };
+
+        if (results.multiHandLandmarks && results.multiHandedness) {
+          results.multiHandLandmarks.forEach((landmarks, idx) => {
+            const handedness = results.multiHandedness[idx];
+            // MediaPipe reports from camera's view (mirrored), so flip it
+            const hand = handedness.label === 'Right' ? 'left' : 'right';
+            // Pass the actual hand label for proper thumb detection
+            handData[hand] = this.analyzeHand(landmarks, hand);
+          });
+        }
+
+        if (this.onUpdate) this.onUpdate(handData);
+      }
+
+      analyzeHand(landmarks, handLabel) {
+        const wrist = landmarks[0];
+        const middleMcp = landmarks[9];
+        const center = {
+          x: (wrist.x + middleMcp.x) / 2,
+          y: (wrist.y + middleMcp.y) / 2,
+          z: (wrist.z + middleMcp.z) / 2
+        };
+
+        // MediaPipe hand landmark indices:
+        // Thumb:  1=CMC, 2=MCP, 3=IP, 4=TIP
+        // Index:  5=MCP, 6=PIP, 7=DIP, 8=TIP
+        // Middle: 9=MCP, 10=PIP, 11=DIP, 12=TIP
+        // Ring:   13=MCP, 14=PIP, 15=DIP, 16=TIP
+        // Pinky:  17=MCP, 18=PIP, 19=DIP, 20=TIP
+
+        let extendedFingers = 0;
+        let totalExtension = 0;
+
+        // === THUMB DETECTION ===
+        // Key insight: In a fist, thumb wraps around and is CLOSE to index finger PIP (knuckle)
+        // When thumb is extended, it's FAR from index finger PIP
+        const thumbTip = landmarks[4];
+        const thumbIp = landmarks[3];
+        const indexPip = landmarks[6];  // Index finger knuckle - key reference point
+        const indexMcp = landmarks[5];
+
+        // Calculate hand size for normalization (wrist to middle MCP)
+        const handSize = Math.sqrt(
+          Math.pow(middleMcp.x - wrist.x, 2) +
+          Math.pow(middleMcp.y - wrist.y, 2) +
+          Math.pow(middleMcp.z - wrist.z, 2)
+        );
+
+        // Distance from thumb tip to index PIP (3D)
+        // In fist: thumb is close to index PIP (~0.3-0.5 hand size)
+        // Extended: thumb is far from index PIP (>0.8 hand size)
+        const thumbToIndexPip = Math.sqrt(
+          Math.pow(thumbTip.x - indexPip.x, 2) +
+          Math.pow(thumbTip.y - indexPip.y, 2) +
+          Math.pow(thumbTip.z - indexPip.z, 2)
+        );
+
+        // Also check thumb tip distance from index MCP (base of index finger)
+        const thumbToIndexMcp = Math.sqrt(
+          Math.pow(thumbTip.x - indexMcp.x, 2) +
+          Math.pow(thumbTip.y - indexMcp.y, 2) +
+          Math.pow(thumbTip.z - indexMcp.z, 2)
+        );
+
+        // Thumb is extended if it's far from both index PIP AND index MCP
+        // This ensures fist (thumb near knuckles) reads as 0, but open hand reads thumb
+        const thumbExtended = thumbToIndexPip > handSize * 0.7 && thumbToIndexMcp > handSize * 0.5;
+
+        if (thumbExtended) {
+          extendedFingers++;
+          totalExtension += 1;
+        } else {
+          // Partial extension for openness calculation based on distance
+          const thumbExt = Math.max(0, Math.min(1, (thumbToIndexPip / handSize - 0.3) / 0.5));
+          totalExtension += thumbExt;
+        }
+
+        // === OTHER FINGERS (Index, Middle, Ring, Pinky) ===
+        // A finger is extended if its TIP is ABOVE (lower Y) its PIP joint
+        // This works regardless of hand rotation or distance from camera
+        const fingerData = [
+          { tip: 8, pip: 6, mcp: 5 },    // Index
+          { tip: 12, pip: 10, mcp: 9 },  // Middle
+          { tip: 16, pip: 14, mcp: 13 }, // Ring
+          { tip: 20, pip: 18, mcp: 17 }  // Pinky
+        ];
+
+        fingerData.forEach(finger => {
+          const tip = landmarks[finger.tip];
+          const pip = landmarks[finger.pip];
+          const mcp = landmarks[finger.mcp];
+
+          // Primary check: tip Y should be less than PIP Y (higher on screen = extended)
+          // Secondary check: use angle between tip-pip and pip-mcp vectors
+          const vec1 = { x: tip.x - pip.x, y: tip.y - pip.y, z: tip.z - pip.z };
+          const vec2 = { x: mcp.x - pip.x, y: mcp.y - pip.y, z: mcp.z - pip.z };
+
+          const dot = vec1.x * vec2.x + vec1.y * vec2.y + vec1.z * vec2.z;
+          const mag1 = Math.sqrt(vec1.x * vec1.x + vec1.y * vec1.y + vec1.z * vec1.z);
+          const mag2 = Math.sqrt(vec2.x * vec2.x + vec2.y * vec2.y + vec2.z * vec2.z);
+          const angle = Math.acos(dot / (mag1 * mag2 + 0.0001));
+
+          // Finger is extended if angle > ~160 degrees (nearly straight)
+          // Also use simple Y comparison as backup
+          const isExtended = angle > 2.6 || (tip.y < pip.y - 0.02);
+
+          if (isExtended) {
+            extendedFingers++;
+            totalExtension += 1;
+          } else {
+            // Partial extension for openness
+            const ext = Math.max(0, Math.min(1, (angle - 1.0) / 1.8));
+            totalExtension += ext;
+          }
+        });
+
+        const openness = totalExtension / 5;
+
+        const dx = middleMcp.x - wrist.x;
+        const dy = middleMcp.y - wrist.y;
+        const rotation = Math.atan2(dx, -dy);
+
+        const distance = 1 - Math.min(1, Math.max(0, (center.z + 0.1) * 3));
+
+        return {
+          active: true,
+          x: 1 - center.x,
+          y: center.y,
+          height: 1 - center.y,
+          openness,
+          fingers: extendedFingers,
+          rotation,
+          distance
+        };
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // MAIN APPLICATION
+    // ═══════════════════════════════════════════════════════════════
+
+    class GlassConductor {
+      constructor() {
+        this.scene = null;
+        this.camera = null;
+        this.renderer = null;
+        this.composer = null;
+        this.nebula = null;
+        this.audio = null;
+        this.handTracker = null;
+        this.isRunning = false;
+        this.clock = new THREE.Clock();
+        this.lastTime = 0;
+        this.handState = {
+          left: { active: false },
+          right: { active: false }
+        };
+      }
+
+      async init() {
+        this.setupScene();
+        this.setupCamera();
+        this.setupRenderer();
+        this.setupPostProcessing();
+
+        this.nebula = new NebulaSystem(this.scene, this.camera);
+
+        this.audio = new GlassAudioEngine();
+        await this.audio.init();
+
+        // Wire audio to visuals
+        this.audio.onNotePlay = (note) => this.nebula.onNotePlay(note);
+        this.audio.onChordPlay = (chord) => this.nebula.onChordPlay(chord);
+
+        this.handTracker = new HandTracker();
+        await this.handTracker.init();
+        this.handTracker.onUpdate = this.handleHandUpdate.bind(this);
+
+        document.getElementById('loading').classList.add('hidden');
+
+        const startBtn = document.getElementById('start-button');
+        startBtn.addEventListener('click', () => {
+          this.start();
+          startBtn.classList.add('hidden');
+          setTimeout(() => {
+            document.getElementById('instructions').classList.add('visible');
+          }, 500);
+        });
+
+        window.addEventListener('resize', this.onResize.bind(this));
+
+        this.animate();
+      }
+
+      setupScene() {
+        this.scene = new THREE.Scene();
+        this.scene.fog = new THREE.FogExp2(0x030308, 0.008);
+      }
+
+      setupCamera() {
+        this.camera = new THREE.PerspectiveCamera(
+          70,
+          window.innerWidth / window.innerHeight,
+          0.1,
+          200
+        );
+        this.camera.position.set(0, 0, 0);
+      }
+
+      setupRenderer() {
+        this.renderer = new THREE.WebGLRenderer({
+          antialias: true,
+          alpha: true
+        });
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        this.renderer.toneMappingExposure = 1.2;
+
+        document.getElementById('canvas-container').appendChild(this.renderer.domElement);
+      }
+
+      setupPostProcessing() {
+        this.composer = new EffectComposer(this.renderer);
+
+        const renderPass = new RenderPass(this.scene, this.camera);
+        this.composer.addPass(renderPass);
+
+        const bloomPass = new UnrealBloomPass(
+          new THREE.Vector2(window.innerWidth, window.innerHeight),
+          0.8,   // Lower intensity for subtlety
+          0.5,
+          0.8
+        );
+        this.composer.addPass(bloomPass);
+      }
+
+      handleHandUpdate(handData) {
+        this.handState = handData;
+
+        const leftEl = document.getElementById('left-data');
+        const rightEl = document.getElementById('right-data');
+
+        if (handData.left.active) {
+          this.audio.updateHandState('left', handData.left);
+          leftEl.textContent = `${handData.left.fingers} fingers`;
+        } else {
+          this.audio.updateHandState('left', { active: false });
+          leftEl.textContent = '...';
+        }
+
+        if (handData.right.active) {
+          this.audio.updateHandState('right', handData.right);
+          // 6 levels: fist=power, 1=triad, 2=tenth, 3=seventh, 4=extended, 5=transcendent
+          const chordNames = ['power', 'triad', 'tenth', 'seventh', 'extended', 'transcendent'];
+          rightEl.textContent = chordNames[handData.right.fingers] || 'transcendent';
+        } else {
+          this.audio.updateHandState('right', { active: false });
+          rightEl.textContent = '...';
+        }
+
+        // Update nebula from hands
+        this.nebula.updateFromHands(handData.left, handData.right);
+      }
+
+      start() {
+        this.isRunning = true;
+        this.audio.start();
+      }
+
+      onResize() {
+        this.camera.aspect = window.innerWidth / window.innerHeight;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.composer.setSize(window.innerWidth, window.innerHeight);
+      }
+
+      animate() {
+        requestAnimationFrame(this.animate.bind(this));
+
+        const time = this.clock.getElapsedTime();
+        const deltaTime = Math.min(0.1, time - this.lastTime);
+        this.lastTime = time;
+        const timestamp = performance.now();
+
+        if (this.isRunning) {
+          this.audio.generateMusic(timestamp);
+        }
+
+        this.nebula.update(time, deltaTime);
+
+        this.composer.render();
+      }
+    }
+
+    const app = new GlassConductor();
+    app.init().catch(console.error);
+  </script>
+</body>
+
+</html>
