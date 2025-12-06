@@ -156,6 +156,36 @@
       opacity: 1;
     }
 
+    #instructions .backdrop {
+      position: absolute;
+      top: -15px;
+      left: -20px;
+      right: -20px;
+      bottom: -15px;
+      background: rgba(3, 3, 8, 0.7);
+      border-radius: 8px;
+      z-index: -1;
+      opacity: 1;
+      transition: opacity 0.8s ease;
+    }
+
+    #instructions.hands-active .backdrop {
+      opacity: 0;
+    }
+
+    h1 {
+      transition: opacity 0.8s ease;
+    }
+
+    .subtitle {
+      transition: opacity 0.8s ease;
+    }
+
+    #ui-overlay.hands-active h1,
+    #ui-overlay.hands-active .subtitle {
+      opacity: 0.15;
+    }
+
     #instructions h3 {
       font-family: 'Playfair Display', serif;
       font-weight: 300;
@@ -249,6 +279,7 @@
   <button id="start-button">Begin</button>
 
   <div id="instructions">
+    <div class="backdrop"></div>
     <h3>Controls</h3>
     <ul>
       <li><strong>Left Hand</strong>: Arpeggios</li>
@@ -1402,6 +1433,13 @@
 
         const leftEl = document.getElementById('left-data');
         const rightEl = document.getElementById('right-data');
+        const instructionsEl = document.getElementById('instructions');
+        const uiOverlay = document.getElementById('ui-overlay');
+
+        // Toggle hands-active class based on whether any hands are visible
+        const handsVisible = handData.left.active || handData.right.active;
+        instructionsEl.classList.toggle('hands-active', handsVisible);
+        uiOverlay.classList.toggle('hands-active', handsVisible);
 
         if (handData.left.active) {
           this.audio.updateHandState('left', handData.left);
