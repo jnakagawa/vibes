@@ -21,6 +21,8 @@ jobs:
         token: ${{ secrets.GITHUB_TOKEN }}
         # Fetch full history for proper git operations
         fetch-depth: 0
+        # Checkout the actual branch (not merge commit) for PRs
+        ref: ${{ github.head_ref || github.ref }}
     
     - name: Setup Node.js
       uses: actions/setup-node@v4
