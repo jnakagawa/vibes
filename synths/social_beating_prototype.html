@@ -962,6 +962,9 @@
         function initProximity() {
             const toggle = document.getElementById('proximityToggle');
             toggle.addEventListener('click', toggleProximity);
+
+            // Auto-enable proximity detection
+            toggleProximity();
         }
 
         async function toggleProximity() {
