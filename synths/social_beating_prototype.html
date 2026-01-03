@@ -871,7 +871,7 @@
 
                 phoneOsc.type = 'sine';
                 phoneOsc.frequency.value = notes[currentNote] + currentDetune;
-                phoneGain.gain.value = 0.7;
+                phoneGain.gain.value = 1.0; // Max volume
                 phoneFilter.type = 'lowpass';
                 phoneFilter.frequency.value = 2000;
                 phoneFilter.Q.value = 1;
@@ -881,8 +881,15 @@
                 phoneGain.connect(audioCtx.destination);
                 phoneOsc.start();
 
-                // Set up harmonics if proximity is enabled
+                // Recalibrate proximity baseline now that we're playing
+                // This ensures our own sound is part of the baseline
                 if (proximityEnabled) {
+                    setTimeout(() => {
+                        calibrationSamples = [];
+                        baselineLevel = 0;
+                        document.getElementById('proximityStatus').textContent = 'Recalibrating with your tone...';
+                    }, 300); // Brief delay to let sound stabilize
+
                     setupHarmonics();
                 }
 
@@ -1091,7 +1098,7 @@
             // Calculate proximity as energy above baseline
             // More phones nearby = more energy at these frequencies
             const aboveBaseline = Math.max(0, avgLevel - baselineLevel);
-            const maxExpectedIncrease = 80; // Tunable: how much increase = 100% proximity
+            const maxExpectedIncrease = 40; // Lower = more sensitive (other phones add less than own phone)
             const rawProximity = Math.min(1, aboveBaseline / maxExpectedIncrease);
 
             // Smooth the value
