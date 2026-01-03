@@ -577,7 +577,7 @@
 
             <div class="proximity-section">
                 <div class="proximity-header">
-                    <span class="proximity-title">Proximity Detection (19kHz ultrasonic)</span>
+                    <span class="proximity-title">Proximity Detection (via sound)</span>
                     <div class="proximity-toggle" id="proximityToggle"></div>
                 </div>
                 <div class="proximity-visual">
@@ -601,9 +601,9 @@
 
             <div class="info-box">
                 <h3>How It Works</h3>
-                <p>Each phone emits an inaudible 19kHz tone and listens for others.
-                More nearby phones = stronger signal. The proximity level affects your sound's harmonics -
-                get closer to others to unlock richer tones!</p>
+                <p>Your phone listens for musical tones from nearby phones.
+                More phones nearby = more energy detected = richer harmonics unlocked.
+                The sound you're already making IS the proximity signal!</p>
             </div>
         </div>
     </div>
@@ -938,16 +938,19 @@
 
         // ==================== PROXIMITY DETECTION ====================
 
-        const ULTRASONIC_FREQ = 19000; // 19kHz - above most hearing, below Nyquist
-        const FFT_SIZE = 8192; // High resolution for narrow frequency detection
+        // Detect proximity by listening for energy at musical frequencies
+        // No ultrasonic needed - the music IS the signal!
+        const FFT_SIZE = 4096;
+        const FREQ_RANGE_LOW = 200;   // Hz - covers our pentatonic scale
+        const FREQ_RANGE_HIGH = 600;  // Hz
 
         let proximityEnabled = false;
-        let ultrasonicOsc = null;
-        let ultrasonicGain = null;
         let micStream = null;
         let analyser = null;
         let proximityLevel = 0;
         let proximityAnimationId = null;
+        let baselineLevel = 0;  // Calibrated baseline (own phone's contribution)
+        let calibrationSamples = [];
 
         // Additional oscillators for harmonic enrichment based on proximity
         let harmonicOscs = [];
@@ -991,29 +994,20 @@
                 // Create analyser for FFT
                 analyser = audioCtx.createAnalyser();
                 analyser.fftSize = FFT_SIZE;
-                analyser.smoothingTimeConstant = 0.8;
+                analyser.smoothingTimeConstant = 0.85;
 
                 // Connect mic to analyser
                 const micSource = audioCtx.createMediaStreamSource(micStream);
                 micSource.connect(analyser);
 
-                // Start ultrasonic emitter
-                ultrasonicOsc = audioCtx.createOscillator();
-                ultrasonicGain = audioCtx.createGain();
-
-                ultrasonicOsc.type = 'sine';
-                ultrasonicOsc.frequency.value = ULTRASONIC_FREQ;
-                ultrasonicGain.gain.value = 0.3; // Moderate level
-
-                ultrasonicOsc.connect(ultrasonicGain);
-                ultrasonicGain.connect(audioCtx.destination);
-                ultrasonicOsc.start();
-
                 // Set up harmonic oscillators (for proximity-based enrichment)
                 setupHarmonics();
 
                 proximityEnabled = true;
-                document.getElementById('proximityStatus').textContent = 'Listening for nearby phones...';
+
+                // Calibrate baseline (detect own phone's signal level)
+                calibrationSamples = [];
+                document.getElementById('proximityStatus').textContent = 'Calibrating...';
 
                 // Start analysis loop
                 analyzeProximity();
@@ -1030,12 +1024,6 @@
 
         function stopProximity() {
             proximityEnabled = false;
-
-            // Stop ultrasonic emitter
-            if (ultrasonicOsc) {
-                ultrasonicOsc.stop();
-                ultrasonicOsc = null;
-            }
 
             // Stop microphone
             if (micStream) {
@@ -1062,6 +1050,10 @@
             document.querySelectorAll('.proximity-ring').forEach(ring => {
                 ring.classList.remove('active');
             });
+
+            // Reset calibration
+            baselineLevel = 0;
+            calibrationSamples = [];
         }
 
         function setupHarmonics() {
@@ -1120,30 +1112,43 @@
             const dataArray = new Uint8Array(bufferLength);
             analyser.getByteFrequencyData(dataArray);
 
-            // Find the bin that corresponds to our ultrasonic frequency
+            // Calculate frequency bins for our musical range
             const nyquist = audioCtx.sampleRate / 2;
             const binWidth = nyquist / bufferLength;
-            const targetBin = Math.round(ULTRASONIC_FREQ / binWidth);
+            const lowBin = Math.floor(FREQ_RANGE_LOW / binWidth);
+            const highBin = Math.ceil(FREQ_RANGE_HIGH / binWidth);
 
-            // Sample a range around the target frequency (±2 bins)
+            // Sum energy in the musical frequency range (200-600 Hz)
             let sum = 0;
-            const range = 2;
-            for (let i = targetBin - range; i <= targetBin + range; i++) {
-                if (i >= 0 && i < bufferLength) {
-                    sum += dataArray[i];
-                }
+            let count = 0;
+            for (let i = lowBin; i <= highBin && i < bufferLength; i++) {
+                sum += dataArray[i];
+                count++;
             }
-            const avgLevel = sum / (range * 2 + 1);
+            const avgLevel = count > 0 ? sum / count : 0;
 
-            // Normalize to 0-1 range
-            // We expect our own signal, so we look for energy above baseline
-            // Baseline (just our signal) is around 100-150, strong proximity pushes to 200+
-            const baseline = 80;
-            const maxLevel = 200;
-            const rawProximity = Math.max(0, (avgLevel - baseline) / (maxLevel - baseline));
+            // Calibration phase: collect samples to establish baseline
+            const CALIBRATION_SAMPLES = 30; // ~0.5 seconds
+            if (calibrationSamples.length < CALIBRATION_SAMPLES) {
+                calibrationSamples.push(avgLevel);
+                if (calibrationSamples.length === CALIBRATION_SAMPLES) {
+                    // Calculate baseline as median of samples
+                    const sorted = [...calibrationSamples].sort((a, b) => a - b);
+                    baselineLevel = sorted[Math.floor(sorted.length / 2)];
+                    document.getElementById('proximityStatus').textContent = 'Listening for nearby phones...';
+                }
+                proximityAnimationId = requestAnimationFrame(analyzeProximity);
+                return;
+            }
+
+            // Calculate proximity as energy above baseline
+            // More phones nearby = more energy at these frequencies
+            const aboveBaseline = Math.max(0, avgLevel - baselineLevel);
+            const maxExpectedIncrease = 80; // Tunable: how much increase = 100% proximity
+            const rawProximity = Math.min(1, aboveBaseline / maxExpectedIncrease);
 
             // Smooth the value
-            proximityLevel = proximityLevel * 0.8 + rawProximity * 0.2;
+            proximityLevel = proximityLevel * 0.85 + rawProximity * 0.15;
             proximityLevel = Math.min(1, Math.max(0, proximityLevel));
 
             // Update UI
