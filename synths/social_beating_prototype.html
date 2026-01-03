@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Social Beating - Installation Prototype</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0a0f;
+            color: #e0e0e0;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            font-weight: 300;
+            text-align: center;
+            margin-bottom: 8px;
+            color: #fff;
+        }
+
+        .subtitle {
+            text-align: center;
+            font-size: 0.85rem;
+            color: #666;
+            margin-bottom: 30px;
+        }
+
+        /* Mode Tabs */
+        .mode-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+        }
+
+        .mode-tab {
+            flex: 1;
+            padding: 15px;
+            background: #1a1a24;
+            border: 1px solid #2a2a3a;
+            border-radius: 12px;
+            color: #888;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-align: center;
+        }
+
+        .mode-tab.active {
+            background: #2a2a3a;
+            border-color: #4a9eff;
+            color: #fff;
+        }
+
+        .mode-tab:hover {
+            border-color: #4a9eff;
+        }
+
+        /* Simulator Mode */
+        .simulator-section {
+            display: none;
+        }
+
+        .simulator-section.active {
+            display: block;
+        }
+
+        .voice {
+            background: #12121a;
+            border: 1px solid #2a2a3a;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 15px;
+            transition: all 0.3s;
+        }
+
+        .voice.active {
+            border-color: #4a9eff;
+            box-shadow: 0 0 20px rgba(74, 158, 255, 0.1);
+        }
+
+        .voice-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .voice-name {
+            font-size: 1rem;
+            color: #fff;
+        }
+
+        .voice-freq {
+            font-family: monospace;
+            font-size: 1.1rem;
+            color: #4a9eff;
+        }
+
+        .voice-toggle {
+            width: 50px;
+            height: 28px;
+            background: #2a2a3a;
+            border-radius: 14px;
+            position: relative;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .voice-toggle.on {
+            background: #4a9eff;
+        }
+
+        .voice-toggle::after {
+            content: '';
+            position: absolute;
+            width: 22px;
+            height: 22px;
+            background: #fff;
+            border-radius: 50%;
+            top: 3px;
+            left: 3px;
+            transition: transform 0.3s;
+        }
+
+        .voice-toggle.on::after {
+            transform: translateX(22px);
+        }
+
+        .slider-container {
+            margin-top: 10px;
+        }
+
+        .slider-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.8rem;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            height: 6px;
+            background: #2a2a3a;
+            border-radius: 3px;
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #4a9eff;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        /* Phone Mode */
+        .phone-section {
+            display: none;
+            text-align: center;
+        }
+
+        .phone-section.active {
+            display: block;
+        }
+
+        .my-note {
+            font-size: 4rem;
+            font-weight: 200;
+            color: #4a9eff;
+            margin: 30px 0 10px;
+        }
+
+        .my-freq {
+            font-family: monospace;
+            font-size: 1.5rem;
+            color: #666;
+            margin-bottom: 40px;
+        }
+
+        .play-button {
+            width: 150px;
+            height: 150px;
+            border-radius: 50%;
+            background: linear-gradient(145deg, #1a1a24, #12121a);
+            border: 2px solid #2a2a3a;
+            color: #4a9eff;
+            font-size: 1.2rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 30px;
+        }
+
+        .play-button.playing {
+            background: linear-gradient(145deg, #4a9eff, #3a7ecc);
+            color: #fff;
+            border-color: #4a9eff;
+            box-shadow: 0 0 40px rgba(74, 158, 255, 0.3);
+        }
+
+        .play-button:active {
+            transform: scale(0.95);
+        }
+
+        .gyro-display {
+            background: #12121a;
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 30px;
+        }
+
+        .gyro-title {
+            font-size: 0.85rem;
+            color: #666;
+            margin-bottom: 15px;
+        }
+
+        .gyro-value {
+            font-family: monospace;
+            font-size: 1.2rem;
+            color: #4a9eff;
+        }
+
+        .tilt-indicator {
+            width: 100%;
+            height: 8px;
+            background: #2a2a3a;
+            border-radius: 4px;
+            margin-top: 15px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .tilt-dot {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background: #4a9eff;
+            border-radius: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            transition: left 0.1s;
+        }
+
+        /* Beating Visualization */
+        .beating-viz {
+            height: 100px;
+            background: #12121a;
+            border-radius: 12px;
+            margin: 20px 0;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .wave-canvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Info Section */
+        .info-box {
+            background: #12121a;
+            border: 1px solid #2a2a3a;
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 20px;
+            font-size: 0.85rem;
+            line-height: 1.6;
+            color: #888;
+        }
+
+        .info-box h3 {
+            color: #fff;
+            font-weight: 500;
+            margin-bottom: 10px;
+        }
+
+        .beat-freq {
+            text-align: center;
+            margin: 20px 0;
+            padding: 15px;
+            background: #12121a;
+            border-radius: 12px;
+        }
+
+        .beat-freq-label {
+            font-size: 0.85rem;
+            color: #666;
+        }
+
+        .beat-freq-value {
+            font-size: 2rem;
+            font-family: monospace;
+            color: #4a9eff;
+        }
+
+        /* Note selector for phone mode */
+        .note-selector {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            justify-content: center;
+            margin: 20px 0;
+        }
+
+        .note-btn {
+            width: 50px;
+            height: 50px;
+            border-radius: 10px;
+            background: #1a1a24;
+            border: 1px solid #2a2a3a;
+            color: #888;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .note-btn.selected {
+            background: #4a9eff;
+            border-color: #4a9eff;
+            color: #fff;
+        }
+
+        .detune-control {
+            margin: 20px 0;
+            padding: 20px;
+            background: #12121a;
+            border-radius: 12px;
+        }
+
+        .randomize-btn {
+            padding: 12px 24px;
+            background: #2a2a3a;
+            border: 1px solid #3a3a4a;
+            border-radius: 8px;
+            color: #fff;
+            font-size: 0.9rem;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+
+        .randomize-btn:hover {
+            background: #3a3a4a;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Social Beating</h1>
+        <p class="subtitle">Multi-phone installation prototype</p>
+
+        <div class="mode-tabs">
+            <div class="mode-tab active" data-mode="simulator">
+                🎛️ Simulator<br>
+                <small>Test beating locally</small>
+            </div>
+            <div class="mode-tab" data-mode="phone">
+                📱 Phone Mode<br>
+                <small>Use on device</small>
+            </div>
+        </div>
+
+        <!-- Simulator Mode -->
+        <div class="simulator-section active" id="simulator">
+            <div class="beating-viz">
+                <canvas class="wave-canvas" id="waveCanvas"></canvas>
+            </div>
+
+            <div class="beat-freq">
+                <div class="beat-freq-label">Combined beating frequency</div>
+                <div class="beat-freq-value" id="beatFreqDisplay">0.0 Hz</div>
+            </div>
+
+            <div id="voices"></div>
+
+            <button class="randomize-btn" id="addVoice">+ Add Person</button>
+
+            <div class="info-box">
+                <h3>How Beating Works</h3>
+                <p>When two frequencies are close together, they create a pulsing "beat" at the difference frequency.
+                440 Hz + 442 Hz = 2 Hz pulse. This happens in the air through wave interference - no sync needed between devices!</p>
+            </div>
+        </div>
+
+        <!-- Phone Mode -->
+        <div class="phone-section" id="phone">
+            <div class="my-note" id="myNote">A4</div>
+            <div class="my-freq" id="myFreq">440.0 Hz</div>
+
+            <button class="play-button" id="playButton">
+                TAP TO<br>PLAY
+            </button>
+
+            <div class="note-selector" id="noteSelector"></div>
+
+            <div class="detune-control">
+                <div class="slider-label">
+                    <span>Detune</span>
+                    <span id="detuneValue">+0.0 Hz</span>
+                </div>
+                <input type="range" id="detuneSlider" min="-10" max="10" step="0.1" value="0">
+                <button class="randomize-btn" id="randomDetune">🎲 Random Detune (±5 Hz)</button>
+            </div>
+
+            <div class="gyro-display">
+                <div class="gyro-title">Tilt to adjust filter brightness</div>
+                <div class="gyro-value" id="gyroValue">Tilt: 0°</div>
+                <div class="tilt-indicator">
+                    <div class="tilt-dot" id="tiltDot"></div>
+                </div>
+            </div>
+
+            <div class="info-box">
+                <h3>Multi-Phone Mode</h3>
+                <p>Open this page on multiple phones. Each person picks a note and adds slight detune.
+                When phones are near each other, you'll hear the beating interference pattern naturally emerge in the air between you.</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Audio Context
+        let audioCtx = null;
+        const voices = [];
+        let voiceCount = 0;
+
+        // Pentatonic scale frequencies (A minor pentatonic)
+        const notes = {
+            'A3': 220.00,
+            'C4': 261.63,
+            'D4': 293.66,
+            'E4': 329.63,
+            'G4': 392.00,
+            'A4': 440.00,
+            'C5': 523.25,
+            'D5': 587.33
+        };
+
+        // Phone mode state
+        let phoneOsc = null;
+        let phoneGain = null;
+        let phoneFilter = null;
+        let isPlaying = false;
+        let currentNote = 'A4';
+        let currentDetune = 0;
+
+        // Initialize Audio Context
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        // ==================== SIMULATOR MODE ====================
+
+        function createVoice(name, baseFreq, detune = 0) {
+            initAudio();
+
+            const voice = {
+                id: voiceCount++,
+                name: name,
+                baseFreq: baseFreq,
+                detune: detune,
+                isOn: false,
+                osc: null,
+                gain: null
+            };
+
+            voices.push(voice);
+            renderVoices();
+            return voice;
+        }
+
+        function toggleVoice(id) {
+            const voice = voices.find(v => v.id === id);
+            if (!voice) return;
+
+            if (voice.isOn) {
+                // Turn off
+                if (voice.gain) {
+                    voice.gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+                    setTimeout(() => {
+                        if (voice.osc) {
+                            voice.osc.stop();
+                            voice.osc = null;
+                        }
+                    }, 100);
+                }
+                voice.isOn = false;
+            } else {
+                // Turn on
+                voice.osc = audioCtx.createOscillator();
+                voice.gain = audioCtx.createGain();
+
+                voice.osc.type = 'sine';
+                voice.osc.frequency.value = voice.baseFreq + voice.detune;
+                voice.gain.gain.value = 0.15;
+
+                voice.osc.connect(voice.gain);
+                voice.gain.connect(audioCtx.destination);
+                voice.osc.start();
+                voice.isOn = true;
+            }
+
+            renderVoices();
+            updateBeatFrequency();
+        }
+
+        function updateVoiceDetune(id, detune) {
+            const voice = voices.find(v => v.id === id);
+            if (!voice) return;
+
+            voice.detune = parseFloat(detune);
+            if (voice.osc) {
+                voice.osc.frequency.value = voice.baseFreq + voice.detune;
+            }
+            updateBeatFrequency();
+        }
+
+        function removeVoice(id) {
+            const index = voices.findIndex(v => v.id === id);
+            if (index === -1) return;
+
+            const voice = voices[index];
+            if (voice.osc) {
+                voice.gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+                setTimeout(() => voice.osc.stop(), 100);
+            }
+
+            voices.splice(index, 1);
+            renderVoices();
+            updateBeatFrequency();
+        }
+
+        function updateBeatFrequency() {
+            const activeVoices = voices.filter(v => v.isOn);
+            let beatText = '0.0 Hz';
+
+            if (activeVoices.length === 2) {
+                const freq1 = activeVoices[0].baseFreq + activeVoices[0].detune;
+                const freq2 = activeVoices[1].baseFreq + activeVoices[1].detune;
+                const beat = Math.abs(freq1 - freq2);
+                beatText = beat.toFixed(1) + ' Hz';
+            } else if (activeVoices.length > 2) {
+                const freqs = activeVoices.map(v => v.baseFreq + v.detune);
+                const beats = [];
+                for (let i = 0; i < freqs.length; i++) {
+                    for (let j = i + 1; j < freqs.length; j++) {
+                        beats.push(Math.abs(freqs[i] - freqs[j]).toFixed(1));
+                    }
+                }
+                beatText = 'Complex: ' + beats.slice(0, 3).join(', ') + ' Hz';
+            }
+
+            document.getElementById('beatFreqDisplay').textContent = beatText;
+        }
+
+        function renderVoices() {
+            const container = document.getElementById('voices');
+            container.innerHTML = voices.map(voice => `
+                <div class="voice ${voice.isOn ? 'active' : ''}">
+                    <div class="voice-header">
+                        <span class="voice-name">${voice.name}</span>
+                        <span class="voice-freq">${(voice.baseFreq + voice.detune).toFixed(1)} Hz</span>
+                        <div class="voice-toggle ${voice.isOn ? 'on' : ''}" onclick="toggleVoice(${voice.id})"></div>
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label">
+                            <span>Detune</span>
+                            <span>${voice.detune >= 0 ? '+' : ''}${voice.detune.toFixed(1)} Hz</span>
+                        </div>
+                        <input type="range" min="-10" max="10" step="0.1" value="${voice.detune}"
+                            onchange="updateVoiceDetune(${voice.id}, this.value)"
+                            oninput="updateVoiceDetune(${voice.id}, this.value)">
+                    </div>
+                    <button class="randomize-btn" onclick="removeVoice(${voice.id})" style="margin-top:10px;background:#3a2a2a;border-color:#5a3a3a;">Remove</button>
+                </div>
+            `).join('');
+        }
+
+        // Add person button
+        document.getElementById('addVoice').addEventListener('click', () => {
+            initAudio();
+            const noteNames = Object.keys(notes);
+            const noteName = noteNames[voices.length % noteNames.length];
+            const randomDetune = (Math.random() - 0.5) * 6; // ±3 Hz
+            createVoice(`Person ${voices.length + 1} (${noteName})`, notes[noteName], randomDetune);
+        });
+
+        // Initialize with 2 voices
+        setTimeout(() => {
+            createVoice('Person 1 (A4)', 440, 0);
+            createVoice('Person 2 (A4)', 440, 2.5);
+        }, 100);
+
+        // ==================== PHONE MODE ====================
+
+        function initPhoneMode() {
+            const selector = document.getElementById('noteSelector');
+            selector.innerHTML = Object.keys(notes).map(note => `
+                <button class="note-btn ${note === currentNote ? 'selected' : ''}" data-note="${note}">${note}</button>
+            `).join('');
+
+            selector.querySelectorAll('.note-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    currentNote = btn.dataset.note;
+                    selector.querySelectorAll('.note-btn').forEach(b => b.classList.remove('selected'));
+                    btn.classList.add('selected');
+                    updatePhoneDisplay();
+                    if (isPlaying) {
+                        updatePhoneFrequency();
+                    }
+                });
+            });
+
+            // Detune slider
+            const detuneSlider = document.getElementById('detuneSlider');
+            detuneSlider.addEventListener('input', () => {
+                currentDetune = parseFloat(detuneSlider.value);
+                document.getElementById('detuneValue').textContent =
+                    (currentDetune >= 0 ? '+' : '') + currentDetune.toFixed(1) + ' Hz';
+                updatePhoneDisplay();
+                if (isPlaying) {
+                    updatePhoneFrequency();
+                }
+            });
+
+            // Random detune button
+            document.getElementById('randomDetune').addEventListener('click', () => {
+                currentDetune = (Math.random() - 0.5) * 10; // ±5 Hz
+                detuneSlider.value = currentDetune;
+                document.getElementById('detuneValue').textContent =
+                    (currentDetune >= 0 ? '+' : '') + currentDetune.toFixed(1) + ' Hz';
+                updatePhoneDisplay();
+                if (isPlaying) {
+                    updatePhoneFrequency();
+                }
+            });
+
+            // Play button
+            document.getElementById('playButton').addEventListener('click', togglePhonePlay);
+
+            updatePhoneDisplay();
+        }
+
+        function updatePhoneDisplay() {
+            document.getElementById('myNote').textContent = currentNote;
+            const freq = notes[currentNote] + currentDetune;
+            document.getElementById('myFreq').textContent = freq.toFixed(1) + ' Hz';
+        }
+
+        function updatePhoneFrequency() {
+            if (phoneOsc) {
+                phoneOsc.frequency.value = notes[currentNote] + currentDetune;
+            }
+        }
+
+        function togglePhonePlay() {
+            initAudio();
+            const btn = document.getElementById('playButton');
+
+            if (isPlaying) {
+                // Stop
+                if (phoneGain) {
+                    phoneGain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
+                }
+                setTimeout(() => {
+                    if (phoneOsc) {
+                        phoneOsc.stop();
+                        phoneOsc = null;
+                    }
+                }, 300);
+                isPlaying = false;
+                btn.classList.remove('playing');
+                btn.innerHTML = 'TAP TO<br>PLAY';
+            } else {
+                // Start
+                phoneOsc = audioCtx.createOscillator();
+                phoneGain = audioCtx.createGain();
+                phoneFilter = audioCtx.createBiquadFilter();
+
+                phoneOsc.type = 'sine';
+                phoneOsc.frequency.value = notes[currentNote] + currentDetune;
+                phoneGain.gain.value = 0.3;
+                phoneFilter.type = 'lowpass';
+                phoneFilter.frequency.value = 2000;
+                phoneFilter.Q.value = 1;
+
+                phoneOsc.connect(phoneFilter);
+                phoneFilter.connect(phoneGain);
+                phoneGain.connect(audioCtx.destination);
+                phoneOsc.start();
+
+                isPlaying = true;
+                btn.classList.add('playing');
+                btn.innerHTML = 'PLAYING<br>▪▪▪';
+            }
+        }
+
+        // ==================== GYRO ====================
+
+        function initGyro() {
+            if (window.DeviceOrientationEvent) {
+                // iOS 13+ requires permission
+                if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+                    document.body.addEventListener('click', () => {
+                        DeviceOrientationEvent.requestPermission()
+                            .then(response => {
+                                if (response === 'granted') {
+                                    window.addEventListener('deviceorientation', handleOrientation);
+                                }
+                            });
+                    }, { once: true });
+                } else {
+                    window.addEventListener('deviceorientation', handleOrientation);
+                }
+            }
+        }
+
+        function handleOrientation(event) {
+            const gamma = event.gamma || 0; // Left/right tilt (-90 to 90)
+            const clampedGamma = Math.max(-45, Math.min(45, gamma));
+
+            document.getElementById('gyroValue').textContent = `Tilt: ${gamma.toFixed(0)}°`;
+
+            // Move tilt dot
+            const dot = document.getElementById('tiltDot');
+            const percent = ((clampedGamma + 45) / 90) * 100;
+            dot.style.left = percent + '%';
+
+            // Adjust filter if playing
+            if (phoneFilter && isPlaying) {
+                // Map gamma to filter frequency (500 - 5000 Hz)
+                const filterFreq = 500 + ((clampedGamma + 45) / 90) * 4500;
+                phoneFilter.frequency.value = filterFreq;
+            }
+        }
+
+        // ==================== WAVE VISUALIZATION ====================
+
+        const canvas = document.getElementById('waveCanvas');
+        const ctx = canvas.getContext('2d');
+        let animationId;
+
+        function resizeCanvas() {
+            const rect = canvas.parentElement.getBoundingClientRect();
+            canvas.width = rect.width * window.devicePixelRatio;
+            canvas.height = rect.height * window.devicePixelRatio;
+            ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+        }
+
+        function drawWave() {
+            const width = canvas.width / window.devicePixelRatio;
+            const height = canvas.height / window.devicePixelRatio;
+
+            ctx.fillStyle = '#12121a';
+            ctx.fillRect(0, 0, width, height);
+
+            const activeVoices = voices.filter(v => v.isOn);
+            if (activeVoices.length === 0) {
+                animationId = requestAnimationFrame(drawWave);
+                return;
+            }
+
+            const time = Date.now() / 1000;
+
+            ctx.beginPath();
+            ctx.moveTo(0, height / 2);
+
+            for (let x = 0; x < width; x++) {
+                let y = 0;
+                activeVoices.forEach(voice => {
+                    const freq = voice.baseFreq + voice.detune;
+                    // Slow down visualization (divide freq by large number)
+                    y += Math.sin((x / width) * Math.PI * 4 + time * (freq - 438) * 0.5) * 20;
+                });
+                y = y / activeVoices.length + height / 2;
+                ctx.lineTo(x, y);
+            }
+
+            ctx.strokeStyle = '#4a9eff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            animationId = requestAnimationFrame(drawWave);
+        }
+
+        // ==================== MODE SWITCHING ====================
+
+        document.querySelectorAll('.mode-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                const mode = tab.dataset.mode;
+
+                document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+
+                document.getElementById('simulator').classList.toggle('active', mode === 'simulator');
+                document.getElementById('phone').classList.toggle('active', mode === 'phone');
+            });
+        });
+
+        // ==================== INIT ====================
+
+        window.addEventListener('load', () => {
+            resizeCanvas();
+            initPhoneMode();
+            initGyro();
+            drawWave();
+        });
+
+        window.addEventListener('resize', resizeCanvas);
+    </script>
+</body>
+</html>
