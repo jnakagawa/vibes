@@ -363,6 +363,150 @@
         .randomize-btn:hover {
             background: #3a3a4a;
         }
+
+        /* Proximity Detection */
+        .proximity-section {
+            background: #12121a;
+            border: 1px solid #2a2a3a;
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        .proximity-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .proximity-title {
+            font-size: 0.9rem;
+            color: #fff;
+        }
+
+        .proximity-toggle {
+            width: 50px;
+            height: 28px;
+            background: #2a2a3a;
+            border-radius: 14px;
+            position: relative;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .proximity-toggle.on {
+            background: #50c878;
+        }
+
+        .proximity-toggle::after {
+            content: '';
+            position: absolute;
+            width: 22px;
+            height: 22px;
+            background: #fff;
+            border-radius: 50%;
+            top: 3px;
+            left: 3px;
+            transition: transform 0.3s;
+        }
+
+        .proximity-toggle.on::after {
+            transform: translateX(22px);
+        }
+
+        .proximity-visual {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin: 20px 0;
+        }
+
+        .proximity-rings {
+            width: 100px;
+            height: 100px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .proximity-ring {
+            position: absolute;
+            border: 2px solid #2a2a3a;
+            border-radius: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            transition: border-color 0.3s, box-shadow 0.3s;
+        }
+
+        .proximity-ring.ring-1 { width: 30px; height: 30px; }
+        .proximity-ring.ring-2 { width: 55px; height: 55px; }
+        .proximity-ring.ring-3 { width: 80px; height: 80px; }
+        .proximity-ring.ring-4 { width: 100px; height: 100px; }
+
+        .proximity-ring.active {
+            border-color: #50c878;
+            box-shadow: 0 0 10px rgba(80, 200, 120, 0.3);
+        }
+
+        .proximity-center {
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            background: #4a9eff;
+            border-radius: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        .proximity-info {
+            flex: 1;
+        }
+
+        .proximity-level {
+            font-family: monospace;
+            font-size: 2rem;
+            color: #50c878;
+            margin-bottom: 5px;
+        }
+
+        .proximity-status {
+            font-size: 0.85rem;
+            color: #666;
+        }
+
+        .proximity-bar {
+            width: 100%;
+            height: 8px;
+            background: #2a2a3a;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 15px;
+        }
+
+        .proximity-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #50c878, #4a9eff);
+            border-radius: 4px;
+            width: 0%;
+            transition: width 0.2s;
+        }
+
+        .mic-status {
+            font-size: 0.75rem;
+            color: #666;
+            margin-top: 10px;
+            text-align: center;
+        }
+
+        .mic-status.error {
+            color: #ff6b6b;
+        }
+
+        .mic-status.active {
+            color: #50c878;
+        }
     </style>
 </head>
 <body>
@@ -431,10 +575,35 @@
                 </div>
             </div>
 
+            <div class="proximity-section">
+                <div class="proximity-header">
+                    <span class="proximity-title">Proximity Detection (19kHz ultrasonic)</span>
+                    <div class="proximity-toggle" id="proximityToggle"></div>
+                </div>
+                <div class="proximity-visual">
+                    <div class="proximity-rings">
+                        <div class="proximity-ring ring-4"></div>
+                        <div class="proximity-ring ring-3"></div>
+                        <div class="proximity-ring ring-2"></div>
+                        <div class="proximity-ring ring-1"></div>
+                        <div class="proximity-center"></div>
+                    </div>
+                    <div class="proximity-info">
+                        <div class="proximity-level" id="proximityLevel">0%</div>
+                        <div class="proximity-status" id="proximityStatus">Enable to detect nearby phones</div>
+                    </div>
+                </div>
+                <div class="proximity-bar">
+                    <div class="proximity-bar-fill" id="proximityBarFill"></div>
+                </div>
+                <div class="mic-status" id="micStatus">Microphone: inactive</div>
+            </div>
+
             <div class="info-box">
-                <h3>Multi-Phone Mode</h3>
-                <p>Open this page on multiple phones. Pick the same note, then tilt your phones to adjust detune.
-                The beating pattern changes as you tilt - find the sweet spot together! Move closer for louder interference.</p>
+                <h3>How It Works</h3>
+                <p>Each phone emits an inaudible 19kHz tone and listens for others.
+                More nearby phones = stronger signal. The proximity level affects your sound's harmonics -
+                get closer to others to unlock richer tones!</p>
             </div>
         </div>
     </div>
@@ -767,6 +936,249 @@
             }
         }
 
+        // ==================== PROXIMITY DETECTION ====================
+
+        const ULTRASONIC_FREQ = 19000; // 19kHz - above most hearing, below Nyquist
+        const FFT_SIZE = 8192; // High resolution for narrow frequency detection
+
+        let proximityEnabled = false;
+        let ultrasonicOsc = null;
+        let ultrasonicGain = null;
+        let micStream = null;
+        let analyser = null;
+        let proximityLevel = 0;
+        let proximityAnimationId = null;
+
+        // Additional oscillators for harmonic enrichment based on proximity
+        let harmonicOscs = [];
+        let harmonicGains = [];
+
+        function initProximity() {
+            const toggle = document.getElementById('proximityToggle');
+            toggle.addEventListener('click', toggleProximity);
+        }
+
+        async function toggleProximity() {
+            const toggle = document.getElementById('proximityToggle');
+
+            if (proximityEnabled) {
+                stopProximity();
+                toggle.classList.remove('on');
+            } else {
+                const success = await startProximity();
+                if (success) {
+                    toggle.classList.add('on');
+                }
+            }
+        }
+
+        async function startProximity() {
+            initAudio();
+
+            try {
+                // Request microphone access
+                micStream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: false,
+                        noiseSuppression: false,
+                        autoGainControl: false
+                    }
+                });
+
+                document.getElementById('micStatus').textContent = 'Microphone: active';
+                document.getElementById('micStatus').className = 'mic-status active';
+
+                // Create analyser for FFT
+                analyser = audioCtx.createAnalyser();
+                analyser.fftSize = FFT_SIZE;
+                analyser.smoothingTimeConstant = 0.8;
+
+                // Connect mic to analyser
+                const micSource = audioCtx.createMediaStreamSource(micStream);
+                micSource.connect(analyser);
+
+                // Start ultrasonic emitter
+                ultrasonicOsc = audioCtx.createOscillator();
+                ultrasonicGain = audioCtx.createGain();
+
+                ultrasonicOsc.type = 'sine';
+                ultrasonicOsc.frequency.value = ULTRASONIC_FREQ;
+                ultrasonicGain.gain.value = 0.3; // Moderate level
+
+                ultrasonicOsc.connect(ultrasonicGain);
+                ultrasonicGain.connect(audioCtx.destination);
+                ultrasonicOsc.start();
+
+                // Set up harmonic oscillators (for proximity-based enrichment)
+                setupHarmonics();
+
+                proximityEnabled = true;
+                document.getElementById('proximityStatus').textContent = 'Listening for nearby phones...';
+
+                // Start analysis loop
+                analyzeProximity();
+
+                return true;
+
+            } catch (err) {
+                console.error('Microphone access denied:', err);
+                document.getElementById('micStatus').textContent = 'Microphone: denied - ' + err.message;
+                document.getElementById('micStatus').className = 'mic-status error';
+                return false;
+            }
+        }
+
+        function stopProximity() {
+            proximityEnabled = false;
+
+            // Stop ultrasonic emitter
+            if (ultrasonicOsc) {
+                ultrasonicOsc.stop();
+                ultrasonicOsc = null;
+            }
+
+            // Stop microphone
+            if (micStream) {
+                micStream.getTracks().forEach(track => track.stop());
+                micStream = null;
+            }
+
+            // Stop harmonics
+            stopHarmonics();
+
+            // Cancel animation
+            if (proximityAnimationId) {
+                cancelAnimationFrame(proximityAnimationId);
+            }
+
+            // Reset UI
+            document.getElementById('micStatus').textContent = 'Microphone: inactive';
+            document.getElementById('micStatus').className = 'mic-status';
+            document.getElementById('proximityStatus').textContent = 'Enable to detect nearby phones';
+            document.getElementById('proximityLevel').textContent = '0%';
+            document.getElementById('proximityBarFill').style.width = '0%';
+
+            // Reset rings
+            document.querySelectorAll('.proximity-ring').forEach(ring => {
+                ring.classList.remove('active');
+            });
+        }
+
+        function setupHarmonics() {
+            // Create 3 harmonic oscillators (octave, fifth, third)
+            const harmonicRatios = [2, 1.5, 1.25]; // Octave, perfect fifth, major third
+
+            harmonicRatios.forEach((ratio, i) => {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+
+                osc.type = 'sine';
+                osc.frequency.value = (notes[currentNote] + currentDetune) * ratio;
+                gain.gain.value = 0; // Start silent
+
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+
+                harmonicOscs.push(osc);
+                harmonicGains.push(gain);
+            });
+        }
+
+        function stopHarmonics() {
+            harmonicOscs.forEach(osc => {
+                try { osc.stop(); } catch(e) {}
+            });
+            harmonicOscs = [];
+            harmonicGains = [];
+        }
+
+        function updateHarmonics() {
+            // Update harmonic frequencies based on current note
+            const baseFreq = notes[currentNote] + currentDetune;
+            const harmonicRatios = [2, 1.5, 1.25];
+
+            harmonicOscs.forEach((osc, i) => {
+                osc.frequency.value = baseFreq * harmonicRatios[i];
+            });
+
+            // Update harmonic volumes based on proximity
+            // Higher proximity = richer harmonics
+            const maxHarmonicGain = 0.15;
+            harmonicGains.forEach((gain, i) => {
+                // Each harmonic unlocks at different proximity levels
+                const threshold = (i + 1) * 0.25; // 25%, 50%, 75%
+                const harmonicLevel = Math.max(0, (proximityLevel - threshold) / (1 - threshold));
+                gain.gain.value = harmonicLevel * maxHarmonicGain;
+            });
+        }
+
+        function analyzeProximity() {
+            if (!proximityEnabled || !analyser) return;
+
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            analyser.getByteFrequencyData(dataArray);
+
+            // Find the bin that corresponds to our ultrasonic frequency
+            const nyquist = audioCtx.sampleRate / 2;
+            const binWidth = nyquist / bufferLength;
+            const targetBin = Math.round(ULTRASONIC_FREQ / binWidth);
+
+            // Sample a range around the target frequency (±2 bins)
+            let sum = 0;
+            const range = 2;
+            for (let i = targetBin - range; i <= targetBin + range; i++) {
+                if (i >= 0 && i < bufferLength) {
+                    sum += dataArray[i];
+                }
+            }
+            const avgLevel = sum / (range * 2 + 1);
+
+            // Normalize to 0-1 range
+            // We expect our own signal, so we look for energy above baseline
+            // Baseline (just our signal) is around 100-150, strong proximity pushes to 200+
+            const baseline = 80;
+            const maxLevel = 200;
+            const rawProximity = Math.max(0, (avgLevel - baseline) / (maxLevel - baseline));
+
+            // Smooth the value
+            proximityLevel = proximityLevel * 0.8 + rawProximity * 0.2;
+            proximityLevel = Math.min(1, Math.max(0, proximityLevel));
+
+            // Update UI
+            updateProximityUI();
+
+            // Update harmonics based on proximity
+            if (isPlaying) {
+                updateHarmonics();
+            }
+
+            proximityAnimationId = requestAnimationFrame(analyzeProximity);
+        }
+
+        function updateProximityUI() {
+            const percent = Math.round(proximityLevel * 100);
+            document.getElementById('proximityLevel').textContent = percent + '%';
+            document.getElementById('proximityBarFill').style.width = percent + '%';
+
+            // Update status text
+            let status = 'Listening...';
+            if (proximityLevel > 0.75) status = 'Very close! Rich harmonics unlocked';
+            else if (proximityLevel > 0.5) status = 'Nearby phones detected';
+            else if (proximityLevel > 0.25) status = 'Faint signal detected';
+            else status = 'Searching for nearby phones...';
+
+            document.getElementById('proximityStatus').textContent = status;
+
+            // Update rings
+            const rings = document.querySelectorAll('.proximity-ring');
+            rings.forEach((ring, i) => {
+                const threshold = (4 - i) * 0.25; // ring-4 = 0.25, ring-1 = 1.0
+                ring.classList.toggle('active', proximityLevel >= threshold);
+            });
+        }
+
         // ==================== WAVE VISUALIZATION ====================
 
         const canvas = document.getElementById('waveCanvas');
@@ -836,6 +1248,7 @@
             resizeCanvas();
             initPhoneMode();
             initGyro();
+            initProximity();
             drawWave();
         });
 
