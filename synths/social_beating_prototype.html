@@ -780,12 +780,6 @@
             createVoice(`Person ${voices.length + 1} (${noteName})`, notes[noteName], randomDetune);
         });
 
-        // Initialize with 2 voices
-        setTimeout(() => {
-            createVoice('Person 1 (A4)', 440, 0);
-            createVoice('Person 2 (A4)', 440, 2.5);
-        }, 100);
-
         // ==================== PHONE MODE ====================
 
         function initPhoneMode() {
