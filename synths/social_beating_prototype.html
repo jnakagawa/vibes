@@ -857,6 +857,10 @@
                         phoneOsc = null;
                     }
                 }, 300);
+
+                // Stop harmonics when stopping play
+                stopHarmonics();
+
                 isPlaying = false;
                 btn.classList.remove('playing');
                 btn.innerHTML = 'TAP TO<br>PLAY';
@@ -877,6 +881,11 @@
                 phoneFilter.connect(phoneGain);
                 phoneGain.connect(audioCtx.destination);
                 phoneOsc.start();
+
+                // Set up harmonics if proximity is enabled
+                if (proximityEnabled) {
+                    setupHarmonics();
+                }
 
                 isPlaying = true;
                 btn.classList.add('playing');
@@ -994,10 +1003,12 @@
                 const micSource = audioCtx.createMediaStreamSource(micStream);
                 micSource.connect(analyser);
 
-                // Set up harmonic oscillators (for proximity-based enrichment)
-                setupHarmonics();
-
                 proximityEnabled = true;
+
+                // Set up harmonics if already playing
+                if (isPlaying) {
+                    setupHarmonics();
+                }
 
                 // Calibrate baseline (detect own phone's signal level)
                 calibrationSamples = [];
