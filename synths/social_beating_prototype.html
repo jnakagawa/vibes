@@ -577,8 +577,7 @@
 
             <div class="proximity-section">
                 <div class="proximity-header">
-                    <span class="proximity-title">Proximity Detection (via sound)</span>
-                    <div class="proximity-toggle" id="proximityToggle"></div>
+                    <span class="proximity-title">Proximity Detection</span>
                 </div>
                 <div class="proximity-visual">
                     <div class="proximity-rings">
@@ -959,31 +958,8 @@
         let harmonicOscs = [];
         let harmonicGains = [];
 
-        function initProximity() {
-            const toggle = document.getElementById('proximityToggle');
-            toggle.addEventListener('click', toggleProximity);
-
-            // Auto-enable proximity detection
-            toggleProximity();
-        }
-
-        async function toggleProximity() {
-            const toggle = document.getElementById('proximityToggle');
-
-            if (proximityEnabled) {
-                stopProximity();
-                toggle.classList.remove('on');
-            } else {
-                const success = await startProximity();
-                if (success) {
-                    toggle.classList.add('on');
-                }
-            }
-        }
-
-        async function startProximity() {
-            initAudio();
-
+        async function initProximity() {
+            // Always-on proximity detection (just listening, no sound output)
             try {
                 // Request microphone access
                 micStream = await navigator.mediaDevices.getUserMedia({
@@ -997,71 +973,34 @@
                 document.getElementById('micStatus').textContent = 'Microphone: active';
                 document.getElementById('micStatus').className = 'mic-status active';
 
+                // Need audio context for analyser
+                if (!audioCtx) {
+                    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+
                 // Create analyser for FFT
                 analyser = audioCtx.createAnalyser();
                 analyser.fftSize = FFT_SIZE;
                 analyser.smoothingTimeConstant = 0.85;
 
-                // Connect mic to analyser
+                // Connect mic to analyser (NOT to destination - just analyzing)
                 const micSource = audioCtx.createMediaStreamSource(micStream);
                 micSource.connect(analyser);
 
                 proximityEnabled = true;
 
-                // Set up harmonics if already playing
-                if (isPlaying) {
-                    setupHarmonics();
-                }
-
-                // Calibrate baseline (detect own phone's signal level)
+                // Calibrate baseline
                 calibrationSamples = [];
                 document.getElementById('proximityStatus').textContent = 'Calibrating...';
 
                 // Start analysis loop
                 analyzeProximity();
 
-                return true;
-
             } catch (err) {
                 console.error('Microphone access denied:', err);
                 document.getElementById('micStatus').textContent = 'Microphone: denied - ' + err.message;
                 document.getElementById('micStatus').className = 'mic-status error';
-                return false;
             }
-        }
-
-        function stopProximity() {
-            proximityEnabled = false;
-
-            // Stop microphone
-            if (micStream) {
-                micStream.getTracks().forEach(track => track.stop());
-                micStream = null;
-            }
-
-            // Stop harmonics
-            stopHarmonics();
-
-            // Cancel animation
-            if (proximityAnimationId) {
-                cancelAnimationFrame(proximityAnimationId);
-            }
-
-            // Reset UI
-            document.getElementById('micStatus').textContent = 'Microphone: inactive';
-            document.getElementById('micStatus').className = 'mic-status';
-            document.getElementById('proximityStatus').textContent = 'Enable to detect nearby phones';
-            document.getElementById('proximityLevel').textContent = '0%';
-            document.getElementById('proximityBarFill').style.width = '0%';
-
-            // Reset rings
-            document.querySelectorAll('.proximity-ring').forEach(ring => {
-                ring.classList.remove('active');
-            });
-
-            // Reset calibration
-            baselineLevel = 0;
-            calibrationSamples = [];
         }
 
         function setupHarmonics() {
