@@ -424,8 +424,8 @@
             </div>
 
             <div class="gyro-display">
-                <div class="gyro-title">Tilt to adjust filter brightness</div>
-                <div class="gyro-value" id="gyroValue">Tilt: 0°</div>
+                <div class="gyro-title">Tilt phone to adjust detune (±10 Hz)</div>
+                <div class="gyro-value" id="gyroValue">Tilt: 0° → +0.0 Hz</div>
                 <div class="tilt-indicator">
                     <div class="tilt-dot" id="tiltDot"></div>
                 </div>
@@ -433,8 +433,8 @@
 
             <div class="info-box">
                 <h3>Multi-Phone Mode</h3>
-                <p>Open this page on multiple phones. Each person picks a note and adds slight detune.
-                When phones are near each other, you'll hear the beating interference pattern naturally emerge in the air between you.</p>
+                <p>Open this page on multiple phones. Pick the same note, then tilt your phones to adjust detune.
+                The beating pattern changes as you tilt - find the sweet spot together! Move closer for louder interference.</p>
             </div>
         </div>
     </div>
@@ -745,18 +745,25 @@
             const gamma = event.gamma || 0; // Left/right tilt (-90 to 90)
             const clampedGamma = Math.max(-45, Math.min(45, gamma));
 
-            document.getElementById('gyroValue').textContent = `Tilt: ${gamma.toFixed(0)}°`;
+            // Map tilt to detune: -45° = -10Hz, 0° = 0Hz, +45° = +10Hz
+            const tiltDetune = (clampedGamma / 45) * 10;
+            currentDetune = tiltDetune;
+
+            // Update displays
+            const detuneText = (currentDetune >= 0 ? '+' : '') + currentDetune.toFixed(1) + ' Hz';
+            document.getElementById('gyroValue').textContent = `Tilt: ${gamma.toFixed(0)}° → ${detuneText}`;
+            document.getElementById('detuneValue').textContent = detuneText;
+            document.getElementById('detuneSlider').value = currentDetune;
 
             // Move tilt dot
             const dot = document.getElementById('tiltDot');
             const percent = ((clampedGamma + 45) / 90) * 100;
             dot.style.left = percent + '%';
 
-            // Adjust filter if playing
-            if (phoneFilter && isPlaying) {
-                // Map gamma to filter frequency (500 - 5000 Hz)
-                const filterFreq = 500 + ((clampedGamma + 45) / 90) * 4500;
-                phoneFilter.frequency.value = filterFreq;
+            // Update frequency display and oscillator
+            updatePhoneDisplay();
+            if (phoneOsc && isPlaying) {
+                phoneOsc.frequency.value = notes[currentNote] + currentDetune;
             }
         }
 
