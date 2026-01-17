@@ -1,0 +1,1335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Murder on the Orient Express - Interactive Timeline</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: 'Georgia', serif;
+      background: linear-gradient(180deg, #0a0a15 0%, #1a1a2e 50%, #0f0f1a 100%);
+      color: #e8d5b7;
+    }
+
+    /* Timeline Slider Container */
+    #timeline-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 100px;
+      background: linear-gradient(180deg, rgba(20,15,10,0.95) 0%, rgba(20,15,10,0.8) 100%);
+      border-bottom: 2px solid #8b7355;
+      z-index: 100;
+      padding: 10px 20px;
+    }
+
+    #timeline-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    #timeline-title {
+      font-size: 18px;
+      color: #d4af37;
+      text-shadow: 0 0 10px rgba(212, 175, 55, 0.5);
+      letter-spacing: 2px;
+    }
+
+    #current-time {
+      font-size: 16px;
+      color: #c9a959;
+      font-weight: bold;
+    }
+
+    #timeline-slider-wrapper {
+      position: relative;
+      height: 40px;
+      margin-top: 5px;
+    }
+
+    #timeline-slider {
+      width: 100%;
+      height: 8px;
+      -webkit-appearance: none;
+      appearance: none;
+      background: linear-gradient(90deg, #2a2a3a 0%, #3a3a4a 100%);
+      border-radius: 4px;
+      outline: none;
+      cursor: pointer;
+      margin-top: 16px;
+    }
+
+    #timeline-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 20px;
+      height: 20px;
+      background: radial-gradient(circle, #d4af37 0%, #8b7355 100%);
+      border-radius: 50%;
+      cursor: pointer;
+      box-shadow: 0 0 15px rgba(212, 175, 55, 0.7);
+      transition: transform 0.2s;
+    }
+
+    #timeline-slider::-webkit-slider-thumb:hover {
+      transform: scale(1.2);
+    }
+
+    #timeline-slider::-moz-range-thumb {
+      width: 20px;
+      height: 20px;
+      background: radial-gradient(circle, #d4af37 0%, #8b7355 100%);
+      border-radius: 50%;
+      cursor: pointer;
+      border: none;
+      box-shadow: 0 0 15px rgba(212, 175, 55, 0.7);
+    }
+
+    #event-markers {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 40px;
+      pointer-events: none;
+    }
+
+    .event-marker {
+      position: absolute;
+      width: 12px;
+      height: 12px;
+      background: #c41e3a;
+      border-radius: 50%;
+      transform: translateX(-50%);
+      top: 8px;
+      cursor: pointer;
+      pointer-events: all;
+      transition: all 0.3s;
+      box-shadow: 0 0 8px rgba(196, 30, 58, 0.6);
+    }
+
+    .event-marker:hover {
+      transform: translateX(-50%) scale(1.5);
+      box-shadow: 0 0 15px rgba(196, 30, 58, 1);
+    }
+
+    .event-marker.discovery { background: #ff6b35; }
+    .event-marker.interview { background: #4a90d9; }
+    .event-marker.clue { background: #9b59b6; }
+    .event-marker.departure { background: #2ecc71; }
+
+    /* Main Content Area */
+    #main-content {
+      position: absolute;
+      top: 100px;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Route Map */
+    #map-container {
+      flex: 1;
+      position: relative;
+      min-height: 200px;
+      background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
+      border-bottom: 2px solid #3a3a5a;
+    }
+
+    #map-canvas {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Train Interior */
+    #train-container {
+      flex: 2;
+      position: relative;
+      background: linear-gradient(180deg, #2d2416 0%, #1a1408 100%);
+      overflow: hidden;
+    }
+
+    #train-canvas {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Event Panel */
+    #event-panel {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      right: 20px;
+      max-width: 500px;
+      background: rgba(20, 15, 10, 0.95);
+      border: 2px solid #8b7355;
+      border-radius: 10px;
+      padding: 15px;
+      z-index: 50;
+      backdrop-filter: blur(10px);
+      opacity: 0;
+      transform: translateY(20px);
+      transition: all 0.3s ease;
+      pointer-events: none;
+    }
+
+    #event-panel.visible {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: all;
+    }
+
+    #event-panel h3 {
+      color: #d4af37;
+      margin-bottom: 8px;
+      font-size: 16px;
+      border-bottom: 1px solid #5a4a3a;
+      padding-bottom: 5px;
+    }
+
+    #event-panel p {
+      font-size: 14px;
+      line-height: 1.5;
+      color: #c9b896;
+    }
+
+    #close-event {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: none;
+      border: none;
+      color: #8b7355;
+      font-size: 20px;
+      cursor: pointer;
+      transition: color 0.2s;
+    }
+
+    #close-event:hover {
+      color: #d4af37;
+    }
+
+    /* Character Info Panel */
+    #character-panel {
+      position: absolute;
+      top: 110px;
+      right: 10px;
+      width: 280px;
+      max-height: calc(100vh - 130px);
+      background: rgba(20, 15, 10, 0.9);
+      border: 2px solid #5a4a3a;
+      border-radius: 10px;
+      padding: 12px;
+      z-index: 50;
+      backdrop-filter: blur(10px);
+      overflow-y: auto;
+      font-size: 12px;
+    }
+
+    #character-panel h3 {
+      color: #d4af37;
+      margin-bottom: 10px;
+      font-size: 14px;
+      text-align: center;
+      border-bottom: 1px solid #5a4a3a;
+      padding-bottom: 8px;
+    }
+
+    .character-item {
+      display: flex;
+      align-items: center;
+      padding: 6px 8px;
+      margin: 4px 0;
+      background: rgba(40, 30, 20, 0.5);
+      border-radius: 5px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .character-item:hover {
+      background: rgba(60, 45, 30, 0.7);
+      transform: translateX(3px);
+    }
+
+    .character-item.selected {
+      background: rgba(212, 175, 55, 0.2);
+      border: 1px solid #d4af37;
+    }
+
+    .character-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: 10px;
+      flex-shrink: 0;
+    }
+
+    .character-name {
+      flex: 1;
+      color: #c9b896;
+    }
+
+    .character-location {
+      color: #8b7355;
+      font-size: 10px;
+    }
+
+    /* Legend */
+    #legend {
+      position: absolute;
+      top: 110px;
+      left: 10px;
+      background: rgba(20, 15, 10, 0.9);
+      border: 2px solid #5a4a3a;
+      border-radius: 10px;
+      padding: 12px;
+      z-index: 50;
+      backdrop-filter: blur(10px);
+    }
+
+    #legend h4 {
+      color: #d4af37;
+      font-size: 12px;
+      margin-bottom: 8px;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      margin: 4px 0;
+      font-size: 11px;
+    }
+
+    .legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: 8px;
+    }
+
+    /* Play Controls */
+    #play-controls {
+      position: absolute;
+      top: 110px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 10px;
+      z-index: 60;
+    }
+
+    .control-btn {
+      width: 40px;
+      height: 40px;
+      background: rgba(20, 15, 10, 0.9);
+      border: 2px solid #8b7355;
+      border-radius: 50%;
+      color: #d4af37;
+      font-size: 16px;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .control-btn:hover {
+      background: rgba(212, 175, 55, 0.2);
+      transform: scale(1.1);
+    }
+
+    .control-btn.active {
+      background: rgba(212, 175, 55, 0.3);
+      box-shadow: 0 0 15px rgba(212, 175, 55, 0.5);
+    }
+
+    /* Speed indicator */
+    #speed-indicator {
+      position: absolute;
+      top: 160px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: #8b7355;
+      font-size: 11px;
+      z-index: 60;
+    }
+
+    /* Tooltip */
+    #tooltip {
+      position: absolute;
+      background: rgba(20, 15, 10, 0.95);
+      border: 1px solid #8b7355;
+      border-radius: 5px;
+      padding: 8px 12px;
+      font-size: 12px;
+      z-index: 200;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s;
+      max-width: 250px;
+    }
+
+    #tooltip.visible {
+      opacity: 1;
+    }
+
+    #tooltip h4 {
+      color: #d4af37;
+      margin-bottom: 4px;
+    }
+
+    #tooltip p {
+      color: #c9b896;
+      font-size: 11px;
+    }
+  </style>
+</head>
+<body>
+  <!-- Timeline Slider -->
+  <div id="timeline-container">
+    <div id="timeline-header">
+      <div id="timeline-title">MURDER ON THE ORIENT EXPRESS</div>
+      <div id="current-time">Day 1, 9:00 PM - Istanbul</div>
+    </div>
+    <div id="timeline-slider-wrapper">
+      <div id="event-markers"></div>
+      <input type="range" id="timeline-slider" min="0" max="1000" value="0">
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <div id="main-content">
+    <div id="map-container">
+      <canvas id="map-canvas"></canvas>
+    </div>
+    <div id="train-container">
+      <canvas id="train-canvas"></canvas>
+    </div>
+  </div>
+
+  <!-- Play Controls -->
+  <div id="play-controls">
+    <button class="control-btn" id="rewind-btn" title="Rewind">&#9198;</button>
+    <button class="control-btn" id="play-btn" title="Play/Pause">&#9654;</button>
+    <button class="control-btn" id="forward-btn" title="Forward">&#9197;</button>
+  </div>
+  <div id="speed-indicator">1x speed</div>
+
+  <!-- Legend -->
+  <div id="legend">
+    <h4>Event Types</h4>
+    <div class="legend-item"><div class="legend-dot" style="background:#c41e3a"></div>Murder</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#ff6b35"></div>Discovery</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#4a90d9"></div>Interview</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#9b59b6"></div>Clue</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#2ecc71"></div>Travel</div>
+  </div>
+
+  <!-- Character Panel -->
+  <div id="character-panel">
+    <h3>Passengers</h3>
+    <div id="character-list"></div>
+  </div>
+
+  <!-- Event Panel -->
+  <div id="event-panel">
+    <button id="close-event">&times;</button>
+    <h3 id="event-title">Event Title</h3>
+    <p id="event-description">Event description goes here.</p>
+  </div>
+
+  <!-- Tooltip -->
+  <div id="tooltip">
+    <h4 id="tooltip-title"></h4>
+    <p id="tooltip-text"></p>
+  </div>
+
+  <script>
+    // ============================================
+    // DATA: Characters, Events, Route
+    // ============================================
+
+    const characters = [
+      { id: 'poirot', name: 'Hercule Poirot', color: '#d4af37', role: 'Detective' },
+      { id: 'ratchett', name: 'Samuel Ratchett', color: '#c41e3a', role: 'Victim' },
+      { id: 'macqueen', name: 'Hector MacQueen', color: '#4a90d9', role: 'Secretary' },
+      { id: 'masterman', name: 'Edward Masterman', color: '#6b8e23', role: 'Valet' },
+      { id: 'debenham', name: 'Mary Debenham', color: '#ff69b4', role: 'Governess' },
+      { id: 'arbuthnot', name: 'Col. Arbuthnot', color: '#8b4513', role: 'Colonel' },
+      { id: 'dragomiroff', name: 'Princess Dragomiroff', color: '#9b59b6', role: 'Princess' },
+      { id: 'schmidt', name: 'Hildegarde Schmidt', color: '#708090', role: 'Maid' },
+      { id: 'countandrenyi', name: 'Count Andrenyi', color: '#2e8b57', role: 'Count' },
+      { id: 'countessandrenyi', name: 'Countess Andrenyi', color: '#da70d6', role: 'Countess' },
+      { id: 'ohlsson', name: 'Greta Ohlsson', color: '#87ceeb', role: 'Missionary' },
+      { id: 'hubbard', name: 'Mrs. Hubbard', color: '#ffa500', role: 'American Lady' },
+      { id: 'foscarelli', name: 'Antonio Foscarelli', color: '#cd853f', role: 'Car Salesman' },
+      { id: 'hardman', name: 'Cyrus Hardman', color: '#b8860b', role: 'Detective' },
+      { id: 'michel', name: 'Pierre Michel', color: '#4682b4', role: 'Conductor' }
+    ];
+
+    // Compartment assignments (Calais Coach)
+    // Compartments 1-16, with corridor on one side
+    const compartmentAssignments = {
+      1: 'masterman',
+      2: 'macqueen',
+      3: 'ratchett',
+      4: 'hubbard',
+      5: 'ohlsson',
+      6: 'dragomiroff',
+      7: 'schmidt',
+      8: 'arbuthnot',
+      9: 'debenham',
+      10: 'countandrenyi',
+      11: 'countessandrenyi',
+      12: 'poirot',
+      13: 'foscarelli',
+      14: 'hardman',
+      15: null, // Empty
+      16: null  // Empty
+    };
+
+    // Route stations with relative positions (0-1)
+    const routeStations = [
+      { name: 'Istanbul', pos: 0.0, country: 'Turkey' },
+      { name: 'Vinkovci', pos: 0.25, country: 'Yugoslavia' },
+      { name: 'Zagreb', pos: 0.35, country: 'Yugoslavia' },
+      { name: 'Venice', pos: 0.5, country: 'Italy' },
+      { name: 'Milan', pos: 0.6, country: 'Italy' },
+      { name: 'Lausanne', pos: 0.75, country: 'Switzerland' },
+      { name: 'Paris', pos: 0.9, country: 'France' },
+      { name: 'Calais', pos: 1.0, country: 'France' }
+    ];
+
+    // Timeline events (time is 0-1000 for slider)
+    const events = [
+      { time: 0, type: 'departure', title: 'Departure from Istanbul',
+        description: 'The Orient Express departs Istanbul at 9:00 PM. Hercule Poirot boards at the last minute, securing the last available compartment in the Calais coach.' },
+      { time: 50, type: 'clue', title: 'Ratchett Approaches Poirot',
+        description: 'Samuel Ratchett approaches Poirot in the dining car, asking for protection. He claims someone is threatening his life. Poirot refuses, finding the man repellent.' },
+      { time: 100, type: 'departure', title: 'Train Passes Through the Night',
+        description: 'The train continues through the Balkans. Passengers retire to their compartments. The night is cold and snow begins to fall heavily.' },
+      { time: 180, type: 'murder', title: 'The Murder',
+        description: 'Between midnight and 2:00 AM, Samuel Ratchett is murdered in his compartment. He is stabbed twelve times. The murderer escapes unseen.' },
+      { time: 200, type: 'clue', title: 'Strange Noises in the Night',
+        description: 'Mrs. Hubbard claims someone was in her compartment. Several passengers report hearing a cry. Pierre Michel reports seeing a woman in a scarlet kimono in the corridor.' },
+      { time: 250, type: 'departure', title: 'Train Trapped in Snow',
+        description: 'The train comes to a halt, trapped in a snowdrift near Vinkovci. It will remain stranded for several hours, creating a perfect locked-room mystery.' },
+      { time: 280, type: 'discovery', title: 'Body Discovered',
+        description: 'At 7:00 AM, Pierre Michel discovers that Ratchett does not respond. Dr. Constantine and M. Bouc ask Poirot to investigate. The body is found with twelve stab wounds.' },
+      { time: 320, type: 'clue', title: 'Evidence Gathered',
+        description: 'Poirot examines the compartment. He finds a charred note mentioning "the Armstrong case", a pipe cleaner, a button from a conductor\'s uniform, and a woman\'s handkerchief with the initial "H".' },
+      { time: 380, type: 'interview', title: 'MacQueen Interviewed',
+        description: 'Hector MacQueen reveals Ratchett\'s true identity: Cassetti, the mastermind behind the Armstrong kidnapping five years ago. The crime shocked America and caused multiple deaths in the family.' },
+      { time: 420, type: 'interview', title: 'Mrs. Hubbard Interviewed',
+        description: 'Mrs. Hubbard dramatically describes the intruder in her compartment. She claims to have found the murder weapon - a knife - in her sponge bag.' },
+      { time: 480, type: 'interview', title: 'Countess Andrenyi Interviewed',
+        description: 'The Countess claims to have taken a sleeping draught and heard nothing. Poirot notices her handkerchief and observes grease stains on her passport where a name was altered.' },
+      { time: 520, type: 'interview', title: 'Col. Arbuthnot Interviewed',
+        description: 'Colonel Arbuthnot admits to smoking a pipe and speaking with MacQueen until late. He claims to have heard nothing unusual during the night.' },
+      { time: 560, type: 'clue', title: 'The Scarlet Kimono',
+        description: 'Poirot discovers the scarlet kimono stuffed into his own luggage. Someone planted it there. The kimono links to the mysterious woman seen in the corridor.' },
+      { time: 620, type: 'interview', title: 'Princess Dragomiroff Interviewed',
+        description: 'The imperious Princess reluctantly admits she was godmother to Sonia Armstrong. Her maid, Hildegarde Schmidt, confirms the Princess rang for her during the night.' },
+      { time: 680, type: 'clue', title: 'Connections Revealed',
+        description: 'Poirot realizes that many passengers have hidden connections to the Armstrong family. Mary Debenham was governess to Daisy Armstrong. The web of connections grows.' },
+      { time: 750, type: 'interview', title: 'Final Interviews',
+        description: 'Poirot interviews the remaining passengers. Each has an alibi, yet each seems to be hiding something. The twelve stab wounds take on new significance.' },
+      { time: 820, type: 'clue', title: 'The Solution Forms',
+        description: 'Poirot gathers all the evidence. The burned note, the twelve stab wounds, the connections to the Armstrong case - everything points to an extraordinary solution.' },
+      { time: 900, type: 'discovery', title: 'Poirot Reveals the Truth',
+        description: 'Poirot assembles everyone in the dining car. He presents two solutions: one with a mysterious intruder who escaped, and the truth - all twelve passengers participated in the murder, each delivering one blow as justice for the Armstrong family.' },
+      { time: 950, type: 'departure', title: 'Train Freed from Snow',
+        description: 'The train is finally freed from the snowdrift. M. Bouc decides to present the "intruder" solution to the Yugoslav police, allowing the passengers to go free.' },
+      { time: 1000, type: 'departure', title: 'Journey Continues',
+        description: 'The Orient Express continues its journey westward. Justice, of a kind, has been served. Poirot reflects on the nature of murder and morality.' }
+    ];
+
+    // Character positions at different times (simplified state machine)
+    // Format: { characterId: compartment number or 'corridor' or 'dining' }
+    function getCharacterPositions(time) {
+      const positions = {};
+
+      // Default: everyone in their compartments
+      for (const [comp, charId] of Object.entries(compartmentAssignments)) {
+        if (charId) positions[charId] = parseInt(comp);
+      }
+
+      // Michel patrols corridor
+      positions.michel = 'corridor';
+
+      // Time-based position changes
+      if (time < 50) {
+        // Everyone settling in
+        positions.poirot = 'dining';
+        positions.ratchett = 'dining';
+      } else if (time >= 50 && time < 100) {
+        // Ratchett approaches Poirot in dining car
+        positions.poirot = 'dining';
+        positions.ratchett = 'dining';
+        positions.arbuthnot = 'dining';
+        positions.debenham = 'dining';
+      } else if (time >= 100 && time < 180) {
+        // Night - most in compartments, some movement
+        positions.arbuthnot = 8;
+        positions.macqueen = 'corridor'; // Chatting with Arbuthnot
+      } else if (time >= 180 && time < 200) {
+        // Murder time - mysterious movements
+        positions.michel = 'corridor';
+        // Multiple characters "moving" during murder
+      } else if (time >= 280 && time < 320) {
+        // Body discovered
+        positions.poirot = 3; // Ratchett's compartment
+        positions.michel = 3;
+      } else if (time >= 320 && time < 400) {
+        // Investigation begins
+        positions.poirot = 'dining';
+        positions.macqueen = 'dining';
+      } else if (time >= 400 && time < 500) {
+        // Interviews
+        positions.poirot = 'dining';
+        positions.hubbard = 'dining';
+        positions.countessandrenyi = 'dining';
+      } else if (time >= 500 && time < 600) {
+        positions.poirot = 'dining';
+        positions.arbuthnot = 'dining';
+        positions.debenham = 'dining';
+      } else if (time >= 600 && time < 750) {
+        positions.poirot = 'dining';
+        positions.dragomiroff = 'dining';
+        positions.schmidt = 'dining';
+      } else if (time >= 750 && time < 900) {
+        positions.poirot = 'corridor';
+      } else if (time >= 900) {
+        // Final reveal - everyone in dining car
+        for (const char of characters) {
+          if (char.id !== 'ratchett') {
+            positions[char.id] = 'dining';
+          }
+        }
+      }
+
+      // Ratchett is dead after murder
+      if (time >= 180) {
+        positions.ratchett = 3; // Body in compartment
+      }
+
+      return positions;
+    }
+
+    // ============================================
+    // CANVAS RENDERING
+    // ============================================
+
+    const mapCanvas = document.getElementById('map-canvas');
+    const mapCtx = mapCanvas.getContext('2d');
+    const trainCanvas = document.getElementById('train-canvas');
+    const trainCtx = trainCanvas.getContext('2d');
+
+    let mapWidth, mapHeight, trainWidth, trainHeight;
+    let currentTime = 0;
+    let isPlaying = false;
+    let playSpeed = 1;
+    let lastFrameTime = 0;
+    let selectedCharacter = null;
+
+    function resizeCanvases() {
+      const mapContainer = document.getElementById('map-container');
+      const trainContainer = document.getElementById('train-container');
+
+      mapWidth = mapContainer.clientWidth;
+      mapHeight = mapContainer.clientHeight;
+      trainWidth = trainContainer.clientWidth;
+      trainHeight = trainContainer.clientHeight;
+
+      mapCanvas.width = mapWidth;
+      mapCanvas.height = mapHeight;
+      trainCanvas.width = trainWidth;
+      trainCanvas.height = trainHeight;
+
+      render();
+    }
+
+    // Draw the route map
+    function drawMap() {
+      mapCtx.clearRect(0, 0, mapWidth, mapHeight);
+
+      // Background gradient
+      const bgGrad = mapCtx.createLinearGradient(0, 0, 0, mapHeight);
+      bgGrad.addColorStop(0, '#16213e');
+      bgGrad.addColorStop(1, '#1a1a2e');
+      mapCtx.fillStyle = bgGrad;
+      mapCtx.fillRect(0, 0, mapWidth, mapHeight);
+
+      // Draw decorative elements (map style)
+      mapCtx.strokeStyle = 'rgba(100, 100, 140, 0.1)';
+      mapCtx.lineWidth = 1;
+      for (let i = 0; i < mapWidth; i += 50) {
+        mapCtx.beginPath();
+        mapCtx.moveTo(i, 0);
+        mapCtx.lineTo(i, mapHeight);
+        mapCtx.stroke();
+      }
+      for (let i = 0; i < mapHeight; i += 50) {
+        mapCtx.beginPath();
+        mapCtx.moveTo(0, i);
+        mapCtx.lineTo(mapWidth, i);
+        mapCtx.stroke();
+      }
+
+      // Calculate route positions
+      const padding = 80;
+      const routeY = mapHeight / 2;
+      const routeStartX = padding;
+      const routeEndX = mapWidth - padding;
+      const routeLength = routeEndX - routeStartX;
+
+      // Draw route line (dashed)
+      mapCtx.strokeStyle = '#5a5a7a';
+      mapCtx.lineWidth = 3;
+      mapCtx.setLineDash([10, 5]);
+      mapCtx.beginPath();
+      mapCtx.moveTo(routeStartX, routeY);
+      mapCtx.lineTo(routeEndX, routeY);
+      mapCtx.stroke();
+      mapCtx.setLineDash([]);
+
+      // Draw traveled route (solid gold)
+      const trainProgress = currentTime / 1000;
+      const trainX = routeStartX + routeLength * Math.min(trainProgress, 0.9);
+
+      const traveledGrad = mapCtx.createLinearGradient(routeStartX, 0, trainX, 0);
+      traveledGrad.addColorStop(0, '#8b7355');
+      traveledGrad.addColorStop(1, '#d4af37');
+      mapCtx.strokeStyle = traveledGrad;
+      mapCtx.lineWidth = 4;
+      mapCtx.beginPath();
+      mapCtx.moveTo(routeStartX, routeY);
+      mapCtx.lineTo(trainX, routeY);
+      mapCtx.stroke();
+
+      // Draw stations
+      for (const station of routeStations) {
+        const x = routeStartX + routeLength * station.pos;
+        const isPassed = trainProgress >= station.pos;
+
+        // Station dot
+        mapCtx.beginPath();
+        mapCtx.arc(x, routeY, 8, 0, Math.PI * 2);
+        mapCtx.fillStyle = isPassed ? '#d4af37' : '#3a3a5a';
+        mapCtx.fill();
+        mapCtx.strokeStyle = '#8b7355';
+        mapCtx.lineWidth = 2;
+        mapCtx.stroke();
+
+        // Station name
+        mapCtx.font = '12px Georgia';
+        mapCtx.fillStyle = isPassed ? '#d4af37' : '#8b7355';
+        mapCtx.textAlign = 'center';
+        mapCtx.fillText(station.name, x, routeY - 20);
+
+        // Country name
+        mapCtx.font = '10px Georgia';
+        mapCtx.fillStyle = '#5a5a7a';
+        mapCtx.fillText(station.country, x, routeY + 25);
+      }
+
+      // Draw train
+      drawTrain(trainX, routeY);
+
+      // Snow effect when stuck (time 250-950)
+      if (currentTime >= 250 && currentTime < 950) {
+        drawSnowEffect();
+      }
+    }
+
+    function drawTrain(x, y) {
+      const trainLength = 60;
+      const trainHeight = 20;
+
+      // Train body
+      mapCtx.fillStyle = '#2a2a3a';
+      mapCtx.strokeStyle = '#d4af37';
+      mapCtx.lineWidth = 2;
+
+      // Locomotive
+      mapCtx.beginPath();
+      mapCtx.roundRect(x - trainLength, y - trainHeight/2, trainLength * 0.3, trainHeight, 3);
+      mapCtx.fill();
+      mapCtx.stroke();
+
+      // Carriages
+      for (let i = 0; i < 3; i++) {
+        mapCtx.beginPath();
+        mapCtx.roundRect(x - trainLength * 0.65 + i * trainLength * 0.25, y - trainHeight/2 + 2, trainLength * 0.22, trainHeight - 4, 2);
+        mapCtx.fill();
+        mapCtx.stroke();
+      }
+
+      // Smoke from locomotive
+      mapCtx.fillStyle = 'rgba(150, 150, 150, 0.3)';
+      const smokeOffset = (Date.now() % 1000) / 1000;
+      for (let i = 0; i < 3; i++) {
+        const smokeX = x - trainLength - 5 + i * 8;
+        const smokeY = y - trainHeight/2 - 5 - i * 8 - smokeOffset * 10;
+        const smokeSize = 4 + i * 2;
+        mapCtx.beginPath();
+        mapCtx.arc(smokeX, smokeY, smokeSize, 0, Math.PI * 2);
+        mapCtx.fill();
+      }
+
+      // Headlight glow
+      const glowGrad = mapCtx.createRadialGradient(x - trainLength, y, 0, x - trainLength, y, 30);
+      glowGrad.addColorStop(0, 'rgba(255, 220, 100, 0.3)');
+      glowGrad.addColorStop(1, 'rgba(255, 220, 100, 0)');
+      mapCtx.fillStyle = glowGrad;
+      mapCtx.beginPath();
+      mapCtx.arc(x - trainLength, y, 30, 0, Math.PI * 2);
+      mapCtx.fill();
+    }
+
+    let snowflakes = [];
+    function drawSnowEffect() {
+      // Initialize snowflakes
+      if (snowflakes.length === 0) {
+        for (let i = 0; i < 50; i++) {
+          snowflakes.push({
+            x: Math.random() * mapWidth,
+            y: Math.random() * mapHeight,
+            size: Math.random() * 3 + 1,
+            speed: Math.random() * 1 + 0.5
+          });
+        }
+      }
+
+      // Draw and update snowflakes
+      mapCtx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+      for (const flake of snowflakes) {
+        mapCtx.beginPath();
+        mapCtx.arc(flake.x, flake.y, flake.size, 0, Math.PI * 2);
+        mapCtx.fill();
+
+        flake.y += flake.speed;
+        flake.x += Math.sin(flake.y * 0.02) * 0.5;
+
+        if (flake.y > mapHeight) {
+          flake.y = 0;
+          flake.x = Math.random() * mapWidth;
+        }
+      }
+
+      // "SNOWBOUND" indicator
+      mapCtx.font = 'bold 14px Georgia';
+      mapCtx.fillStyle = '#ff6b35';
+      mapCtx.textAlign = 'center';
+      mapCtx.fillText('TRAIN SNOWBOUND', mapWidth / 2, 25);
+    }
+
+    // Draw the train interior
+    function drawTrainInterior() {
+      trainCtx.clearRect(0, 0, trainWidth, trainHeight);
+
+      // Background
+      const bgGrad = trainCtx.createLinearGradient(0, 0, 0, trainHeight);
+      bgGrad.addColorStop(0, '#2d2416');
+      bgGrad.addColorStop(1, '#1a1408');
+      trainCtx.fillStyle = bgGrad;
+      trainCtx.fillRect(0, 0, trainWidth, trainHeight);
+
+      // Calculate layout
+      const padding = 20;
+      const compartmentWidth = Math.min(60, (trainWidth - padding * 2) / 16 - 5);
+      const compartmentHeight = Math.min(80, trainHeight - 100);
+      const corridorHeight = 40;
+      const startX = (trainWidth - (compartmentWidth + 5) * 16) / 2;
+      const compartmentY = 50;
+      const corridorY = compartmentY + compartmentHeight + 5;
+
+      // Title
+      trainCtx.font = '14px Georgia';
+      trainCtx.fillStyle = '#d4af37';
+      trainCtx.textAlign = 'center';
+      trainCtx.fillText('CALAIS COACH - COMPARTMENTS', trainWidth / 2, 25);
+
+      // Get character positions
+      const positions = getCharacterPositions(currentTime);
+
+      // Draw corridor
+      trainCtx.fillStyle = '#3a3020';
+      trainCtx.strokeStyle = '#5a4a3a';
+      trainCtx.lineWidth = 2;
+      trainCtx.fillRect(startX, corridorY, (compartmentWidth + 5) * 16 - 5, corridorHeight);
+      trainCtx.strokeRect(startX, corridorY, (compartmentWidth + 5) * 16 - 5, corridorHeight);
+
+      // Corridor label
+      trainCtx.font = '10px Georgia';
+      trainCtx.fillStyle = '#8b7355';
+      trainCtx.textAlign = 'center';
+      trainCtx.fillText('CORRIDOR', trainWidth / 2, corridorY + corridorHeight / 2 + 4);
+
+      // Characters in corridor
+      let corridorCharacters = [];
+      for (const [charId, pos] of Object.entries(positions)) {
+        if (pos === 'corridor') {
+          const char = characters.find(c => c.id === charId);
+          if (char) corridorCharacters.push(char);
+        }
+      }
+
+      // Draw corridor characters
+      corridorCharacters.forEach((char, idx) => {
+        const charX = startX + 30 + idx * 25;
+        const charY = corridorY + corridorHeight / 2;
+        drawCharacter(charX, charY, char, true);
+      });
+
+      // Draw compartments
+      for (let i = 1; i <= 16; i++) {
+        const x = startX + (i - 1) * (compartmentWidth + 5);
+        const y = compartmentY;
+
+        const assignedChar = compartmentAssignments[i];
+        const occupant = assignedChar ? characters.find(c => c.id === assignedChar) : null;
+        const isOccupied = occupant && positions[assignedChar] === i;
+        const isMurderRoom = i === 3;
+        const isPoirotRoom = i === 12;
+
+        // Compartment background
+        let compColor = '#2a2015';
+        if (isMurderRoom && currentTime >= 180) {
+          compColor = 'rgba(196, 30, 58, 0.2)';
+        } else if (isPoirotRoom) {
+          compColor = 'rgba(212, 175, 55, 0.1)';
+        }
+        trainCtx.fillStyle = compColor;
+        trainCtx.fillRect(x, y, compartmentWidth, compartmentHeight);
+
+        // Compartment border
+        trainCtx.strokeStyle = isMurderRoom && currentTime >= 180 ? '#c41e3a' : '#5a4a3a';
+        trainCtx.lineWidth = isMurderRoom && currentTime >= 180 ? 2 : 1;
+        trainCtx.strokeRect(x, y, compartmentWidth, compartmentHeight);
+
+        // Compartment number
+        trainCtx.font = '10px Georgia';
+        trainCtx.fillStyle = '#8b7355';
+        trainCtx.textAlign = 'center';
+        trainCtx.fillText(i.toString(), x + compartmentWidth / 2, y + 15);
+
+        // Door
+        trainCtx.fillStyle = '#4a3a2a';
+        trainCtx.fillRect(x + compartmentWidth / 2 - 8, y + compartmentHeight - 15, 16, 15);
+
+        // Draw character in compartment
+        if (isOccupied) {
+          const isDead = occupant.id === 'ratchett' && currentTime >= 180;
+          drawCharacter(x + compartmentWidth / 2, y + compartmentHeight / 2 + 5, occupant, false, isDead);
+        }
+
+        // Store compartment bounds for click detection
+        compartmentBounds[i] = { x, y, width: compartmentWidth, height: compartmentHeight };
+      }
+
+      // Draw dining car indicator
+      const diningX = trainWidth - 120;
+      const diningY = compartmentY;
+      const diningWidth = 100;
+      const diningHeight = compartmentHeight + corridorHeight + 5;
+
+      trainCtx.fillStyle = '#3a3020';
+      trainCtx.strokeStyle = '#8b7355';
+      trainCtx.lineWidth = 2;
+      trainCtx.fillRect(diningX, diningY, diningWidth, diningHeight);
+      trainCtx.strokeRect(diningX, diningY, diningWidth, diningHeight);
+
+      // Dining car label
+      trainCtx.font = 'bold 12px Georgia';
+      trainCtx.fillStyle = '#d4af37';
+      trainCtx.textAlign = 'center';
+      trainCtx.fillText('DINING', diningX + diningWidth / 2, diningY + 20);
+      trainCtx.fillText('CAR', diningX + diningWidth / 2, diningY + 35);
+
+      // Characters in dining car
+      let diningCharacters = [];
+      for (const [charId, pos] of Object.entries(positions)) {
+        if (pos === 'dining') {
+          const char = characters.find(c => c.id === charId);
+          if (char) diningCharacters.push(char);
+        }
+      }
+
+      // Draw dining car characters in a grid
+      const diningCols = 3;
+      diningCharacters.forEach((char, idx) => {
+        const col = idx % diningCols;
+        const row = Math.floor(idx / diningCols);
+        const charX = diningX + 25 + col * 30;
+        const charY = diningY + 55 + row * 30;
+        drawCharacter(charX, charY, char, true);
+      });
+    }
+
+    const compartmentBounds = {};
+
+    function drawCharacter(x, y, character, small = false, isDead = false) {
+      const size = small ? 8 : 12;
+      const isSelected = selectedCharacter === character.id;
+
+      // Glow effect for selected character
+      if (isSelected) {
+        const glowGrad = trainCtx.createRadialGradient(x, y, 0, x, y, size + 10);
+        glowGrad.addColorStop(0, `${character.color}66`);
+        glowGrad.addColorStop(1, 'transparent');
+        trainCtx.fillStyle = glowGrad;
+        trainCtx.beginPath();
+        trainCtx.arc(x, y, size + 10, 0, Math.PI * 2);
+        trainCtx.fill();
+      }
+
+      // Character dot
+      trainCtx.beginPath();
+      trainCtx.arc(x, y, size, 0, Math.PI * 2);
+      trainCtx.fillStyle = isDead ? '#444' : character.color;
+      trainCtx.fill();
+      trainCtx.strokeStyle = isSelected ? '#fff' : '#000';
+      trainCtx.lineWidth = isSelected ? 2 : 1;
+      trainCtx.stroke();
+
+      // X mark for dead character
+      if (isDead) {
+        trainCtx.strokeStyle = '#c41e3a';
+        trainCtx.lineWidth = 2;
+        trainCtx.beginPath();
+        trainCtx.moveTo(x - size/2, y - size/2);
+        trainCtx.lineTo(x + size/2, y + size/2);
+        trainCtx.moveTo(x + size/2, y - size/2);
+        trainCtx.lineTo(x - size/2, y + size/2);
+        trainCtx.stroke();
+      }
+
+      // Initial letter
+      if (!small) {
+        trainCtx.font = 'bold 10px Georgia';
+        trainCtx.fillStyle = isDead ? '#888' : '#fff';
+        trainCtx.textAlign = 'center';
+        trainCtx.textBaseline = 'middle';
+        trainCtx.fillText(character.name[0], x, y);
+        trainCtx.textBaseline = 'alphabetic';
+      }
+    }
+
+    // ============================================
+    // UI LOGIC
+    // ============================================
+
+    const slider = document.getElementById('timeline-slider');
+    const currentTimeDisplay = document.getElementById('current-time');
+    const eventPanel = document.getElementById('event-panel');
+    const eventTitle = document.getElementById('event-title');
+    const eventDescription = document.getElementById('event-description');
+    const characterList = document.getElementById('character-list');
+    const eventMarkersContainer = document.getElementById('event-markers');
+    const playBtn = document.getElementById('play-btn');
+    const rewindBtn = document.getElementById('rewind-btn');
+    const forwardBtn = document.getElementById('forward-btn');
+    const speedIndicator = document.getElementById('speed-indicator');
+    const tooltip = document.getElementById('tooltip');
+    const tooltipTitle = document.getElementById('tooltip-title');
+    const tooltipText = document.getElementById('tooltip-text');
+
+    // Initialize character list
+    function initCharacterList() {
+      characterList.innerHTML = '';
+      for (const char of characters) {
+        const item = document.createElement('div');
+        item.className = 'character-item';
+        item.dataset.id = char.id;
+        item.innerHTML = `
+          <div class="character-dot" style="background: ${char.color}"></div>
+          <span class="character-name">${char.name}</span>
+          <span class="character-location" id="loc-${char.id}"></span>
+        `;
+        item.onclick = () => selectCharacter(char.id);
+        characterList.appendChild(item);
+      }
+    }
+
+    function selectCharacter(charId) {
+      selectedCharacter = selectedCharacter === charId ? null : charId;
+      document.querySelectorAll('.character-item').forEach(item => {
+        item.classList.toggle('selected', item.dataset.id === selectedCharacter);
+      });
+      render();
+    }
+
+    // Update character locations in panel
+    function updateCharacterLocations() {
+      const positions = getCharacterPositions(currentTime);
+      for (const char of characters) {
+        const locSpan = document.getElementById(`loc-${char.id}`);
+        if (locSpan) {
+          const pos = positions[char.id];
+          if (pos === 'dining') {
+            locSpan.textContent = 'Dining';
+          } else if (pos === 'corridor') {
+            locSpan.textContent = 'Corridor';
+          } else if (typeof pos === 'number') {
+            locSpan.textContent = `Comp ${pos}`;
+          }
+
+          // Mark dead
+          if (char.id === 'ratchett' && currentTime >= 180) {
+            locSpan.textContent = 'DEAD';
+            locSpan.style.color = '#c41e3a';
+          } else {
+            locSpan.style.color = '#8b7355';
+          }
+        }
+      }
+    }
+
+    // Initialize event markers on timeline
+    function initEventMarkers() {
+      eventMarkersContainer.innerHTML = '';
+      for (const event of events) {
+        const marker = document.createElement('div');
+        marker.className = `event-marker ${event.type}`;
+        marker.style.left = `${event.time / 10}%`;
+        marker.dataset.time = event.time;
+        marker.dataset.title = event.title;
+        marker.dataset.description = event.description;
+        marker.onclick = () => {
+          slider.value = event.time;
+          currentTime = event.time;
+          showEvent(event);
+          render();
+        };
+        marker.onmouseenter = (e) => showTooltip(e, event.title, event.type);
+        marker.onmouseleave = hideTooltip;
+        eventMarkersContainer.appendChild(marker);
+      }
+    }
+
+    function showTooltip(e, title, type) {
+      tooltipTitle.textContent = title;
+      tooltipText.textContent = `Type: ${type.charAt(0).toUpperCase() + type.slice(1)}`;
+      tooltip.style.left = `${e.clientX + 10}px`;
+      tooltip.style.top = `${e.clientY + 10}px`;
+      tooltip.classList.add('visible');
+    }
+
+    function hideTooltip() {
+      tooltip.classList.remove('visible');
+    }
+
+    function showEvent(event) {
+      eventTitle.textContent = event.title;
+      eventDescription.textContent = event.description;
+      eventPanel.classList.add('visible');
+    }
+
+    function hideEvent() {
+      eventPanel.classList.remove('visible');
+    }
+
+    // Update time display
+    function updateTimeDisplay() {
+      // Map 0-1000 to timeline
+      // 0 = Day 1, 9:00 PM
+      // 200 = Day 2, ~2:00 AM (murder)
+      // 280 = Day 2, 7:00 AM (discovery)
+      // 1000 = Day 3
+
+      let day, hour, minute, location;
+
+      if (currentTime < 100) {
+        day = 1;
+        hour = 21 + Math.floor(currentTime / 33); // 9 PM to midnight
+        minute = Math.floor((currentTime % 33) / 33 * 60);
+        location = 'Balkans';
+      } else if (currentTime < 250) {
+        day = 2;
+        hour = Math.floor((currentTime - 100) / 25); // 0-6 AM
+        minute = Math.floor(((currentTime - 100) % 25) / 25 * 60);
+        location = 'Near Vinkovci';
+      } else if (currentTime < 950) {
+        day = 2;
+        hour = 7 + Math.floor((currentTime - 250) / 50); // 7 AM onwards
+        minute = Math.floor(((currentTime - 250) % 50) / 50 * 60);
+        location = 'Snowbound';
+      } else {
+        day = 3;
+        hour = 8 + Math.floor((currentTime - 950) / 50);
+        minute = Math.floor(((currentTime - 950) % 50) / 50 * 60);
+        location = 'Continuing West';
+      }
+
+      // Clamp hour
+      if (hour >= 24) {
+        hour = hour % 24;
+        day++;
+      }
+
+      const ampm = hour >= 12 ? 'PM' : 'AM';
+      const displayHour = hour > 12 ? hour - 12 : (hour === 0 ? 12 : hour);
+      const displayMinute = minute.toString().padStart(2, '0');
+
+      currentTimeDisplay.textContent = `Day ${day}, ${displayHour}:${displayMinute} ${ampm} - ${location}`;
+    }
+
+    // Check for events at current time
+    function checkForEvents() {
+      const tolerance = 10;
+      for (const event of events) {
+        if (Math.abs(currentTime - event.time) < tolerance) {
+          // Only auto-show if playing
+          if (isPlaying) {
+            showEvent(event);
+          }
+          break;
+        }
+      }
+    }
+
+    // ============================================
+    // CONTROLS
+    // ============================================
+
+    slider.oninput = () => {
+      currentTime = parseInt(slider.value);
+      updateTimeDisplay();
+      updateCharacterLocations();
+      render();
+    };
+
+    document.getElementById('close-event').onclick = hideEvent;
+
+    playBtn.onclick = () => {
+      isPlaying = !isPlaying;
+      playBtn.innerHTML = isPlaying ? '&#10074;&#10074;' : '&#9654;';
+      playBtn.classList.toggle('active', isPlaying);
+      if (isPlaying) {
+        lastFrameTime = performance.now();
+        requestAnimationFrame(animate);
+      }
+    };
+
+    rewindBtn.onclick = () => {
+      currentTime = Math.max(0, currentTime - 50);
+      slider.value = currentTime;
+      updateTimeDisplay();
+      updateCharacterLocations();
+      render();
+    };
+
+    forwardBtn.onclick = () => {
+      currentTime = Math.min(1000, currentTime + 50);
+      slider.value = currentTime;
+      updateTimeDisplay();
+      updateCharacterLocations();
+      render();
+    };
+
+    // Speed control with clicks
+    let speedClickCount = 0;
+    speedIndicator.style.cursor = 'pointer';
+    speedIndicator.onclick = () => {
+      speedClickCount = (speedClickCount + 1) % 4;
+      const speeds = [1, 2, 4, 0.5];
+      playSpeed = speeds[speedClickCount];
+      speedIndicator.textContent = `${playSpeed}x speed`;
+    };
+
+    // Train canvas click detection
+    trainCanvas.onclick = (e) => {
+      const rect = trainCanvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      // Check if clicked on a compartment
+      for (const [num, bounds] of Object.entries(compartmentBounds)) {
+        if (x >= bounds.x && x <= bounds.x + bounds.width &&
+            y >= bounds.y && y <= bounds.y + bounds.height) {
+          const charId = compartmentAssignments[num];
+          if (charId) {
+            selectCharacter(charId);
+          }
+        }
+      }
+    };
+
+    // ============================================
+    // ANIMATION LOOP
+    // ============================================
+
+    function animate(timestamp) {
+      if (!isPlaying) return;
+
+      const delta = timestamp - lastFrameTime;
+      lastFrameTime = timestamp;
+
+      // Advance time (1000 units over ~60 seconds at 1x speed)
+      currentTime += (delta / 60) * playSpeed;
+
+      if (currentTime >= 1000) {
+        currentTime = 1000;
+        isPlaying = false;
+        playBtn.innerHTML = '&#9654;';
+        playBtn.classList.remove('active');
+      }
+
+      slider.value = currentTime;
+      updateTimeDisplay();
+      updateCharacterLocations();
+      checkForEvents();
+      render();
+
+      if (isPlaying) {
+        requestAnimationFrame(animate);
+      }
+    }
+
+    function render() {
+      drawMap();
+      drawTrainInterior();
+    }
+
+    // ============================================
+    // INITIALIZATION
+    // ============================================
+
+    function init() {
+      initCharacterList();
+      initEventMarkers();
+      resizeCanvases();
+      updateTimeDisplay();
+      updateCharacterLocations();
+
+      window.addEventListener('resize', resizeCanvases);
+
+      // Start render loop for animations (smoke, snow)
+      function animationLoop() {
+        if (!isPlaying) {
+          render();
+        }
+        setTimeout(animationLoop, 100);
+      }
+      animationLoop();
+    }
+
+    init();
+  </script>
+</body>
+</html>
