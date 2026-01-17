@@ -518,30 +518,32 @@
     ];
 
     // Additional route waypoints for smooth curve (between stations)
+    // The route curves through the Balkans, dips to Venice, climbs through Alps
     const routeWaypoints = [
       { lon: 28.98, lat: 41.01 },  // Istanbul
-      { lon: 27.50, lat: 41.50 },  // Turkey
-      { lon: 26.00, lat: 41.80 },  // Turkey/Bulgaria border
+      { lon: 27.00, lat: 41.30 },  // Thrace
+      { lon: 25.50, lat: 41.90 },  // Eastern Bulgaria
       { lon: 23.32, lat: 42.70 },  // Sofia
-      { lon: 22.00, lat: 43.50 },  // Serbia
+      { lon: 21.50, lat: 43.80 },  // Nis region
       { lon: 20.46, lat: 44.82 },  // Belgrade
-      { lon: 19.50, lat: 45.20 },  // Serbia/Croatia
+      { lon: 19.80, lat: 45.10 },  // Srem
       { lon: 18.80, lat: 45.29 },  // Vinkovci
-      { lon: 17.50, lat: 45.50 },  // Croatia
+      { lon: 17.20, lat: 45.65 },  // Slavonia
       { lon: 15.98, lat: 45.81 },  // Zagreb
-      { lon: 14.50, lat: 45.70 },  // Slovenia
-      { lon: 13.50, lat: 45.50 },  // Italy border
-      { lon: 12.34, lat: 45.44 },  // Venice
-      { lon: 11.00, lat: 45.45 },  // Northern Italy
+      { lon: 14.80, lat: 45.90 },  // Slovenia border
+      { lon: 13.80, lat: 45.75 },  // Ljubljana area
+      { lon: 12.34, lat: 45.44 },  // Venice (dip south)
+      { lon: 10.80, lat: 45.40 },  // Verona region
       { lon: 9.19, lat: 45.46 },   // Milan
-      { lon: 8.00, lat: 45.80 },   // Alps approach
-      { lon: 7.00, lat: 46.20 },   // Alps
+      { lon: 8.20, lat: 45.70 },   // Piedmont
+      { lon: 7.40, lat: 45.95 },   // Aosta approach
+      { lon: 6.90, lat: 46.30 },   // Alps crossing
       { lon: 6.63, lat: 46.52 },   // Lausanne
-      { lon: 5.50, lat: 46.80 },   // Eastern France
-      { lon: 4.50, lat: 47.50 },   // France
-      { lon: 3.50, lat: 48.20 },   // France
+      { lon: 5.80, lat: 46.90 },   // Jura
+      { lon: 4.80, lat: 47.40 },   // Burgundy
+      { lon: 3.80, lat: 48.00 },   // Champagne
       { lon: 2.35, lat: 48.86 },   // Paris
-      { lon: 2.20, lat: 49.50 },   // Northern France
+      { lon: 2.10, lat: 49.60 },   // Picardy
       { lon: 1.86, lat: 50.95 }    // Calais
     ];
 
@@ -734,12 +736,12 @@
       render();
     }
 
-    // Geographic bounds for the map view
+    // Geographic bounds for the map view - focused on route corridor
     const mapBounds = {
-      minLon: -5,
-      maxLon: 35,
-      minLat: 36,
-      maxLat: 56
+      minLon: -2,
+      maxLon: 32,
+      minLat: 39,
+      maxLat: 53
     };
 
     // Convert geographic coordinates to canvas coordinates
@@ -813,9 +815,9 @@
       }
 
       // Draw European landmass
-      mapCtx.fillStyle = '#1a2a3a';
-      mapCtx.strokeStyle = '#2a4a5a';
-      mapCtx.lineWidth = 1;
+      mapCtx.fillStyle = '#1e3045';
+      mapCtx.strokeStyle = '#3a5a7a';
+      mapCtx.lineWidth = 2;
       mapCtx.beginPath();
       let firstPoint = true;
       for (const point of europeOutline) {
@@ -836,9 +838,9 @@
       mapCtx.fillRect(0, 0, mapWidth, mapHeight);
 
       // Draw the full route path (dashed gray line)
-      mapCtx.strokeStyle = 'rgba(100, 100, 120, 0.5)';
-      mapCtx.lineWidth = 3;
-      mapCtx.setLineDash([8, 4]);
+      mapCtx.strokeStyle = 'rgba(140, 130, 110, 0.6)';
+      mapCtx.lineWidth = 4;
+      mapCtx.setLineDash([10, 6]);
       mapCtx.beginPath();
       for (let i = 0; i < routeWaypoints.length; i++) {
         const p = geoToCanvas(routeWaypoints[i].lon, routeWaypoints[i].lat);
@@ -864,7 +866,7 @@
       traveledGrad.addColorStop(1, '#d4af37');
 
       mapCtx.strokeStyle = traveledGrad;
-      mapCtx.lineWidth = 4;
+      mapCtx.lineWidth = 6;
       mapCtx.lineCap = 'round';
       mapCtx.lineJoin = 'round';
       mapCtx.beginPath();
@@ -887,8 +889,8 @@
       mapCtx.stroke();
 
       // Draw route glow
-      mapCtx.strokeStyle = 'rgba(212, 175, 55, 0.2)';
-      mapCtx.lineWidth = 10;
+      mapCtx.strokeStyle = 'rgba(212, 175, 55, 0.25)';
+      mapCtx.lineWidth = 14;
       mapCtx.beginPath();
       for (let i = 0; i < routeWaypoints.length; i++) {
         const segmentProgress = i / (routeWaypoints.length - 1);
