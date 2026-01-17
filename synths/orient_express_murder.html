@@ -143,9 +143,9 @@
 
     /* Route Map */
     #map-container {
-      flex: 1;
+      flex: 1.5;
       position: relative;
-      min-height: 200px;
+      min-height: 250px;
       background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
       border-bottom: 2px solid #3a3a5a;
     }
@@ -502,16 +502,87 @@
       16: null  // Empty
     };
 
-    // Route stations with relative positions (0-1)
+    // Route stations with approximate geographic coordinates (lon, lat)
+    // Mapped to canvas coordinates in drawMap()
     const routeStations = [
-      { name: 'Istanbul', pos: 0.0, country: 'Turkey' },
-      { name: 'Vinkovci', pos: 0.25, country: 'Yugoslavia' },
-      { name: 'Zagreb', pos: 0.35, country: 'Yugoslavia' },
-      { name: 'Venice', pos: 0.5, country: 'Italy' },
-      { name: 'Milan', pos: 0.6, country: 'Italy' },
-      { name: 'Lausanne', pos: 0.75, country: 'Switzerland' },
-      { name: 'Paris', pos: 0.9, country: 'France' },
-      { name: 'Calais', pos: 1.0, country: 'France' }
+      { name: 'Istanbul', lon: 28.98, lat: 41.01, pos: 0.0, country: 'Turkey' },
+      { name: 'Sofia', lon: 23.32, lat: 42.70, pos: 0.12, country: 'Bulgaria' },
+      { name: 'Belgrade', lon: 20.46, lat: 44.82, pos: 0.22, country: 'Yugoslavia' },
+      { name: 'Vinkovci', lon: 18.80, lat: 45.29, pos: 0.28, country: 'Yugoslavia' },
+      { name: 'Zagreb', lon: 15.98, lat: 45.81, pos: 0.38, country: 'Yugoslavia' },
+      { name: 'Venice', lon: 12.34, lat: 45.44, pos: 0.52, country: 'Italy' },
+      { name: 'Milan', lon: 9.19, lat: 45.46, pos: 0.62, country: 'Italy' },
+      { name: 'Lausanne', lon: 6.63, lat: 46.52, pos: 0.75, country: 'Switzerland' },
+      { name: 'Paris', lon: 2.35, lat: 48.86, pos: 0.90, country: 'France' },
+      { name: 'Calais', lon: 1.86, lat: 50.95, pos: 1.0, country: 'France' }
+    ];
+
+    // Additional route waypoints for smooth curve (between stations)
+    const routeWaypoints = [
+      { lon: 28.98, lat: 41.01 },  // Istanbul
+      { lon: 27.50, lat: 41.50 },  // Turkey
+      { lon: 26.00, lat: 41.80 },  // Turkey/Bulgaria border
+      { lon: 23.32, lat: 42.70 },  // Sofia
+      { lon: 22.00, lat: 43.50 },  // Serbia
+      { lon: 20.46, lat: 44.82 },  // Belgrade
+      { lon: 19.50, lat: 45.20 },  // Serbia/Croatia
+      { lon: 18.80, lat: 45.29 },  // Vinkovci
+      { lon: 17.50, lat: 45.50 },  // Croatia
+      { lon: 15.98, lat: 45.81 },  // Zagreb
+      { lon: 14.50, lat: 45.70 },  // Slovenia
+      { lon: 13.50, lat: 45.50 },  // Italy border
+      { lon: 12.34, lat: 45.44 },  // Venice
+      { lon: 11.00, lat: 45.45 },  // Northern Italy
+      { lon: 9.19, lat: 45.46 },   // Milan
+      { lon: 8.00, lat: 45.80 },   // Alps approach
+      { lon: 7.00, lat: 46.20 },   // Alps
+      { lon: 6.63, lat: 46.52 },   // Lausanne
+      { lon: 5.50, lat: 46.80 },   // Eastern France
+      { lon: 4.50, lat: 47.50 },   // France
+      { lon: 3.50, lat: 48.20 },   // France
+      { lon: 2.35, lat: 48.86 },   // Paris
+      { lon: 2.20, lat: 49.50 },   // Northern France
+      { lon: 1.86, lat: 50.95 }    // Calais
+    ];
+
+    // Simplified European landmass outline for map background
+    const europeOutline = [
+      // Iberian Peninsula (simplified)
+      { lon: -9, lat: 37 }, { lon: -9, lat: 43 }, { lon: -2, lat: 43.5 },
+      // France coast
+      { lon: -1, lat: 46 }, { lon: -2, lat: 48 }, { lon: -4, lat: 48.5 },
+      // Brittany
+      { lon: -3, lat: 48.5 }, { lon: -1.5, lat: 49.5 },
+      // Channel
+      { lon: 1.5, lat: 51 }, { lon: 2.5, lat: 51.5 },
+      // Belgium/Netherlands
+      { lon: 4, lat: 51.5 }, { lon: 6, lat: 53.5 },
+      // Germany/Denmark
+      { lon: 8, lat: 54.5 }, { lon: 10, lat: 54.5 }, { lon: 12, lat: 54.5 },
+      // Poland/Baltic
+      { lon: 14, lat: 54 }, { lon: 18, lat: 55 }, { lon: 22, lat: 55 },
+      // Baltic states
+      { lon: 26, lat: 56 }, { lon: 28, lat: 56 },
+      // Russia border (simplified)
+      { lon: 30, lat: 55 }, { lon: 32, lat: 52 }, { lon: 34, lat: 50 },
+      // Ukraine/Romania
+      { lon: 30, lat: 46 }, { lon: 29, lat: 44 },
+      // Black Sea coast
+      { lon: 32, lat: 42 }, { lon: 29, lat: 41 },
+      // Turkey
+      { lon: 28, lat: 41 }, { lon: 26, lat: 40 },
+      // Greece/Balkans
+      { lon: 24, lat: 38 }, { lon: 20, lat: 39 }, { lon: 20, lat: 42 },
+      // Adriatic
+      { lon: 19, lat: 42 }, { lon: 16, lat: 42 }, { lon: 13, lat: 45 },
+      // Italy
+      { lon: 12, lat: 44 }, { lon: 14, lat: 41 }, { lon: 16, lat: 38 },
+      { lon: 12, lat: 37 }, { lon: 8, lat: 39 }, { lon: 9, lat: 41 },
+      // French Riviera
+      { lon: 7, lat: 43.5 }, { lon: 5, lat: 43 }, { lon: 3, lat: 42 },
+      // Back to Spain
+      { lon: 0, lat: 40 }, { lon: -2, lat: 36 }, { lon: -6, lat: 36 },
+      { lon: -9, lat: 37 }
     ];
 
     // Timeline events (time is 0-1000 for slider)
@@ -663,142 +734,357 @@
       render();
     }
 
+    // Geographic bounds for the map view
+    const mapBounds = {
+      minLon: -5,
+      maxLon: 35,
+      minLat: 36,
+      maxLat: 56
+    };
+
+    // Convert geographic coordinates to canvas coordinates
+    function geoToCanvas(lon, lat) {
+      const padding = 40;
+      const x = padding + ((lon - mapBounds.minLon) / (mapBounds.maxLon - mapBounds.minLon)) * (mapWidth - padding * 2);
+      const y = padding + ((mapBounds.maxLat - lat) / (mapBounds.maxLat - mapBounds.minLat)) * (mapHeight - padding * 2);
+      return { x, y };
+    }
+
+    // Get position along the route path at a given progress (0-1)
+    function getPositionOnRoute(progress) {
+      const totalPoints = routeWaypoints.length - 1;
+      const exactIndex = progress * totalPoints;
+      const index = Math.floor(exactIndex);
+      const t = exactIndex - index;
+
+      if (index >= totalPoints) {
+        const lastPoint = routeWaypoints[totalPoints];
+        return geoToCanvas(lastPoint.lon, lastPoint.lat);
+      }
+
+      const p1 = routeWaypoints[index];
+      const p2 = routeWaypoints[index + 1];
+
+      // Linear interpolation between waypoints
+      const lon = p1.lon + (p2.lon - p1.lon) * t;
+      const lat = p1.lat + (p2.lat - p1.lat) * t;
+
+      return geoToCanvas(lon, lat);
+    }
+
+    // Get angle of route at a given position for train orientation
+    function getRouteAngle(progress) {
+      const delta = 0.01;
+      const p1 = getPositionOnRoute(Math.max(0, progress - delta));
+      const p2 = getPositionOnRoute(Math.min(1, progress + delta));
+      return Math.atan2(p2.y - p1.y, p2.x - p1.x);
+    }
+
     // Draw the route map
     function drawMap() {
       mapCtx.clearRect(0, 0, mapWidth, mapHeight);
 
-      // Background gradient
+      // Background - dark sea
       const bgGrad = mapCtx.createLinearGradient(0, 0, 0, mapHeight);
-      bgGrad.addColorStop(0, '#16213e');
-      bgGrad.addColorStop(1, '#1a1a2e');
+      bgGrad.addColorStop(0, '#0a1628');
+      bgGrad.addColorStop(0.5, '#0f1d32');
+      bgGrad.addColorStop(1, '#0a1628');
       mapCtx.fillStyle = bgGrad;
       mapCtx.fillRect(0, 0, mapWidth, mapHeight);
 
-      // Draw decorative elements (map style)
-      mapCtx.strokeStyle = 'rgba(100, 100, 140, 0.1)';
+      // Draw subtle grid
+      mapCtx.strokeStyle = 'rgba(60, 80, 120, 0.15)';
       mapCtx.lineWidth = 1;
-      for (let i = 0; i < mapWidth; i += 50) {
+      for (let lon = Math.ceil(mapBounds.minLon / 5) * 5; lon <= mapBounds.maxLon; lon += 5) {
+        const p = geoToCanvas(lon, mapBounds.minLat);
+        const p2 = geoToCanvas(lon, mapBounds.maxLat);
         mapCtx.beginPath();
-        mapCtx.moveTo(i, 0);
-        mapCtx.lineTo(i, mapHeight);
+        mapCtx.moveTo(p.x, p.y);
+        mapCtx.lineTo(p2.x, p2.y);
         mapCtx.stroke();
       }
-      for (let i = 0; i < mapHeight; i += 50) {
+      for (let lat = Math.ceil(mapBounds.minLat / 5) * 5; lat <= mapBounds.maxLat; lat += 5) {
+        const p = geoToCanvas(mapBounds.minLon, lat);
+        const p2 = geoToCanvas(mapBounds.maxLon, lat);
         mapCtx.beginPath();
-        mapCtx.moveTo(0, i);
-        mapCtx.lineTo(mapWidth, i);
+        mapCtx.moveTo(p.x, p.y);
+        mapCtx.lineTo(p2.x, p2.y);
         mapCtx.stroke();
       }
 
-      // Calculate route positions
-      const padding = 80;
-      const routeY = mapHeight / 2;
-      const routeStartX = padding;
-      const routeEndX = mapWidth - padding;
-      const routeLength = routeEndX - routeStartX;
-
-      // Draw route line (dashed)
-      mapCtx.strokeStyle = '#5a5a7a';
-      mapCtx.lineWidth = 3;
-      mapCtx.setLineDash([10, 5]);
+      // Draw European landmass
+      mapCtx.fillStyle = '#1a2a3a';
+      mapCtx.strokeStyle = '#2a4a5a';
+      mapCtx.lineWidth = 1;
       mapCtx.beginPath();
-      mapCtx.moveTo(routeStartX, routeY);
-      mapCtx.lineTo(routeEndX, routeY);
+      let firstPoint = true;
+      for (const point of europeOutline) {
+        const p = geoToCanvas(point.lon, point.lat);
+        if (firstPoint) {
+          mapCtx.moveTo(p.x, p.y);
+          firstPoint = false;
+        } else {
+          mapCtx.lineTo(p.x, p.y);
+        }
+      }
+      mapCtx.closePath();
+      mapCtx.fill();
+      mapCtx.stroke();
+
+      // Draw water bodies (Mediterranean, Black Sea, etc) - just add some blue tint
+      mapCtx.fillStyle = 'rgba(20, 60, 100, 0.3)';
+      mapCtx.fillRect(0, 0, mapWidth, mapHeight);
+
+      // Draw the full route path (dashed gray line)
+      mapCtx.strokeStyle = 'rgba(100, 100, 120, 0.5)';
+      mapCtx.lineWidth = 3;
+      mapCtx.setLineDash([8, 4]);
+      mapCtx.beginPath();
+      for (let i = 0; i < routeWaypoints.length; i++) {
+        const p = geoToCanvas(routeWaypoints[i].lon, routeWaypoints[i].lat);
+        if (i === 0) {
+          mapCtx.moveTo(p.x, p.y);
+        } else {
+          mapCtx.lineTo(p.x, p.y);
+        }
+      }
       mapCtx.stroke();
       mapCtx.setLineDash([]);
 
-      // Draw traveled route (solid gold)
-      const trainProgress = currentTime / 1000;
-      const trainX = routeStartX + routeLength * Math.min(trainProgress, 0.9);
+      // Draw traveled route (solid gold line)
+      const trainProgress = Math.min(currentTime / 1000, 0.95);
+      const traveledSegments = Math.floor(trainProgress * (routeWaypoints.length - 1)) + 1;
 
-      const traveledGrad = mapCtx.createLinearGradient(routeStartX, 0, trainX, 0);
-      traveledGrad.addColorStop(0, '#8b7355');
+      // Create gradient along the traveled path
+      const startP = geoToCanvas(routeWaypoints[0].lon, routeWaypoints[0].lat);
+      const endP = getPositionOnRoute(trainProgress);
+      const traveledGrad = mapCtx.createLinearGradient(startP.x, startP.y, endP.x, endP.y);
+      traveledGrad.addColorStop(0, '#6b5335');
+      traveledGrad.addColorStop(0.5, '#8b7355');
       traveledGrad.addColorStop(1, '#d4af37');
+
       mapCtx.strokeStyle = traveledGrad;
       mapCtx.lineWidth = 4;
+      mapCtx.lineCap = 'round';
+      mapCtx.lineJoin = 'round';
       mapCtx.beginPath();
-      mapCtx.moveTo(routeStartX, routeY);
-      mapCtx.lineTo(trainX, routeY);
+
+      for (let i = 0; i < routeWaypoints.length; i++) {
+        const segmentProgress = i / (routeWaypoints.length - 1);
+        if (segmentProgress > trainProgress) break;
+
+        const p = geoToCanvas(routeWaypoints[i].lon, routeWaypoints[i].lat);
+        if (i === 0) {
+          mapCtx.moveTo(p.x, p.y);
+        } else {
+          mapCtx.lineTo(p.x, p.y);
+        }
+      }
+
+      // Add final interpolated point
+      const finalP = getPositionOnRoute(trainProgress);
+      mapCtx.lineTo(finalP.x, finalP.y);
+      mapCtx.stroke();
+
+      // Draw route glow
+      mapCtx.strokeStyle = 'rgba(212, 175, 55, 0.2)';
+      mapCtx.lineWidth = 10;
+      mapCtx.beginPath();
+      for (let i = 0; i < routeWaypoints.length; i++) {
+        const segmentProgress = i / (routeWaypoints.length - 1);
+        if (segmentProgress > trainProgress) break;
+
+        const p = geoToCanvas(routeWaypoints[i].lon, routeWaypoints[i].lat);
+        if (i === 0) {
+          mapCtx.moveTo(p.x, p.y);
+        } else {
+          mapCtx.lineTo(p.x, p.y);
+        }
+      }
+      mapCtx.lineTo(finalP.x, finalP.y);
       mapCtx.stroke();
 
       // Draw stations
       for (const station of routeStations) {
-        const x = routeStartX + routeLength * station.pos;
+        const p = geoToCanvas(station.lon, station.lat);
         const isPassed = trainProgress >= station.pos;
+        const isCurrent = Math.abs(trainProgress - station.pos) < 0.05;
+
+        // Station glow for current station
+        if (isCurrent) {
+          mapCtx.fillStyle = 'rgba(212, 175, 55, 0.3)';
+          mapCtx.beginPath();
+          mapCtx.arc(p.x, p.y, 20, 0, Math.PI * 2);
+          mapCtx.fill();
+        }
 
         // Station dot
         mapCtx.beginPath();
-        mapCtx.arc(x, routeY, 8, 0, Math.PI * 2);
-        mapCtx.fillStyle = isPassed ? '#d4af37' : '#3a3a5a';
+        mapCtx.arc(p.x, p.y, isPassed ? 7 : 5, 0, Math.PI * 2);
+        mapCtx.fillStyle = isPassed ? '#d4af37' : '#3a4a5a';
         mapCtx.fill();
-        mapCtx.strokeStyle = '#8b7355';
+        mapCtx.strokeStyle = isPassed ? '#fff' : '#5a6a7a';
         mapCtx.lineWidth = 2;
         mapCtx.stroke();
 
-        // Station name
-        mapCtx.font = '12px Georgia';
-        mapCtx.fillStyle = isPassed ? '#d4af37' : '#8b7355';
+        // Station name - position above or below based on latitude
+        const labelOffset = station.lat > 47 ? 18 : -12;
+        mapCtx.font = isPassed ? 'bold 11px Georgia' : '10px Georgia';
+        mapCtx.fillStyle = isPassed ? '#d4af37' : '#7a8a9a';
         mapCtx.textAlign = 'center';
-        mapCtx.fillText(station.name, x, routeY - 20);
+        mapCtx.fillText(station.name, p.x, p.y + labelOffset);
 
-        // Country name
-        mapCtx.font = '10px Georgia';
-        mapCtx.fillStyle = '#5a5a7a';
-        mapCtx.fillText(station.country, x, routeY + 25);
+        // Country name (smaller, below station name)
+        if (isPassed || isCurrent) {
+          mapCtx.font = '9px Georgia';
+          mapCtx.fillStyle = '#5a6a7a';
+          mapCtx.fillText(station.country, p.x, p.y + labelOffset + 12);
+        }
       }
 
-      // Draw train
-      drawTrain(trainX, routeY);
+      // Draw train at current position
+      const trainPos = getPositionOnRoute(trainProgress);
+      const trainAngle = getRouteAngle(trainProgress);
+      drawTrain(trainPos.x, trainPos.y, trainAngle);
 
       // Snow effect when stuck (time 250-950)
       if (currentTime >= 250 && currentTime < 950) {
         drawSnowEffect();
       }
+
+      // Draw compass rose
+      drawCompass();
     }
 
-    function drawTrain(x, y) {
-      const trainLength = 60;
-      const trainHeight = 20;
+    // Draw a simple compass rose
+    function drawCompass() {
+      const cx = mapWidth - 50;
+      const cy = 50;
+      const size = 25;
 
-      // Train body
-      mapCtx.fillStyle = '#2a2a3a';
-      mapCtx.strokeStyle = '#d4af37';
-      mapCtx.lineWidth = 2;
-
-      // Locomotive
+      // Outer circle
+      mapCtx.strokeStyle = 'rgba(139, 115, 85, 0.5)';
+      mapCtx.lineWidth = 1;
       mapCtx.beginPath();
-      mapCtx.roundRect(x - trainLength, y - trainHeight/2, trainLength * 0.3, trainHeight, 3);
+      mapCtx.arc(cx, cy, size, 0, Math.PI * 2);
+      mapCtx.stroke();
+
+      // N-S line
+      mapCtx.strokeStyle = 'rgba(139, 115, 85, 0.7)';
+      mapCtx.beginPath();
+      mapCtx.moveTo(cx, cy - size + 5);
+      mapCtx.lineTo(cx, cy + size - 5);
+      mapCtx.stroke();
+
+      // E-W line
+      mapCtx.beginPath();
+      mapCtx.moveTo(cx - size + 5, cy);
+      mapCtx.lineTo(cx + size - 5, cy);
+      mapCtx.stroke();
+
+      // N marker
+      mapCtx.fillStyle = '#d4af37';
+      mapCtx.font = 'bold 12px Georgia';
+      mapCtx.textAlign = 'center';
+      mapCtx.fillText('N', cx, cy - size + 15);
+
+      // Arrow pointing north
+      mapCtx.fillStyle = '#d4af37';
+      mapCtx.beginPath();
+      mapCtx.moveTo(cx, cy - size + 3);
+      mapCtx.lineTo(cx - 4, cy - size + 10);
+      mapCtx.lineTo(cx + 4, cy - size + 10);
+      mapCtx.closePath();
+      mapCtx.fill();
+    }
+
+    function drawTrain(x, y, angle = 0) {
+      const trainLength = 50;
+      const trainHeight = 14;
+
+      mapCtx.save();
+      mapCtx.translate(x, y);
+      mapCtx.rotate(angle);
+
+      // Train glow/shadow
+      mapCtx.fillStyle = 'rgba(212, 175, 55, 0.3)';
+      mapCtx.beginPath();
+      mapCtx.ellipse(0, 0, trainLength * 0.7, trainHeight * 1.5, 0, 0, Math.PI * 2);
+      mapCtx.fill();
+
+      // Locomotive (at the front, traveling direction)
+      mapCtx.fillStyle = '#1a1a2a';
+      mapCtx.strokeStyle = '#d4af37';
+      mapCtx.lineWidth = 1.5;
+
+      // Locomotive body
+      mapCtx.beginPath();
+      mapCtx.roundRect(-trainLength * 0.1, -trainHeight/2, trainLength * 0.35, trainHeight, 3);
       mapCtx.fill();
       mapCtx.stroke();
 
-      // Carriages
+      // Locomotive front (rounded)
+      mapCtx.beginPath();
+      mapCtx.arc(trainLength * 0.25, 0, trainHeight/2, -Math.PI/2, Math.PI/2);
+      mapCtx.fill();
+      mapCtx.stroke();
+
+      // Carriages (behind locomotive)
       for (let i = 0; i < 3; i++) {
+        const carX = -trainLength * 0.15 - (i + 1) * trainLength * 0.22;
+        mapCtx.fillStyle = '#1a1a2a';
         mapCtx.beginPath();
-        mapCtx.roundRect(x - trainLength * 0.65 + i * trainLength * 0.25, y - trainHeight/2 + 2, trainLength * 0.22, trainHeight - 4, 2);
+        mapCtx.roundRect(carX, -trainHeight/2 + 1, trainLength * 0.20, trainHeight - 2, 2);
         mapCtx.fill();
         mapCtx.stroke();
+
+        // Windows
+        mapCtx.fillStyle = 'rgba(255, 220, 150, 0.4)';
+        for (let w = 0; w < 3; w++) {
+          mapCtx.fillRect(carX + 3 + w * 5, -trainHeight/2 + 3, 3, 4);
+        }
       }
 
-      // Smoke from locomotive
-      mapCtx.fillStyle = 'rgba(150, 150, 150, 0.3)';
-      const smokeOffset = (Date.now() % 1000) / 1000;
-      for (let i = 0; i < 3; i++) {
-        const smokeX = x - trainLength - 5 + i * 8;
-        const smokeY = y - trainHeight/2 - 5 - i * 8 - smokeOffset * 10;
-        const smokeSize = 4 + i * 2;
+      // Chimney/smokestack
+      mapCtx.fillStyle = '#2a2a3a';
+      mapCtx.fillRect(trainLength * 0.15, -trainHeight/2 - 4, 5, 5);
+
+      // Smoke puffs (animated)
+      const smokeOffset = (Date.now() % 2000) / 2000;
+      mapCtx.fillStyle = 'rgba(180, 180, 180, 0.4)';
+      for (let i = 0; i < 4; i++) {
+        const puffProgress = (smokeOffset + i * 0.25) % 1;
+        const puffX = trainLength * 0.17 - puffProgress * 30;
+        const puffY = -trainHeight/2 - 8 - puffProgress * 15;
+        const puffSize = 3 + puffProgress * 6;
+        const puffAlpha = 0.5 - puffProgress * 0.4;
+        mapCtx.globalAlpha = puffAlpha;
         mapCtx.beginPath();
-        mapCtx.arc(smokeX, smokeY, smokeSize, 0, Math.PI * 2);
+        mapCtx.arc(puffX, puffY, puffSize, 0, Math.PI * 2);
         mapCtx.fill();
       }
+      mapCtx.globalAlpha = 1;
 
       // Headlight glow
-      const glowGrad = mapCtx.createRadialGradient(x - trainLength, y, 0, x - trainLength, y, 30);
-      glowGrad.addColorStop(0, 'rgba(255, 220, 100, 0.3)');
-      glowGrad.addColorStop(1, 'rgba(255, 220, 100, 0)');
-      mapCtx.fillStyle = glowGrad;
+      mapCtx.fillStyle = 'rgba(255, 240, 150, 0.6)';
       mapCtx.beginPath();
-      mapCtx.arc(x - trainLength, y, 30, 0, Math.PI * 2);
+      mapCtx.arc(trainLength * 0.3, 0, 3, 0, Math.PI * 2);
       mapCtx.fill();
+
+      // Headlight beam
+      const beamGrad = mapCtx.createRadialGradient(trainLength * 0.35, 0, 0, trainLength * 0.35, 0, 25);
+      beamGrad.addColorStop(0, 'rgba(255, 240, 150, 0.4)');
+      beamGrad.addColorStop(1, 'rgba(255, 240, 150, 0)');
+      mapCtx.fillStyle = beamGrad;
+      mapCtx.beginPath();
+      mapCtx.moveTo(trainLength * 0.3, -3);
+      mapCtx.lineTo(trainLength * 0.55, -8);
+      mapCtx.lineTo(trainLength * 0.55, 8);
+      mapCtx.lineTo(trainLength * 0.3, 3);
+      mapCtx.closePath();
+      mapCtx.fill();
+
+      mapCtx.restore();
     }
 
     let snowflakes = [];
