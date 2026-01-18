@@ -1,0 +1,1500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Climbing RPG — Core Loop Prototype</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            color: #e8e8e8;
+            overflow: hidden;
+        }
+
+        .screen {
+            display: none;
+            width: 100vw;
+            height: 100vh;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        .screen.active {
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Title Screen */
+        #title-screen {
+            justify-content: center;
+            align-items: center;
+            background: linear-gradient(180deg, #0d1b2a 0%, #1b263b 50%, #415a77 100%);
+        }
+
+        .title {
+            font-size: 3rem;
+            text-align: center;
+            margin-bottom: 2rem;
+            text-shadow: 0 0 20px rgba(255, 183, 77, 0.5);
+            color: #ffb74d;
+        }
+
+        .subtitle {
+            font-size: 1.2rem;
+            color: #90a4ae;
+            margin-bottom: 3rem;
+        }
+
+        .btn {
+            padding: 15px 40px;
+            font-size: 1.2rem;
+            font-family: inherit;
+            background: rgba(255, 183, 77, 0.2);
+            border: 2px solid #ffb74d;
+            color: #ffb74d;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin: 10px;
+        }
+
+        .btn:hover {
+            background: rgba(255, 183, 77, 0.4);
+            transform: scale(1.05);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* World Map */
+        #world-map {
+            background: linear-gradient(180deg, #87ceeb 0%, #e0c097 30%, #c9a86c 100%);
+        }
+
+        .map-header {
+            padding: 15px 20px;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .map-container {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+        }
+
+        #world-canvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        .party-sidebar {
+            position: absolute;
+            right: 10px;
+            top: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 8px;
+            max-width: 200px;
+        }
+
+        .party-member {
+            display: flex;
+            align-items: center;
+            margin: 8px 0;
+            padding: 5px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .party-member:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .party-member.active {
+            background: rgba(255, 183, 77, 0.3);
+            border: 1px solid #ffb74d;
+        }
+
+        .member-avatar {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            margin-right: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.8rem;
+        }
+
+        .member-info {
+            flex: 1;
+        }
+
+        .member-name {
+            font-size: 0.9rem;
+        }
+
+        .member-stats {
+            font-size: 0.7rem;
+            color: #90a4ae;
+        }
+
+        /* Crag View */
+        #crag-view {
+            background: linear-gradient(180deg, #5c7a8a 0%, #8b7355 50%, #6b5344 100%);
+        }
+
+        .crag-header {
+            padding: 15px 20px;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .crag-container {
+            flex: 1;
+            display: flex;
+            padding: 20px;
+            gap: 20px;
+        }
+
+        .rock-display {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #rock-canvas {
+            max-width: 100%;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        }
+
+        .problems-panel {
+            width: 350px;
+            background: rgba(0, 0, 0, 0.7);
+            border-radius: 10px;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .problem-card {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            cursor: pointer;
+            transition: all 0.3s;
+            border: 2px solid transparent;
+        }
+
+        .problem-card:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateX(-5px);
+        }
+
+        .problem-card.sent {
+            border-color: #4caf50;
+            opacity: 0.7;
+        }
+
+        .problem-card.selected {
+            border-color: #ffb74d;
+            background: rgba(255, 183, 77, 0.2);
+        }
+
+        .problem-name {
+            font-size: 1.1rem;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .problem-grade {
+            display: inline-block;
+            padding: 3px 10px;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 4px;
+            margin-right: 10px;
+        }
+
+        .problem-tags {
+            margin-top: 8px;
+        }
+
+        .tag {
+            display: inline-block;
+            padding: 2px 8px;
+            background: rgba(100, 150, 200, 0.3);
+            border-radius: 3px;
+            font-size: 0.75rem;
+            margin-right: 5px;
+            margin-top: 3px;
+        }
+
+        .problem-risk {
+            margin-top: 8px;
+            font-size: 0.8rem;
+            color: #ffab91;
+        }
+
+        /* Attempt Phase */
+        #attempt-phase {
+            background: linear-gradient(180deg, #2d3436 0%, #4a4a4a 100%);
+        }
+
+        .attempt-header {
+            padding: 15px 20px;
+            background: rgba(0, 0, 0, 0.7);
+        }
+
+        .attempt-container {
+            flex: 1;
+            display: flex;
+            padding: 20px;
+            gap: 20px;
+        }
+
+        .attempt-main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .climber-display {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .climber-avatar-large {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            margin: 0 auto 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            font-weight: bold;
+        }
+
+        .effort-selection {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .effort-btn {
+            padding: 20px 30px;
+            font-size: 1rem;
+            font-family: inherit;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid #666;
+            color: #e8e8e8;
+            cursor: pointer;
+            transition: all 0.3s;
+            border-radius: 8px;
+        }
+
+        .effort-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .effort-btn.selected {
+            border-color: #ffb74d;
+            background: rgba(255, 183, 77, 0.3);
+        }
+
+        .effort-btn.casual { border-color: #4caf50; }
+        .effort-btn.casual.selected { background: rgba(76, 175, 80, 0.3); }
+
+        .effort-btn.send { border-color: #ff9800; }
+        .effort-btn.send.selected { background: rgba(255, 152, 0, 0.3); }
+
+        .effort-btn.limit { border-color: #f44336; }
+        .effort-btn.limit.selected { background: rgba(244, 67, 54, 0.3); }
+
+        .attempt-stats {
+            background: rgba(0, 0, 0, 0.5);
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            min-width: 300px;
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 8px 0;
+        }
+
+        .stat-label {
+            color: #90a4ae;
+        }
+
+        .stat-value {
+            font-weight: bold;
+        }
+
+        .stat-value.good { color: #4caf50; }
+        .stat-value.medium { color: #ff9800; }
+        .stat-value.bad { color: #f44336; }
+
+        .support-panel {
+            width: 300px;
+            background: rgba(0, 0, 0, 0.7);
+            border-radius: 10px;
+            padding: 20px;
+        }
+
+        .support-title {
+            font-size: 1.2rem;
+            margin-bottom: 15px;
+            color: #ffb74d;
+        }
+
+        .support-action {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+            border: 2px solid transparent;
+        }
+
+        .support-action:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .support-action.selected {
+            border-color: #64b5f6;
+            background: rgba(100, 181, 246, 0.2);
+        }
+
+        .support-action.used {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .support-name {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .support-desc {
+            font-size: 0.8rem;
+            color: #90a4ae;
+        }
+
+        .support-by {
+            font-size: 0.75rem;
+            color: #64b5f6;
+            margin-top: 5px;
+        }
+
+        /* Result Modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            padding: 40px;
+            border-radius: 15px;
+            text-align: center;
+            max-width: 500px;
+            border: 2px solid #ffb74d;
+        }
+
+        .result-icon {
+            font-size: 4rem;
+            margin-bottom: 20px;
+        }
+
+        .result-title {
+            font-size: 2rem;
+            margin-bottom: 15px;
+        }
+
+        .result-title.success { color: #4caf50; }
+        .result-title.fail { color: #ff9800; }
+        .result-title.injury { color: #f44336; }
+
+        .result-details {
+            margin: 20px 0;
+            text-align: left;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 15px;
+            border-radius: 8px;
+        }
+
+        .result-detail {
+            margin: 8px 0;
+        }
+
+        /* Log Panel */
+        .log-panel {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 120px;
+            background: rgba(0, 0, 0, 0.9);
+            padding: 10px 20px;
+            overflow-y: auto;
+            font-size: 0.85rem;
+            border-top: 1px solid #333;
+        }
+
+        .log-entry {
+            margin: 3px 0;
+            padding: 3px 0;
+        }
+
+        .log-entry.action { color: #64b5f6; }
+        .log-entry.success { color: #4caf50; }
+        .log-entry.fail { color: #ff9800; }
+        .log-entry.info { color: #90a4ae; }
+
+        /* Progress bar */
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 5px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            transition: width 0.3s;
+        }
+
+        .progress-fill.psyche { background: linear-gradient(90deg, #f44336, #ff9800, #4caf50); }
+        .progress-fill.skin { background: linear-gradient(90deg, #f44336, #ffeb3b); }
+        .progress-fill.fatigue { background: linear-gradient(90deg, #4caf50, #f44336); }
+
+        /* Rock cleared overlay */
+        .rock-cleared {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(76, 175, 80, 0.9);
+            padding: 30px 60px;
+            border-radius: 15px;
+            font-size: 2rem;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+            z-index: 100;
+        }
+
+        .completion-badge {
+            font-size: 1rem;
+            margin-top: 10px;
+            color: #c8e6c9;
+        }
+    </style>
+</head>
+<body>
+    <!-- Title Screen -->
+    <div id="title-screen" class="screen active">
+        <h1 class="title">🧗 CLIMBING RPG</h1>
+        <p class="subtitle">A Bouldering Session Simulator</p>
+        <button class="btn" onclick="startGame()">Start Session</button>
+        <p style="margin-top: 30px; color: #607d8b; font-size: 0.9rem;">
+            Explore the Buttermilks • Build your party • Send problems
+        </p>
+    </div>
+
+    <!-- World Map -->
+    <div id="world-map" class="screen">
+        <div class="map-header">
+            <h2>🗺️ The Buttermilks</h2>
+            <div>
+                <span id="rocks-cleared">0/0 Rocks Cleared</span>
+                <button class="btn" style="padding: 8px 15px; font-size: 0.9rem; margin-left: 15px;" onclick="showPartySelect()">Party</button>
+            </div>
+        </div>
+        <div class="map-container">
+            <canvas id="world-canvas"></canvas>
+            <div class="party-sidebar" id="party-display"></div>
+        </div>
+    </div>
+
+    <!-- Crag View -->
+    <div id="crag-view" class="screen">
+        <div class="crag-header">
+            <div>
+                <button class="btn" style="padding: 8px 15px; font-size: 0.9rem;" onclick="returnToMap()">← Back</button>
+                <span id="rock-name" style="margin-left: 15px; font-size: 1.3rem;"></span>
+            </div>
+            <div id="rock-progress"></div>
+        </div>
+        <div class="crag-container">
+            <div class="rock-display">
+                <canvas id="rock-canvas" width="500" height="400"></canvas>
+                <div id="rock-cleared-overlay" class="rock-cleared" style="display: none;">
+                    ROCK CLEARED!
+                    <div class="completion-badge" id="completion-badge"></div>
+                </div>
+            </div>
+            <div class="problems-panel">
+                <h3 style="margin-bottom: 15px;">Problems</h3>
+                <div id="problems-list"></div>
+                <button class="btn" id="attempt-btn" style="width: 100%; margin-top: 15px;" onclick="startAttempt()" disabled>
+                    Select a Problem
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Attempt Phase -->
+    <div id="attempt-phase" class="screen">
+        <div class="attempt-header">
+            <button class="btn" style="padding: 8px 15px; font-size: 0.9rem;" onclick="cancelAttempt()">← Back</button>
+            <span id="attempt-problem-name" style="margin-left: 15px; font-size: 1.3rem;"></span>
+        </div>
+        <div class="attempt-container">
+            <div class="attempt-main">
+                <div class="climber-display">
+                    <div class="climber-avatar-large" id="current-climber-avatar"></div>
+                    <h2 id="current-climber-name"></h2>
+                    <div id="climber-stats-display"></div>
+                </div>
+
+                <div class="effort-selection">
+                    <button class="effort-btn casual" onclick="selectEffort('casual')">
+                        <div>🧘 Casual</div>
+                        <div style="font-size: 0.75rem; color: #90a4ae; margin-top: 5px;">Low risk, learn beta</div>
+                    </button>
+                    <button class="effort-btn send" onclick="selectEffort('send')">
+                        <div>🔥 Send Burn</div>
+                        <div style="font-size: 0.75rem; color: #90a4ae; margin-top: 5px;">Balanced attempt</div>
+                    </button>
+                    <button class="effort-btn limit" onclick="selectEffort('limit')">
+                        <div>⚡ Limit</div>
+                        <div style="font-size: 0.75rem; color: #90a4ae; margin-top: 5px;">Max effort, high risk</div>
+                    </button>
+                </div>
+
+                <div class="attempt-stats">
+                    <h4 style="margin-bottom: 15px;">Attempt Odds</h4>
+                    <div class="stat-row">
+                        <span class="stat-label">Base Success:</span>
+                        <span class="stat-value" id="base-success">--</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Beta Bonus:</span>
+                        <span class="stat-value" id="beta-bonus">+0%</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Support Bonus:</span>
+                        <span class="stat-value" id="support-bonus">+0%</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Fatigue Penalty:</span>
+                        <span class="stat-value" id="fatigue-penalty">-0%</span>
+                    </div>
+                    <hr style="margin: 10px 0; border-color: #444;">
+                    <div class="stat-row">
+                        <span class="stat-label">Final Odds:</span>
+                        <span class="stat-value" id="final-odds" style="font-size: 1.3rem;">--</span>
+                    </div>
+                </div>
+
+                <button class="btn" id="commit-btn" onclick="commitAttempt()" disabled>
+                    Select Effort Level
+                </button>
+            </div>
+
+            <div class="support-panel">
+                <div class="support-title">🤝 Party Support</div>
+                <div id="support-actions"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Result Modal -->
+    <div class="modal-overlay" id="result-modal">
+        <div class="modal">
+            <div class="result-icon" id="result-icon">🎯</div>
+            <h2 class="result-title" id="result-title">Result</h2>
+            <p id="result-message"></p>
+            <div class="result-details" id="result-details"></div>
+            <button class="btn" onclick="closeResult()">Continue</button>
+        </div>
+    </div>
+
+    <!-- Game Log -->
+    <div class="log-panel" id="game-log">
+        <div class="log-entry info">Welcome to the Buttermilks! Select a boulder to begin your session.</div>
+    </div>
+
+    <script>
+        // ========== GAME DATA ==========
+        const CLIMBERS = [
+            { id: 'karin', name: 'Karin', color: '#e91e63', power: 7, technique: 9, endurance: 6, psyche: 8, specialty: 'tech', emoji: 'K' },
+            { id: 'jason', name: 'Jason', color: '#2196f3', power: 9, technique: 6, endurance: 8, psyche: 7, specialty: 'power', emoji: 'J' },
+            { id: 'phana', name: 'Phana', color: '#9c27b0', power: 6, technique: 8, endurance: 7, psyche: 9, specialty: 'slab', emoji: 'P' },
+            { id: 'jonah', name: 'Jonah', color: '#4caf50', power: 8, technique: 7, endurance: 9, psyche: 6, specialty: 'endurance', emoji: 'Jo' },
+            { id: 'mary', name: 'Mary', color: '#ff9800', power: 5, technique: 10, endurance: 6, psyche: 8, specialty: 'tech', emoji: 'M' },
+            { id: 'sam', name: 'Sam', color: '#00bcd4', power: 10, technique: 5, endurance: 7, psyche: 7, specialty: 'compression', emoji: 'S' },
+            { id: 'ralphie', name: 'Ralphie', color: '#795548', power: 7, technique: 7, endurance: 8, psyche: 8, specialty: 'allround', emoji: 'R' },
+            { id: 'jaime', name: 'Jaime', color: '#607d8b', power: 8, technique: 8, endurance: 5, psyche: 6, specialty: 'power', emoji: 'Ja' },
+            { id: 'cindy', name: 'Cindy', color: '#f44336', power: 6, technique: 7, endurance: 10, psyche: 9, specialty: 'endurance', emoji: 'C' }
+        ];
+
+        const ROCKS = [
+            {
+                id: 'warmup-slab',
+                name: 'Warm-Up Slab',
+                x: 150, y: 200,
+                description: 'A friendly slab to get the blood flowing',
+                problems: [
+                    { id: 'p1', name: 'Easy Feet', grade: 'V0', style: ['slab'], risk: 'low', baseChance: 85 },
+                    { id: 'p2', name: 'Slabby McSlabface', grade: 'V1', style: ['slab', 'tech'], risk: 'low', baseChance: 70 },
+                    { id: 'p3', name: 'Balance Beam', grade: 'V2', style: ['slab', 'balance'], risk: 'medium', baseChance: 55 }
+                ]
+            },
+            {
+                id: 'the-cube',
+                name: 'The Cube',
+                x: 350, y: 150,
+                description: 'A compact boulder with varied problems',
+                problems: [
+                    { id: 'p4', name: 'Rail Rider', grade: 'V1', style: ['jug'], risk: 'low', baseChance: 75 },
+                    { id: 'p5', name: 'Crimpy Business', grade: 'V3', style: ['crimp', 'tech'], risk: 'medium', baseChance: 45 },
+                    { id: 'p6', name: 'The Dyno', grade: 'V4', style: ['power', 'dyno'], risk: 'high', baseChance: 35 },
+                    { id: 'p7', name: 'Compression Corner', grade: 'V3', style: ['compression'], risk: 'medium', baseChance: 40 }
+                ]
+            },
+            {
+                id: 'grandpa-peabody',
+                name: 'Grandpa Peabody',
+                x: 550, y: 280,
+                description: 'A tall, intimidating face with classic lines',
+                problems: [
+                    { id: 'p8', name: 'The Arete', grade: 'V2', style: ['arete', 'balance'], risk: 'high', baseChance: 50 },
+                    { id: 'p9', name: 'Peabody Direct', grade: 'V5', style: ['power', 'tech'], risk: 'high', baseChance: 25 },
+                    { id: 'p10', name: 'High Step Heaven', grade: 'V4', style: ['slab', 'height'], risk: 'high', baseChance: 30 }
+                ]
+            },
+            {
+                id: 'the-hulk',
+                name: 'The Hulk',
+                x: 280, y: 380,
+                description: 'Steep and powerful. Compression city.',
+                problems: [
+                    { id: 'p11', name: 'Hulk Smash', grade: 'V4', style: ['compression', 'power'], risk: 'medium', baseChance: 35 },
+                    { id: 'p12', name: 'Green Monster', grade: 'V6', style: ['compression', 'endurance'], risk: 'high', baseChance: 20 },
+                    { id: 'p13', name: 'Easy Traverse', grade: 'V1', style: ['traverse', 'jug'], risk: 'low', baseChance: 70 }
+                ]
+            },
+            {
+                id: 'birthday-boulder',
+                name: 'Birthday Boulder',
+                x: 480, y: 420,
+                description: 'Sharp crimps and precise movement',
+                problems: [
+                    { id: 'p14', name: 'Birthday Left', grade: 'V3', style: ['crimp', 'tech'], risk: 'medium', baseChance: 45 },
+                    { id: 'p15', name: 'Birthday Right', grade: 'V5', style: ['crimp', 'power'], risk: 'high', baseChance: 28 },
+                    { id: 'p16', name: 'Candle Stick', grade: 'V2', style: ['balance', 'slab'], risk: 'low', baseChance: 55 }
+                ]
+            }
+        ];
+
+        const SUPPORT_ACTIONS = [
+            { id: 'beta', name: 'Call Beta', desc: 'Share sequence knowledge (+15% success)', effect: 'success', value: 15 },
+            { id: 'demo', name: 'Demonstrate Move', desc: 'Show the crux move (+10% success)', effect: 'success', value: 10 },
+            { id: 'hype', name: 'Hype Up', desc: 'Boost psyche for this attempt (+8%)', effect: 'psyche', value: 8 },
+            { id: 'brush', name: 'Brush Holds', desc: 'Clean the holds (+5% success)', effect: 'success', value: 5 },
+            { id: 'spot', name: 'Solid Spot', desc: 'Reduce injury risk significantly', effect: 'safety', value: 50 }
+        ];
+
+        // ========== GAME STATE ==========
+        let gameState = {
+            activeParty: ['karin', 'jason', 'phana', 'jonah'],
+            currentClimber: null,
+            currentRock: null,
+            currentProblem: null,
+            selectedEffort: null,
+            selectedSupport: null,
+
+            // Progress tracking
+            rockProgress: {}, // { rockId: { cleared: bool, problems: { problemId: sent } } }
+            climberState: {}, // { climberId: { fatigue, psyche, skin, beta: {} } }
+
+            // Session stats
+            totalSends: 0,
+            totalAttempts: 0
+        };
+
+        // Initialize climber states
+        CLIMBERS.forEach(c => {
+            gameState.climberState[c.id] = {
+                fatigue: 0,
+                psyche: 100,
+                skin: 100,
+                beta: {} // { problemId: betaLevel 0-3 }
+            };
+        });
+
+        // Initialize rock progress
+        ROCKS.forEach(r => {
+            gameState.rockProgress[r.id] = {
+                cleared: false,
+                problems: {}
+            };
+            r.problems.forEach(p => {
+                gameState.rockProgress[r.id].problems[p.id] = false;
+            });
+        });
+
+        // ========== SCREEN MANAGEMENT ==========
+        function showScreen(screenId) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(screenId).classList.add('active');
+        }
+
+        function startGame() {
+            showScreen('world-map');
+            initWorldMap();
+            updatePartyDisplay();
+            log('Your party arrives at the Buttermilks. The granite gleams in the morning light.', 'info');
+        }
+
+        // ========== WORLD MAP ==========
+        let worldCanvas, worldCtx;
+        let selectedRockId = null;
+
+        function initWorldMap() {
+            worldCanvas = document.getElementById('world-canvas');
+            worldCtx = worldCanvas.getContext('2d');
+
+            resizeWorldCanvas();
+            window.addEventListener('resize', resizeWorldCanvas);
+            worldCanvas.addEventListener('click', handleMapClick);
+
+            drawWorldMap();
+            updateRocksCleared();
+        }
+
+        function resizeWorldCanvas() {
+            const container = worldCanvas.parentElement;
+            worldCanvas.width = container.clientWidth;
+            worldCanvas.height = container.clientHeight - 120; // Account for log panel
+            drawWorldMap();
+        }
+
+        function drawWorldMap() {
+            const ctx = worldCtx;
+            const w = worldCanvas.width;
+            const h = worldCanvas.height;
+
+            // Clear
+            ctx.clearRect(0, 0, w, h);
+
+            // Draw terrain features (simple placeholder)
+            ctx.fillStyle = '#c9a86c';
+            ctx.fillRect(0, 0, w, h);
+
+            // Draw some terrain variation
+            ctx.fillStyle = '#b8956b';
+            for (let i = 0; i < 20; i++) {
+                ctx.beginPath();
+                ctx.arc(Math.random() * w, Math.random() * h, 20 + Math.random() * 40, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Draw paths between rocks
+            ctx.strokeStyle = '#a08060';
+            ctx.lineWidth = 3;
+            ctx.setLineDash([5, 5]);
+            for (let i = 0; i < ROCKS.length - 1; i++) {
+                const r1 = ROCKS[i];
+                const r2 = ROCKS[i + 1];
+                ctx.beginPath();
+                ctx.moveTo(r1.x, r1.y);
+                ctx.lineTo(r2.x, r2.y);
+                ctx.stroke();
+            }
+            ctx.setLineDash([]);
+
+            // Draw rocks
+            ROCKS.forEach(rock => {
+                const progress = gameState.rockProgress[rock.id];
+                const isCleared = progress.cleared;
+                const sentCount = Object.values(progress.problems).filter(Boolean).length;
+                const totalCount = rock.problems.length;
+                const isComplete = sentCount === totalCount;
+
+                // Rock shadow
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+                ctx.beginPath();
+                ctx.ellipse(rock.x + 5, rock.y + 45, 35, 15, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Rock body
+                const gradient = ctx.createLinearGradient(rock.x - 30, rock.y - 40, rock.x + 30, rock.y + 40);
+                if (isComplete) {
+                    gradient.addColorStop(0, '#ffd700');
+                    gradient.addColorStop(1, '#b8860b');
+                } else if (isCleared) {
+                    gradient.addColorStop(0, '#81c784');
+                    gradient.addColorStop(1, '#4caf50');
+                } else {
+                    gradient.addColorStop(0, '#9e9e9e');
+                    gradient.addColorStop(1, '#616161');
+                }
+
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.moveTo(rock.x - 30, rock.y + 30);
+                ctx.lineTo(rock.x - 25, rock.y - 20);
+                ctx.lineTo(rock.x - 5, rock.y - 40);
+                ctx.lineTo(rock.x + 15, rock.y - 35);
+                ctx.lineTo(rock.x + 30, rock.y - 10);
+                ctx.lineTo(rock.x + 25, rock.y + 30);
+                ctx.closePath();
+                ctx.fill();
+                ctx.strokeStyle = '#424242';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // Rock name
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 12px Courier New';
+                ctx.textAlign = 'center';
+                ctx.fillText(rock.name, rock.x, rock.y + 55);
+
+                // Progress indicator
+                ctx.fillStyle = '#e8e8e8';
+                ctx.font = '10px Courier New';
+                ctx.fillText(`${sentCount}/${totalCount}`, rock.x, rock.y + 68);
+            });
+
+            // Draw party position (at first uncleared rock or last position)
+            const partyRock = ROCKS.find(r => !gameState.rockProgress[r.id].cleared) || ROCKS[0];
+            ctx.fillStyle = '#ffb74d';
+            ctx.beginPath();
+            ctx.arc(partyRock.x - 50, partyRock.y + 20, 8, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 10px Courier New';
+            ctx.textAlign = 'center';
+            ctx.fillText('🧗', partyRock.x - 50, partyRock.y + 24);
+        }
+
+        function handleMapClick(e) {
+            const rect = worldCanvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            // Check if clicked on a rock
+            for (const rock of ROCKS) {
+                const dx = x - rock.x;
+                const dy = y - rock.y;
+                if (Math.sqrt(dx * dx + dy * dy) < 40) {
+                    enterCrag(rock);
+                    return;
+                }
+            }
+        }
+
+        function updateRocksCleared() {
+            const cleared = ROCKS.filter(r => gameState.rockProgress[r.id].cleared).length;
+            document.getElementById('rocks-cleared').textContent = `${cleared}/${ROCKS.length} Rocks Cleared`;
+        }
+
+        // ========== PARTY MANAGEMENT ==========
+        function updatePartyDisplay() {
+            const container = document.getElementById('party-display');
+            container.innerHTML = '<h4 style="margin-bottom: 10px;">Active Party</h4>';
+
+            gameState.activeParty.forEach(id => {
+                const climber = CLIMBERS.find(c => c.id === id);
+                const state = gameState.climberState[id];
+                const isSelected = gameState.currentClimber === id;
+
+                const div = document.createElement('div');
+                div.className = 'party-member' + (isSelected ? ' active' : '');
+                div.onclick = () => selectClimber(id);
+
+                div.innerHTML = `
+                    <div class="member-avatar" style="background: ${climber.color}">${climber.emoji}</div>
+                    <div class="member-info">
+                        <div class="member-name">${climber.name}</div>
+                        <div class="member-stats">
+                            P${climber.power} T${climber.technique} E${climber.endurance}
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill psyche" style="width: ${state.psyche}%"></div>
+                        </div>
+                    </div>
+                `;
+
+                container.appendChild(div);
+            });
+
+            // Select first climber if none selected
+            if (!gameState.currentClimber && gameState.activeParty.length > 0) {
+                selectClimber(gameState.activeParty[0]);
+            }
+        }
+
+        function selectClimber(id) {
+            gameState.currentClimber = id;
+            updatePartyDisplay();
+            if (document.getElementById('attempt-phase').classList.contains('active')) {
+                updateAttemptUI();
+            }
+        }
+
+        function showPartySelect() {
+            // Simple party selection - toggle members
+            const current = gameState.activeParty;
+            const available = CLIMBERS.filter(c => !current.includes(c.id));
+
+            if (available.length > 0) {
+                // Rotate party for now (simple implementation)
+                const removed = current.shift();
+                current.push(available[0].id);
+                log(`${CLIMBERS.find(c => c.id === removed).name} takes a break. ${available[0].name} joins the party.`, 'info');
+                updatePartyDisplay();
+            }
+        }
+
+        // ========== CRAG VIEW ==========
+        function enterCrag(rock) {
+            gameState.currentRock = rock;
+            showScreen('crag-view');
+
+            document.getElementById('rock-name').textContent = rock.name;
+            drawRock();
+            renderProblems();
+            updateRockProgress();
+
+            log(`Approaching ${rock.name}. ${rock.description}`, 'info');
+        }
+
+        function returnToMap() {
+            gameState.currentRock = null;
+            gameState.currentProblem = null;
+            showScreen('world-map');
+            drawWorldMap();
+        }
+
+        function drawRock() {
+            const canvas = document.getElementById('rock-canvas');
+            const ctx = canvas.getContext('2d');
+            const rock = gameState.currentRock;
+
+            // Clear
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Sky gradient
+            const skyGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            skyGrad.addColorStop(0, '#87ceeb');
+            skyGrad.addColorStop(1, '#e0c097');
+            ctx.fillStyle = skyGrad;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Ground
+            ctx.fillStyle = '#c9a86c';
+            ctx.fillRect(0, canvas.height - 50, canvas.width, 50);
+
+            // Rock (placeholder - large boulder shape)
+            const rockGrad = ctx.createLinearGradient(100, 50, 400, 350);
+            rockGrad.addColorStop(0, '#8d8d8d');
+            rockGrad.addColorStop(0.5, '#6d6d6d');
+            rockGrad.addColorStop(1, '#4d4d4d');
+
+            ctx.fillStyle = rockGrad;
+            ctx.beginPath();
+            ctx.moveTo(80, 350);
+            ctx.lineTo(100, 150);
+            ctx.lineTo(150, 80);
+            ctx.lineTo(250, 50);
+            ctx.lineTo(350, 70);
+            ctx.lineTo(400, 120);
+            ctx.lineTo(420, 250);
+            ctx.lineTo(400, 350);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.strokeStyle = '#3d3d3d';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+
+            // Draw problem markers
+            rock.problems.forEach((problem, i) => {
+                const angle = (i / rock.problems.length) * Math.PI - Math.PI / 2;
+                const radius = 80 + (i % 2) * 40;
+                const cx = 250 + Math.cos(angle) * radius;
+                const cy = 200 + Math.sin(angle) * radius * 0.6;
+
+                const sent = gameState.rockProgress[rock.id].problems[problem.id];
+                const selected = gameState.currentProblem?.id === problem.id;
+
+                // Problem circle
+                ctx.beginPath();
+                ctx.arc(cx, cy, 15, 0, Math.PI * 2);
+                ctx.fillStyle = sent ? '#4caf50' : (selected ? '#ffb74d' : '#fff');
+                ctx.fill();
+                ctx.strokeStyle = '#333';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // Grade label
+                ctx.fillStyle = sent ? '#fff' : '#333';
+                ctx.font = 'bold 10px Courier New';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(problem.grade, cx, cy);
+            });
+
+            // Draw party at base
+            gameState.activeParty.forEach((id, i) => {
+                const climber = CLIMBERS.find(c => c.id === id);
+                const px = 120 + i * 40;
+                const py = 370;
+
+                ctx.fillStyle = climber.color;
+                ctx.beginPath();
+                ctx.arc(px, py, 12, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 10px Courier New';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(climber.emoji, px, py);
+            });
+        }
+
+        function renderProblems() {
+            const container = document.getElementById('problems-list');
+            container.innerHTML = '';
+
+            const rock = gameState.currentRock;
+            rock.problems.forEach(problem => {
+                const sent = gameState.rockProgress[rock.id].problems[problem.id];
+                const selected = gameState.currentProblem?.id === problem.id;
+
+                const div = document.createElement('div');
+                div.className = 'problem-card' + (sent ? ' sent' : '') + (selected ? ' selected' : '');
+                div.onclick = () => selectProblem(problem);
+
+                const riskColors = { low: '#4caf50', medium: '#ff9800', high: '#f44336' };
+
+                div.innerHTML = `
+                    <div class="problem-name">${problem.name} ${sent ? '✓' : ''}</div>
+                    <span class="problem-grade">${problem.grade}</span>
+                    <span style="color: ${riskColors[problem.risk]}">● ${problem.risk} risk</span>
+                    <div class="problem-tags">
+                        ${problem.style.map(s => `<span class="tag">${s}</span>`).join('')}
+                    </div>
+                    <div style="margin-top: 8px; font-size: 0.8rem; color: #90a4ae;">
+                        Base success: ${problem.baseChance}%
+                    </div>
+                `;
+
+                container.appendChild(div);
+            });
+        }
+
+        function selectProblem(problem) {
+            const sent = gameState.rockProgress[gameState.currentRock.id].problems[problem.id];
+            if (sent) {
+                log(`${problem.name} already sent!`, 'info');
+                return;
+            }
+
+            gameState.currentProblem = problem;
+            renderProblems();
+            drawRock();
+
+            const btn = document.getElementById('attempt-btn');
+            btn.disabled = false;
+            btn.textContent = `Attempt ${problem.name}`;
+        }
+
+        function updateRockProgress() {
+            const rock = gameState.currentRock;
+            const progress = gameState.rockProgress[rock.id];
+            const sent = Object.values(progress.problems).filter(Boolean).length;
+            const total = rock.problems.length;
+
+            document.getElementById('rock-progress').innerHTML = `
+                <span style="color: ${progress.cleared ? '#4caf50' : '#90a4ae'}">
+                    ${sent}/${total} Problems Sent
+                    ${progress.cleared ? '✓ CLEARED' : ''}
+                </span>
+            `;
+
+            // Show cleared overlay
+            const overlay = document.getElementById('rock-cleared-overlay');
+            if (progress.cleared && sent === total) {
+                overlay.style.display = 'block';
+                document.getElementById('completion-badge').textContent = '★ 100% COMPLETE ★';
+            } else if (progress.cleared) {
+                overlay.style.display = 'block';
+                document.getElementById('completion-badge').textContent = `${sent}/${total} problems`;
+            } else {
+                overlay.style.display = 'none';
+            }
+        }
+
+        // ========== ATTEMPT PHASE ==========
+        function startAttempt() {
+            if (!gameState.currentProblem || !gameState.currentClimber) return;
+
+            gameState.selectedEffort = null;
+            gameState.selectedSupport = null;
+
+            showScreen('attempt-phase');
+            document.getElementById('attempt-problem-name').textContent =
+                `${gameState.currentProblem.name} (${gameState.currentProblem.grade})`;
+
+            updateAttemptUI();
+            renderSupportActions();
+
+            log(`${CLIMBERS.find(c => c.id === gameState.currentClimber).name} approaches ${gameState.currentProblem.name}.`, 'action');
+        }
+
+        function cancelAttempt() {
+            showScreen('crag-view');
+        }
+
+        function updateAttemptUI() {
+            const climber = CLIMBERS.find(c => c.id === gameState.currentClimber);
+            const state = gameState.climberState[climber.id];
+            const problem = gameState.currentProblem;
+
+            // Climber display
+            document.getElementById('current-climber-avatar').style.background = climber.color;
+            document.getElementById('current-climber-avatar').textContent = climber.emoji;
+            document.getElementById('current-climber-name').textContent = climber.name;
+
+            document.getElementById('climber-stats-display').innerHTML = `
+                <div style="display: flex; gap: 15px; justify-content: center; margin-top: 10px;">
+                    <span>PWR: ${climber.power}</span>
+                    <span>TECH: ${climber.technique}</span>
+                    <span>END: ${climber.endurance}</span>
+                </div>
+                <div style="margin-top: 10px;">
+                    <span style="color: #90a4ae;">Psyche: ${state.psyche}%</span> |
+                    <span style="color: #90a4ae;">Fatigue: ${state.fatigue}%</span>
+                </div>
+            `;
+
+            // Update effort buttons
+            document.querySelectorAll('.effort-btn').forEach(btn => {
+                btn.classList.remove('selected');
+            });
+            if (gameState.selectedEffort) {
+                document.querySelector(`.effort-btn.${gameState.selectedEffort}`).classList.add('selected');
+            }
+
+            // Calculate and display odds
+            updateOddsDisplay();
+
+            // Update commit button
+            const commitBtn = document.getElementById('commit-btn');
+            if (gameState.selectedEffort) {
+                commitBtn.disabled = false;
+                commitBtn.textContent = `Commit (${gameState.selectedEffort.toUpperCase()})`;
+            } else {
+                commitBtn.disabled = true;
+                commitBtn.textContent = 'Select Effort Level';
+            }
+        }
+
+        function selectEffort(effort) {
+            gameState.selectedEffort = effort;
+            updateAttemptUI();
+        }
+
+        function updateOddsDisplay() {
+            const climber = CLIMBERS.find(c => c.id === gameState.currentClimber);
+            const state = gameState.climberState[climber.id];
+            const problem = gameState.currentProblem;
+
+            // Base chance from problem
+            let baseChance = problem.baseChance;
+
+            // Climber stat bonus
+            let statBonus = 0;
+            if (problem.style.includes('power') || problem.style.includes('compression')) {
+                statBonus += (climber.power - 5) * 3;
+            }
+            if (problem.style.includes('tech') || problem.style.includes('slab') || problem.style.includes('balance')) {
+                statBonus += (climber.technique - 5) * 3;
+            }
+            if (problem.style.includes('endurance') || problem.style.includes('traverse')) {
+                statBonus += (climber.endurance - 5) * 3;
+            }
+
+            // Effort modifier
+            let effortMod = 0;
+            if (gameState.selectedEffort === 'casual') effortMod = -10;
+            if (gameState.selectedEffort === 'send') effortMod = 0;
+            if (gameState.selectedEffort === 'limit') effortMod = 15;
+
+            // Beta bonus
+            const betaLevel = state.beta[problem.id] || 0;
+            const betaBonus = betaLevel * 8;
+
+            // Support bonus
+            let supportBonus = 0;
+            if (gameState.selectedSupport) {
+                const action = SUPPORT_ACTIONS.find(a => a.id === gameState.selectedSupport);
+                if (action.effect === 'success') supportBonus = action.value;
+                if (action.effect === 'psyche') supportBonus = action.value;
+            }
+
+            // Fatigue penalty
+            const fatiguePenalty = Math.floor(state.fatigue * 0.3);
+
+            // Final calculation
+            const finalOdds = Math.min(95, Math.max(5,
+                baseChance + statBonus + effortMod + betaBonus + supportBonus - fatiguePenalty
+            ));
+
+            // Update display
+            document.getElementById('base-success').textContent = `${baseChance + statBonus}%`;
+            document.getElementById('base-success').className = 'stat-value ' +
+                (baseChance + statBonus >= 50 ? 'good' : baseChance + statBonus >= 30 ? 'medium' : 'bad');
+
+            document.getElementById('beta-bonus').textContent = `+${betaBonus}%`;
+            document.getElementById('support-bonus').textContent = `+${supportBonus}%`;
+            document.getElementById('fatigue-penalty').textContent = `-${fatiguePenalty}%`;
+
+            document.getElementById('final-odds').textContent = `${finalOdds}%`;
+            document.getElementById('final-odds').className = 'stat-value ' +
+                (finalOdds >= 50 ? 'good' : finalOdds >= 30 ? 'medium' : 'bad');
+
+            return finalOdds;
+        }
+
+        function renderSupportActions() {
+            const container = document.getElementById('support-actions');
+            container.innerHTML = '';
+
+            // Get supporting party members (not the current climber)
+            const supporters = gameState.activeParty.filter(id => id !== gameState.currentClimber);
+
+            SUPPORT_ACTIONS.forEach((action, i) => {
+                const supporter = CLIMBERS.find(c => c.id === supporters[i % supporters.length]);
+                const selected = gameState.selectedSupport === action.id;
+
+                const div = document.createElement('div');
+                div.className = 'support-action' + (selected ? ' selected' : '');
+                div.onclick = () => selectSupport(action.id);
+
+                div.innerHTML = `
+                    <div class="support-name">${action.name}</div>
+                    <div class="support-desc">${action.desc}</div>
+                    <div class="support-by">by ${supporter.name}</div>
+                `;
+
+                container.appendChild(div);
+            });
+        }
+
+        function selectSupport(actionId) {
+            if (gameState.selectedSupport === actionId) {
+                gameState.selectedSupport = null;
+            } else {
+                gameState.selectedSupport = actionId;
+            }
+            renderSupportActions();
+            updateOddsDisplay();
+        }
+
+        function commitAttempt() {
+            if (!gameState.selectedEffort) return;
+
+            const climber = CLIMBERS.find(c => c.id === gameState.currentClimber);
+            const state = gameState.climberState[climber.id];
+            const problem = gameState.currentProblem;
+            const rock = gameState.currentRock;
+
+            const finalOdds = updateOddsDisplay();
+            const roll = Math.random() * 100;
+            const success = roll < finalOdds;
+
+            gameState.totalAttempts++;
+
+            // Calculate outcomes
+            let results = {
+                success: success,
+                betaGained: false,
+                psycheChange: 0,
+                fatigueGain: 0,
+                skinDamage: 0,
+                injury: false
+            };
+
+            // Effort affects fatigue and risk
+            if (gameState.selectedEffort === 'casual') {
+                results.fatigueGain = 5;
+                results.betaGained = !success && Math.random() < 0.7; // High chance to learn
+            } else if (gameState.selectedEffort === 'send') {
+                results.fatigueGain = 15;
+                results.betaGained = !success && Math.random() < 0.4;
+            } else if (gameState.selectedEffort === 'limit') {
+                results.fatigueGain = 25;
+                results.skinDamage = 10;
+                if (!success && problem.risk === 'high' && Math.random() < 0.15) {
+                    results.injury = true;
+                }
+            }
+
+            // Psyche changes
+            if (success) {
+                results.psycheChange = 20;
+                gameState.totalSends++;
+            } else {
+                results.psycheChange = gameState.selectedEffort === 'limit' ? -15 : -5;
+            }
+
+            // Support action effects
+            if (gameState.selectedSupport === 'spot' && results.injury) {
+                results.injury = false; // Spot prevents injury
+            }
+            if (gameState.selectedSupport === 'hype') {
+                results.psycheChange += 10;
+            }
+
+            // Apply results
+            state.fatigue = Math.min(100, state.fatigue + results.fatigueGain);
+            state.psyche = Math.max(0, Math.min(100, state.psyche + results.psycheChange));
+            state.skin = Math.max(0, state.skin - results.skinDamage);
+
+            if (results.betaGained) {
+                state.beta[problem.id] = Math.min(3, (state.beta[problem.id] || 0) + 1);
+            }
+
+            if (success) {
+                gameState.rockProgress[rock.id].problems[problem.id] = true;
+
+                // Check if rock is cleared
+                const sentCount = Object.values(gameState.rockProgress[rock.id].problems).filter(Boolean).length;
+                if (sentCount >= 1 && !gameState.rockProgress[rock.id].cleared) {
+                    gameState.rockProgress[rock.id].cleared = true;
+                }
+            }
+
+            // Show result
+            showResult(results, climber, problem);
+        }
+
+        function showResult(results, climber, problem) {
+            const modal = document.getElementById('result-modal');
+
+            if (results.success) {
+                document.getElementById('result-icon').textContent = '🎉';
+                document.getElementById('result-title').textContent = 'SENT!';
+                document.getElementById('result-title').className = 'result-title success';
+                document.getElementById('result-message').textContent =
+                    `${climber.name} sends ${problem.name}!`;
+                log(`${climber.name} SENDS ${problem.name} (${problem.grade})!`, 'success');
+            } else if (results.injury) {
+                document.getElementById('result-icon').textContent = '🤕';
+                document.getElementById('result-title').textContent = 'TWEAKED';
+                document.getElementById('result-title').className = 'result-title injury';
+                document.getElementById('result-message').textContent =
+                    `${climber.name} takes a bad fall and tweaks something.`;
+                log(`${climber.name} gets injured on ${problem.name}!`, 'fail');
+            } else {
+                document.getElementById('result-icon').textContent = '💪';
+                document.getElementById('result-title').textContent = 'FALL';
+                document.getElementById('result-title').className = 'result-title fail';
+                document.getElementById('result-message').textContent =
+                    `${climber.name} falls but is uninjured.`;
+                log(`${climber.name} falls on ${problem.name}.`, 'fail');
+            }
+
+            let details = '';
+            if (results.betaGained) {
+                details += `<div class="result-detail">📝 Learned beta! (+8% next attempt)</div>`;
+            }
+            if (results.psycheChange > 0) {
+                details += `<div class="result-detail">😊 Psyche +${results.psycheChange}</div>`;
+            } else if (results.psycheChange < 0) {
+                details += `<div class="result-detail">😓 Psyche ${results.psycheChange}</div>`;
+            }
+            details += `<div class="result-detail">😮‍💨 Fatigue +${results.fatigueGain}</div>`;
+            if (results.skinDamage > 0) {
+                details += `<div class="result-detail">🩹 Skin -${results.skinDamage}</div>`;
+            }
+
+            document.getElementById('result-details').innerHTML = details;
+
+            modal.classList.add('active');
+        }
+
+        function closeResult() {
+            document.getElementById('result-modal').classList.remove('active');
+
+            // Return to crag view
+            showScreen('crag-view');
+            renderProblems();
+            drawRock();
+            updateRockProgress();
+            updatePartyDisplay();
+            updateRocksCleared();
+        }
+
+        // ========== LOGGING ==========
+        function log(message, type = 'info') {
+            const logPanel = document.getElementById('game-log');
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.textContent = `> ${message}`;
+            logPanel.appendChild(entry);
+            logPanel.scrollTop = logPanel.scrollHeight;
+        }
+
+        // ========== INITIALIZATION ==========
+        document.addEventListener('DOMContentLoaded', () => {
+            // Ready to start
+        });
+    </script>
+</body>
+</html>
