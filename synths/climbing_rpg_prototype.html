@@ -875,6 +875,11 @@
             movingDirection: null,
             nearbyRock: null,
 
+            // Position history for follower trail (like Pokemon)
+            positionHistory: [],
+            historyMaxLength: 100,
+            followerSpacing: 12, // frames between each follower
+
             // Progress tracking
             rockProgress: {}, // { rockId: { cleared: bool, problems: { problemId: sent } } }
             climberState: {}, // { climberId: { fatigue, psyche, skin, beta: {} } }
@@ -1038,6 +1043,10 @@
             const pos = gameState.partyPosition;
             const margin = 30;
 
+            // Store old position before moving
+            const oldX = pos.x;
+            const oldY = pos.y;
+
             switch (gameState.movingDirection) {
                 case 'up':
                     pos.y = Math.max(margin, pos.y - speed);
@@ -1051,6 +1060,16 @@
                 case 'right':
                     pos.x = Math.min(worldCanvas.width - margin, pos.x + speed);
                     break;
+            }
+
+            // If position changed, record it in history
+            if (pos.x !== oldX || pos.y !== oldY) {
+                gameState.positionHistory.unshift({ x: pos.x, y: pos.y });
+
+                // Trim history to max length
+                if (gameState.positionHistory.length > gameState.historyMaxLength) {
+                    gameState.positionHistory.pop();
+                }
             }
         }
 
@@ -1244,17 +1263,54 @@
             ctx.textBaseline = 'middle';
             ctx.fillText('🧗', px, py);
 
-            // Draw mini party members trailing behind
-            gameState.activeParty.slice(0, 3).forEach((id, i) => {
-                const climber = CLIMBERS.find(c => c.id === id);
-                const offset = (i + 1) * 18;
-                const trailX = px - offset * 0.7;
-                const trailY = py + offset * 0.3;
+            // Draw party members following the leader's path (Pokemon style)
+            const followers = gameState.activeParty.slice(1, 4); // Up to 3 followers
+            const spacing = gameState.followerSpacing;
+            const history = gameState.positionHistory;
 
+            followers.forEach((id, i) => {
+                const climber = CLIMBERS.find(c => c.id === id);
+                const historyIndex = (i + 1) * spacing;
+
+                // Get position from history, or fallback to offset from leader
+                let followerX, followerY;
+                if (history.length > historyIndex) {
+                    followerX = history[historyIndex].x;
+                    followerY = history[historyIndex].y;
+                } else if (history.length > 0) {
+                    // Use last known position if history isn't long enough yet
+                    const lastPos = history[history.length - 1];
+                    followerX = lastPos.x - (i + 1) * 15;
+                    followerY = lastPos.y + (i + 1) * 8;
+                } else {
+                    // No history yet, offset from leader
+                    followerX = px - (i + 1) * 15;
+                    followerY = py + (i + 1) * 8;
+                }
+
+                // Follower shadow
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+                ctx.beginPath();
+                ctx.ellipse(followerX, followerY + 6, 7, 3, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Follower circle
                 ctx.fillStyle = climber.color;
                 ctx.beginPath();
-                ctx.arc(trailX, trailY, 6, 0, Math.PI * 2);
+                ctx.arc(followerX, followerY, 8, 0, Math.PI * 2);
                 ctx.fill();
+
+                // Follower border
+                ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // Follower initial
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 8px Courier New';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(climber.emoji.charAt(0), followerX, followerY);
             });
         }
 
@@ -1276,9 +1332,13 @@
                 }
             }
 
-            // Otherwise, set party destination (simple click-to-move)
+            // Otherwise, teleport party to clicked location
             gameState.partyPosition.x = x;
             gameState.partyPosition.y = y;
+
+            // Reset position history on teleport so followers gather at new position
+            gameState.positionHistory = [];
+
             checkNearbyRocks();
         }
 
@@ -1363,6 +1423,10 @@
             gameState.currentProblem = null;
             gameState.movingDirection = null;
             keysPressed = {};
+
+            // Reset position history so followers gather at leader
+            gameState.positionHistory = [];
+
             showScreen('world-map');
             checkNearbyRocks();
             drawWorldMap();
