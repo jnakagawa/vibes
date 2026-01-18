@@ -793,22 +793,33 @@
             { id: 'cindy', name: 'Cindy', color: '#f44336', power: 6, technique: 7, endurance: 10, psyche: 9, specialty: 'endurance', emoji: 'C' }
         ];
 
+        // Rock positions as percentages of map dimensions for responsive scaling
         const ROCKS = [
             {
-                id: 'warmup-slab',
-                name: 'Warm-Up Slab',
-                x: 150, y: 200,
-                description: 'A friendly slab to get the blood flowing',
+                id: 'grandpa-peabody',
+                name: 'Grandpa Peabody',
+                xPct: 0.42, yPct: 0.12,
+                description: 'A tall, intimidating face with classic lines',
                 problems: [
-                    { id: 'p1', name: 'Easy Feet', grade: 'V0', style: ['slab'], risk: 'low', baseChance: 85 },
-                    { id: 'p2', name: 'Slabby McSlabface', grade: 'V1', style: ['slab', 'tech'], risk: 'low', baseChance: 70 },
-                    { id: 'p3', name: 'Balance Beam', grade: 'V2', style: ['slab', 'balance'], risk: 'medium', baseChance: 55 }
+                    { id: 'p8', name: 'The Arete', grade: 'V2', style: ['arete', 'balance'], risk: 'high', baseChance: 50 },
+                    { id: 'p9', name: 'Peabody Direct', grade: 'V5', style: ['power', 'tech'], risk: 'high', baseChance: 25 },
+                    { id: 'p10', name: 'High Step Heaven', grade: 'V4', style: ['slab', 'height'], risk: 'high', baseChance: 30 }
+                ]
+            },
+            {
+                id: 'buttermilk-stem',
+                name: 'Buttermilk Stem',
+                xPct: 0.28, yPct: 0.18,
+                description: 'Technical stemming and delicate feet',
+                problems: [
+                    { id: 'p1', name: 'Stem Cell', grade: 'V1', style: ['slab', 'tech'], risk: 'low', baseChance: 70 },
+                    { id: 'p2', name: 'The Stem', grade: 'V3', style: ['tech', 'balance'], risk: 'medium', baseChance: 50 }
                 ]
             },
             {
                 id: 'the-cube',
-                name: 'The Cube',
-                x: 350, y: 150,
+                name: 'Cube Boulder',
+                xPct: 0.38, yPct: 0.28,
                 description: 'A compact boulder with varied problems',
                 problems: [
                     { id: 'p4', name: 'Rail Rider', grade: 'V1', style: ['jug'], risk: 'low', baseChance: 75 },
@@ -818,20 +829,9 @@
                 ]
             },
             {
-                id: 'grandpa-peabody',
-                name: 'Grandpa Peabody',
-                x: 550, y: 280,
-                description: 'A tall, intimidating face with classic lines',
-                problems: [
-                    { id: 'p8', name: 'The Arete', grade: 'V2', style: ['arete', 'balance'], risk: 'high', baseChance: 50 },
-                    { id: 'p9', name: 'Peabody Direct', grade: 'V5', style: ['power', 'tech'], risk: 'high', baseChance: 25 },
-                    { id: 'p10', name: 'High Step Heaven', grade: 'V4', style: ['slab', 'height'], risk: 'high', baseChance: 30 }
-                ]
-            },
-            {
                 id: 'the-hulk',
-                name: 'The Hulk',
-                x: 280, y: 380,
+                name: 'Hulk Boulder',
+                xPct: 0.52, yPct: 0.35,
                 description: 'Steep and powerful. Compression city.',
                 problems: [
                     { id: 'p11', name: 'Hulk Smash', grade: 'V4', style: ['compression', 'power'], risk: 'medium', baseChance: 35 },
@@ -840,17 +840,55 @@
                 ]
             },
             {
+                id: 'iron-man',
+                name: 'Iron Man Traverse',
+                xPct: 0.22, yPct: 0.42,
+                description: 'Long horizontal traverse testing endurance',
+                problems: [
+                    { id: 'p17', name: 'Iron Man', grade: 'V4', style: ['traverse', 'endurance'], risk: 'low', baseChance: 40 },
+                    { id: 'p18', name: 'Warm Up Traverse', grade: 'V0', style: ['traverse', 'jug'], risk: 'low', baseChance: 85 }
+                ]
+            },
+            {
                 id: 'birthday-boulder',
                 name: 'Birthday Boulder',
-                x: 480, y: 420,
+                xPct: 0.35, yPct: 0.52,
                 description: 'Sharp crimps and precise movement',
                 problems: [
                     { id: 'p14', name: 'Birthday Left', grade: 'V3', style: ['crimp', 'tech'], risk: 'medium', baseChance: 45 },
                     { id: 'p15', name: 'Birthday Right', grade: 'V5', style: ['crimp', 'power'], risk: 'high', baseChance: 28 },
                     { id: 'p16', name: 'Candle Stick', grade: 'V2', style: ['balance', 'slab'], risk: 'low', baseChance: 55 }
                 ]
+            },
+            {
+                id: 'solarium',
+                name: 'Solarium',
+                xPct: 0.18, yPct: 0.62,
+                description: 'Sunny boulder with classic problems',
+                problems: [
+                    { id: 'p19', name: 'Solar Flare', grade: 'V2', style: ['slab', 'balance'], risk: 'medium', baseChance: 55 },
+                    { id: 'p20', name: 'Sunspot', grade: 'V4', style: ['crimp', 'tech'], risk: 'medium', baseChance: 38 }
+                ]
+            },
+            {
+                id: 'druid-stones',
+                name: 'Druid Stones',
+                xPct: 0.32, yPct: 0.72,
+                description: 'Mysterious cluster with hidden gems',
+                problems: [
+                    { id: 'p21', name: 'Druid Stone', grade: 'V3', style: ['power', 'tech'], risk: 'medium', baseChance: 45 },
+                    { id: 'p22', name: 'Mystic', grade: 'V5', style: ['compression'], risk: 'high', baseChance: 30 }
+                ]
             }
         ];
+
+        // Helper to get rock pixel positions
+        function getRockPosition(rock) {
+            return {
+                x: rock.xPct * worldCanvas.width,
+                y: rock.yPct * worldCanvas.height
+            };
+        }
 
         const SUPPORT_ACTIONS = [
             { id: 'beta', name: 'Call Beta', desc: 'Share sequence knowledge (+15% success)', effect: 'success', value: 15 },
@@ -869,8 +907,8 @@
             selectedEffort: null,
             selectedSupport: null,
 
-            // Party position on world map
-            partyPosition: { x: 100, y: 250 },
+            // Party position on world map (starts near bottom-left of map)
+            partyPosition: { x: 80, y: 350 },
             partySpeed: 4,
             movingDirection: null,
             nearbyRock: null,
@@ -928,11 +966,26 @@
         let selectedRockId = null;
         let gameLoopId = null;
         let keysPressed = {};
-        let terrainFeatures = []; // Store terrain for consistent rendering
+        let mapImage = null; // Background map image
+        let mapImageLoaded = false;
 
         function initWorldMap() {
             worldCanvas = document.getElementById('world-canvas');
             worldCtx = worldCanvas.getContext('2d');
+
+            // Load the Buttermilks map image
+            mapImage = new Image();
+            mapImage.crossOrigin = 'anonymous';
+            mapImage.onload = () => {
+                mapImageLoaded = true;
+                drawWorldMap();
+            };
+            mapImage.onerror = () => {
+                console.log('Map image not found, using fallback');
+                mapImageLoaded = false;
+            };
+            // Try relative path first, then absolute
+            mapImage.src = 'assets/buttermilks_map.jpg';
 
             resizeWorldCanvas();
             window.addEventListener('resize', resizeWorldCanvas);
@@ -942,26 +995,11 @@
             window.addEventListener('keydown', handleKeyDown);
             window.addEventListener('keyup', handleKeyUp);
 
-            // Generate terrain features once
-            generateTerrain();
-
             // Start game loop
             startGameLoop();
 
             drawWorldMap();
             updateRocksCleared();
-        }
-
-        function generateTerrain() {
-            terrainFeatures = [];
-            for (let i = 0; i < 30; i++) {
-                terrainFeatures.push({
-                    x: Math.random() * 800,
-                    y: Math.random() * 600,
-                    radius: 15 + Math.random() * 35,
-                    shade: Math.random() > 0.5 ? '#b8956b' : '#d4b896'
-                });
-            }
         }
 
         function handleKeyDown(e) {
@@ -1081,8 +1119,9 @@
             let nearestDist = Infinity;
 
             for (const rock of ROCKS) {
-                const dx = pos.x - rock.x;
-                const dy = pos.y - rock.y;
+                const rockPos = getRockPosition(rock);
+                const dx = pos.x - rockPos.x;
+                const dy = pos.y - rockPos.y;
                 const dist = Math.sqrt(dx * dx + dy * dy);
 
                 if (dist < interactDistance && dist < nearestDist) {
@@ -1114,10 +1153,7 @@
             worldCanvas.width = container.clientWidth;
             worldCanvas.height = container.clientHeight - 120; // Account for log panel
 
-            // Regenerate terrain for new canvas size
-            generateTerrain();
-
-            // Keep party in bounds
+            // Keep party in bounds (using percentage-based position)
             gameState.partyPosition.x = Math.min(gameState.partyPosition.x, worldCanvas.width - 30);
             gameState.partyPosition.y = Math.min(gameState.partyPosition.y, worldCanvas.height - 30);
         }
@@ -1130,34 +1166,36 @@
             // Clear
             ctx.clearRect(0, 0, w, h);
 
-            // Draw terrain base
-            ctx.fillStyle = '#c9a86c';
-            ctx.fillRect(0, 0, w, h);
+            // Draw map image background (or stylized fallback)
+            if (mapImageLoaded && mapImage) {
+                // Draw image to cover canvas
+                ctx.drawImage(mapImage, 0, 0, w, h);
+            } else {
+                // Stylized fallback terrain (Buttermilks-inspired)
+                // Base sandy color with blue-ish edges
+                const gradient = ctx.createRadialGradient(w * 0.4, h * 0.5, 0, w * 0.5, h * 0.5, w * 0.8);
+                gradient.addColorStop(0, '#d4c4a8');
+                gradient.addColorStop(0.6, '#c9b896');
+                gradient.addColorStop(1, '#9ab8bc');
+                ctx.fillStyle = gradient;
+                ctx.fillRect(0, 0, w, h);
 
-            // Draw cached terrain features
-            terrainFeatures.forEach(feature => {
-                ctx.fillStyle = feature.shade;
-                ctx.beginPath();
-                ctx.arc(feature.x, feature.y, feature.radius, 0, Math.PI * 2);
-                ctx.fill();
-            });
-
-            // Draw paths between rocks
-            ctx.strokeStyle = '#a08060';
-            ctx.lineWidth = 3;
-            ctx.setLineDash([5, 5]);
-            for (let i = 0; i < ROCKS.length - 1; i++) {
-                const r1 = ROCKS[i];
-                const r2 = ROCKS[i + 1];
-                ctx.beginPath();
-                ctx.moveTo(r1.x, r1.y);
-                ctx.lineTo(r2.x, r2.y);
-                ctx.stroke();
+                // Add subtle boulder shapes in background (deterministic positions)
+                ctx.globalAlpha = 0.4;
+                ctx.fillStyle = '#a09080';
+                ROCKS.forEach(rock => {
+                    const pos = getRockPosition(rock);
+                    // Draw a subtle boulder silhouette
+                    ctx.beginPath();
+                    ctx.ellipse(pos.x, pos.y - 3, 28, 20, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+                ctx.globalAlpha = 1.0;
             }
-            ctx.setLineDash([]);
 
-            // Draw rocks
+            // Draw rock markers and labels
             ROCKS.forEach(rock => {
+                const pos = getRockPosition(rock);
                 const progress = gameState.rockProgress[rock.id];
                 const isCleared = progress.cleared;
                 const sentCount = Object.values(progress.problems).filter(Boolean).length;
@@ -1165,61 +1203,71 @@
                 const isComplete = sentCount === totalCount;
 
                 // Check if party is nearby
-                const dx = gameState.partyPosition.x - rock.x;
-                const dy = gameState.partyPosition.y - rock.y;
+                const dx = gameState.partyPosition.x - pos.x;
+                const dy = gameState.partyPosition.y - pos.y;
                 const dist = Math.sqrt(dx * dx + dy * dy);
                 const isNearby = dist < 60;
 
-                // Rock shadow
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-                ctx.beginPath();
-                ctx.ellipse(rock.x + 5, rock.y + 45, 35, 15, 0, 0, Math.PI * 2);
-                ctx.fill();
+                // Draw marker circle
+                const markerRadius = isNearby ? 18 : 14;
 
-                // Rock body
-                const gradient = ctx.createLinearGradient(rock.x - 30, rock.y - 40, rock.x + 30, rock.y + 40);
-                if (isComplete) {
-                    gradient.addColorStop(0, '#ffd700');
-                    gradient.addColorStop(1, '#b8860b');
-                } else if (isCleared) {
-                    gradient.addColorStop(0, '#81c784');
-                    gradient.addColorStop(1, '#4caf50');
-                } else {
-                    gradient.addColorStop(0, '#9e9e9e');
-                    gradient.addColorStop(1, '#616161');
+                // Outer glow for nearby
+                if (isNearby) {
+                    ctx.beginPath();
+                    ctx.arc(pos.x, pos.y, markerRadius + 8, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(255, 183, 77, 0.4)';
+                    ctx.fill();
                 }
 
-                ctx.fillStyle = gradient;
+                // Marker background
                 ctx.beginPath();
-                ctx.moveTo(rock.x - 30, rock.y + 30);
-                ctx.lineTo(rock.x - 25, rock.y - 20);
-                ctx.lineTo(rock.x - 5, rock.y - 40);
-                ctx.lineTo(rock.x + 15, rock.y - 35);
-                ctx.lineTo(rock.x + 30, rock.y - 10);
-                ctx.lineTo(rock.x + 25, rock.y + 30);
-                ctx.closePath();
+                ctx.arc(pos.x, pos.y, markerRadius, 0, Math.PI * 2);
+                if (isComplete) {
+                    ctx.fillStyle = '#ffd700';
+                } else if (isCleared) {
+                    ctx.fillStyle = '#4caf50';
+                } else {
+                    ctx.fillStyle = 'rgba(80, 80, 80, 0.85)';
+                }
                 ctx.fill();
-                ctx.strokeStyle = isNearby ? '#ffb74d' : '#424242';
+
+                // Marker border
+                ctx.strokeStyle = isNearby ? '#ffb74d' : 'rgba(255,255,255,0.8)';
                 ctx.lineWidth = isNearby ? 3 : 2;
                 ctx.stroke();
 
-                // Interaction glow when nearby
-                if (isNearby) {
-                    ctx.strokeStyle = 'rgba(255, 183, 77, 0.5)';
-                    ctx.lineWidth = 6;
-                    ctx.stroke();
+                // Progress text inside marker
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 10px Courier New';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(`${sentCount}/${totalCount}`, pos.x, pos.y);
+
+                // Rock name label with background
+                const labelY = pos.y + markerRadius + 12;
+                ctx.font = 'bold 11px Courier New';
+                const textWidth = ctx.measureText(rock.name).width;
+
+                // Label background
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                const padding = 4;
+                ctx.fillRect(pos.x - textWidth/2 - padding, labelY - 8, textWidth + padding*2, 16);
+
+                // Label border for cleared/complete
+                if (isComplete) {
+                    ctx.strokeStyle = '#ffd700';
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(pos.x - textWidth/2 - padding, labelY - 8, textWidth + padding*2, 16);
+                } else if (isCleared) {
+                    ctx.strokeStyle = '#4caf50';
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(pos.x - textWidth/2 - padding, labelY - 8, textWidth + padding*2, 16);
                 }
 
-                // Rock name
-                ctx.fillStyle = '#fff';
-                ctx.font = 'bold 12px Courier New';
-                ctx.textAlign = 'center';
-                ctx.fillText(rock.name, rock.x, rock.y + 55);
-
-                // Progress indicator
-                ctx.fillStyle = '#e8e8e8';
-                ctx.font = '10px Courier New';
-                ctx.fillText(`${sentCount}/${totalCount}`, rock.x, rock.y + 68);
+                // Label text
+                ctx.fillStyle = isComplete ? '#ffd700' : (isCleared ? '#81c784' : '#fff');
+                ctx.textBaseline = 'middle';
+                ctx.fillText(rock.name, pos.x, labelY);
             });
 
             // Draw party at current position
@@ -1321,12 +1369,13 @@
 
             // Check if clicked on a rock (teleport party to rock and enter)
             for (const rock of ROCKS) {
-                const dx = x - rock.x;
-                const dy = y - rock.y;
+                const rockPos = getRockPosition(rock);
+                const dx = x - rockPos.x;
+                const dy = y - rockPos.y;
                 if (Math.sqrt(dx * dx + dy * dy) < 40) {
                     // Move party to rock location
-                    gameState.partyPosition.x = rock.x - 50;
-                    gameState.partyPosition.y = rock.y + 20;
+                    gameState.partyPosition.x = rockPos.x - 50;
+                    gameState.partyPosition.y = rockPos.y + 20;
                     enterCrag(rock);
                     return;
                 }
