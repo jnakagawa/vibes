@@ -528,6 +528,100 @@
             margin-top: 10px;
             color: #c8e6c9;
         }
+
+        /* D-Pad Controls */
+        .dpad-container {
+            position: absolute;
+            left: 20px;
+            bottom: 140px;
+            display: grid;
+            grid-template-columns: 50px 50px 50px;
+            grid-template-rows: 50px 50px 50px;
+            gap: 5px;
+        }
+
+        .dpad-btn {
+            width: 50px;
+            height: 50px;
+            background: rgba(0, 0, 0, 0.7);
+            border: 2px solid #ffb74d;
+            border-radius: 8px;
+            color: #ffb74d;
+            font-size: 1.5rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.15s;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        .dpad-btn:hover, .dpad-btn:active {
+            background: rgba(255, 183, 77, 0.3);
+            transform: scale(0.95);
+        }
+
+        .dpad-btn:active {
+            background: rgba(255, 183, 77, 0.5);
+        }
+
+        .dpad-up { grid-column: 2; grid-row: 1; }
+        .dpad-left { grid-column: 1; grid-row: 2; }
+        .dpad-right { grid-column: 3; grid-row: 2; }
+        .dpad-down { grid-column: 2; grid-row: 3; }
+
+        .dpad-center {
+            grid-column: 2;
+            grid-row: 2;
+            background: rgba(76, 175, 80, 0.3);
+            border-color: #4caf50;
+            color: #4caf50;
+            font-size: 0.7rem;
+        }
+
+        .dpad-center:hover {
+            background: rgba(76, 175, 80, 0.5);
+        }
+
+        /* Nearby rock indicator */
+        .nearby-indicator {
+            position: absolute;
+            left: 20px;
+            bottom: 320px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 10px 15px;
+            border-radius: 8px;
+            border: 2px solid #4caf50;
+            display: none;
+        }
+
+        .nearby-indicator.active {
+            display: block;
+        }
+
+        .nearby-rock-name {
+            color: #4caf50;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .nearby-hint {
+            color: #90a4ae;
+            font-size: 0.8rem;
+        }
+
+        /* Movement hint */
+        .movement-hint {
+            position: absolute;
+            left: 20px;
+            top: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            color: #90a4ae;
+        }
     </style>
 </head>
 <body>
@@ -553,6 +647,26 @@
         <div class="map-container">
             <canvas id="world-canvas"></canvas>
             <div class="party-sidebar" id="party-display"></div>
+
+            <!-- Movement hint -->
+            <div class="movement-hint">
+                Arrow keys or D-pad to move • Enter/Space near rock to climb
+            </div>
+
+            <!-- Nearby rock indicator -->
+            <div class="nearby-indicator" id="nearby-indicator">
+                <div class="nearby-rock-name" id="nearby-rock-name"></div>
+                <div class="nearby-hint">Press ENTER or tap ● to approach</div>
+            </div>
+
+            <!-- D-Pad Controls -->
+            <div class="dpad-container">
+                <button class="dpad-btn dpad-up" onmousedown="startMove('up')" onmouseup="stopMove()" onmouseleave="stopMove()" ontouchstart="startMove('up')" ontouchend="stopMove()">▲</button>
+                <button class="dpad-btn dpad-left" onmousedown="startMove('left')" onmouseup="stopMove()" onmouseleave="stopMove()" ontouchstart="startMove('left')" ontouchend="stopMove()">◀</button>
+                <button class="dpad-btn dpad-center" onclick="interactWithNearbyRock()">●</button>
+                <button class="dpad-btn dpad-right" onmousedown="startMove('right')" onmouseup="stopMove()" onmouseleave="stopMove()" ontouchstart="startMove('right')" ontouchend="stopMove()">▶</button>
+                <button class="dpad-btn dpad-down" onmousedown="startMove('down')" onmouseup="stopMove()" onmouseleave="stopMove()" ontouchstart="startMove('down')" ontouchend="stopMove()">▼</button>
+            </div>
         </div>
     </div>
 
@@ -755,6 +869,12 @@
             selectedEffort: null,
             selectedSupport: null,
 
+            // Party position on world map
+            partyPosition: { x: 100, y: 250 },
+            partySpeed: 4,
+            movingDirection: null,
+            nearbyRock: null,
+
             // Progress tracking
             rockProgress: {}, // { rockId: { cleared: bool, problems: { problemId: sent } } }
             climberState: {}, // { climberId: { fatigue, psyche, skin, beta: {} } }
@@ -801,6 +921,9 @@
         // ========== WORLD MAP ==========
         let worldCanvas, worldCtx;
         let selectedRockId = null;
+        let gameLoopId = null;
+        let keysPressed = {};
+        let terrainFeatures = []; // Store terrain for consistent rendering
 
         function initWorldMap() {
             worldCanvas = document.getElementById('world-canvas');
@@ -810,15 +933,174 @@
             window.addEventListener('resize', resizeWorldCanvas);
             worldCanvas.addEventListener('click', handleMapClick);
 
+            // Keyboard controls
+            window.addEventListener('keydown', handleKeyDown);
+            window.addEventListener('keyup', handleKeyUp);
+
+            // Generate terrain features once
+            generateTerrain();
+
+            // Start game loop
+            startGameLoop();
+
             drawWorldMap();
             updateRocksCleared();
+        }
+
+        function generateTerrain() {
+            terrainFeatures = [];
+            for (let i = 0; i < 30; i++) {
+                terrainFeatures.push({
+                    x: Math.random() * 800,
+                    y: Math.random() * 600,
+                    radius: 15 + Math.random() * 35,
+                    shade: Math.random() > 0.5 ? '#b8956b' : '#d4b896'
+                });
+            }
+        }
+
+        function handleKeyDown(e) {
+            if (!document.getElementById('world-map').classList.contains('active')) return;
+
+            keysPressed[e.key] = true;
+
+            // Arrow keys
+            if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
+                gameState.movingDirection = 'up';
+                e.preventDefault();
+            } else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
+                gameState.movingDirection = 'down';
+                e.preventDefault();
+            } else if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
+                gameState.movingDirection = 'left';
+                e.preventDefault();
+            } else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
+                gameState.movingDirection = 'right';
+                e.preventDefault();
+            }
+
+            // Enter/Space to interact
+            if (e.key === 'Enter' || e.key === ' ') {
+                interactWithNearbyRock();
+                e.preventDefault();
+            }
+        }
+
+        function handleKeyUp(e) {
+            keysPressed[e.key] = false;
+
+            // Check if any movement keys are still pressed
+            const upPressed = keysPressed['ArrowUp'] || keysPressed['w'] || keysPressed['W'];
+            const downPressed = keysPressed['ArrowDown'] || keysPressed['s'] || keysPressed['S'];
+            const leftPressed = keysPressed['ArrowLeft'] || keysPressed['a'] || keysPressed['A'];
+            const rightPressed = keysPressed['ArrowRight'] || keysPressed['d'] || keysPressed['D'];
+
+            if (!upPressed && !downPressed && !leftPressed && !rightPressed) {
+                gameState.movingDirection = null;
+            } else if (upPressed) {
+                gameState.movingDirection = 'up';
+            } else if (downPressed) {
+                gameState.movingDirection = 'down';
+            } else if (leftPressed) {
+                gameState.movingDirection = 'left';
+            } else if (rightPressed) {
+                gameState.movingDirection = 'right';
+            }
+        }
+
+        function startMove(direction) {
+            gameState.movingDirection = direction;
+        }
+
+        function stopMove() {
+            gameState.movingDirection = null;
+        }
+
+        function startGameLoop() {
+            if (gameLoopId) cancelAnimationFrame(gameLoopId);
+
+            function gameLoop() {
+                if (document.getElementById('world-map').classList.contains('active')) {
+                    updatePartyPosition();
+                    checkNearbyRocks();
+                    drawWorldMap();
+                }
+                gameLoopId = requestAnimationFrame(gameLoop);
+            }
+
+            gameLoopId = requestAnimationFrame(gameLoop);
+        }
+
+        function updatePartyPosition() {
+            if (!gameState.movingDirection) return;
+
+            const speed = gameState.partySpeed;
+            const pos = gameState.partyPosition;
+            const margin = 30;
+
+            switch (gameState.movingDirection) {
+                case 'up':
+                    pos.y = Math.max(margin, pos.y - speed);
+                    break;
+                case 'down':
+                    pos.y = Math.min(worldCanvas.height - margin, pos.y + speed);
+                    break;
+                case 'left':
+                    pos.x = Math.max(margin, pos.x - speed);
+                    break;
+                case 'right':
+                    pos.x = Math.min(worldCanvas.width - margin, pos.x + speed);
+                    break;
+            }
+        }
+
+        function checkNearbyRocks() {
+            const pos = gameState.partyPosition;
+            const interactDistance = 60;
+
+            let nearest = null;
+            let nearestDist = Infinity;
+
+            for (const rock of ROCKS) {
+                const dx = pos.x - rock.x;
+                const dy = pos.y - rock.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist < interactDistance && dist < nearestDist) {
+                    nearest = rock;
+                    nearestDist = dist;
+                }
+            }
+
+            gameState.nearbyRock = nearest;
+
+            // Update UI indicator
+            const indicator = document.getElementById('nearby-indicator');
+            if (nearest) {
+                indicator.classList.add('active');
+                document.getElementById('nearby-rock-name').textContent = nearest.name;
+            } else {
+                indicator.classList.remove('active');
+            }
+        }
+
+        function interactWithNearbyRock() {
+            if (gameState.nearbyRock) {
+                enterCrag(gameState.nearbyRock);
+            }
         }
 
         function resizeWorldCanvas() {
             const container = worldCanvas.parentElement;
             worldCanvas.width = container.clientWidth;
             worldCanvas.height = container.clientHeight - 120; // Account for log panel
-            drawWorldMap();
+
+            // Regenerate terrain for new canvas size
+            generateTerrain();
+
+            // Keep party in bounds
+            gameState.partyPosition.x = Math.min(gameState.partyPosition.x, worldCanvas.width - 30);
+            gameState.partyPosition.y = Math.min(gameState.partyPosition.y, worldCanvas.height - 30);
         }
 
         function drawWorldMap() {
@@ -829,17 +1111,17 @@
             // Clear
             ctx.clearRect(0, 0, w, h);
 
-            // Draw terrain features (simple placeholder)
+            // Draw terrain base
             ctx.fillStyle = '#c9a86c';
             ctx.fillRect(0, 0, w, h);
 
-            // Draw some terrain variation
-            ctx.fillStyle = '#b8956b';
-            for (let i = 0; i < 20; i++) {
+            // Draw cached terrain features
+            terrainFeatures.forEach(feature => {
+                ctx.fillStyle = feature.shade;
                 ctx.beginPath();
-                ctx.arc(Math.random() * w, Math.random() * h, 20 + Math.random() * 40, 0, Math.PI * 2);
+                ctx.arc(feature.x, feature.y, feature.radius, 0, Math.PI * 2);
                 ctx.fill();
-            }
+            });
 
             // Draw paths between rocks
             ctx.strokeStyle = '#a08060';
@@ -862,6 +1144,12 @@
                 const sentCount = Object.values(progress.problems).filter(Boolean).length;
                 const totalCount = rock.problems.length;
                 const isComplete = sentCount === totalCount;
+
+                // Check if party is nearby
+                const dx = gameState.partyPosition.x - rock.x;
+                const dy = gameState.partyPosition.y - rock.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                const isNearby = dist < 60;
 
                 // Rock shadow
                 ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
@@ -892,9 +1180,16 @@
                 ctx.lineTo(rock.x + 25, rock.y + 30);
                 ctx.closePath();
                 ctx.fill();
-                ctx.strokeStyle = '#424242';
-                ctx.lineWidth = 2;
+                ctx.strokeStyle = isNearby ? '#ffb74d' : '#424242';
+                ctx.lineWidth = isNearby ? 3 : 2;
                 ctx.stroke();
+
+                // Interaction glow when nearby
+                if (isNearby) {
+                    ctx.strokeStyle = 'rgba(255, 183, 77, 0.5)';
+                    ctx.lineWidth = 6;
+                    ctx.stroke();
+                }
 
                 // Rock name
                 ctx.fillStyle = '#fff';
@@ -908,32 +1203,83 @@
                 ctx.fillText(`${sentCount}/${totalCount}`, rock.x, rock.y + 68);
             });
 
-            // Draw party position (at first uncleared rock or last position)
-            const partyRock = ROCKS.find(r => !gameState.rockProgress[r.id].cleared) || ROCKS[0];
+            // Draw party at current position
+            const px = gameState.partyPosition.x;
+            const py = gameState.partyPosition.y;
+
+            // Party shadow
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+            ctx.beginPath();
+            ctx.ellipse(px, py + 12, 15, 6, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Party circle
             ctx.fillStyle = '#ffb74d';
             ctx.beginPath();
-            ctx.arc(partyRock.x - 50, partyRock.y + 20, 8, 0, Math.PI * 2);
+            ctx.arc(px, py, 14, 0, Math.PI * 2);
             ctx.fill();
+            ctx.strokeStyle = '#ff8f00';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+
+            // Direction indicator when moving
+            if (gameState.movingDirection) {
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                let arrowX = px, arrowY = py;
+                switch(gameState.movingDirection) {
+                    case 'up': arrowY -= 20; break;
+                    case 'down': arrowY += 20; break;
+                    case 'left': arrowX -= 20; break;
+                    case 'right': arrowX += 20; break;
+                }
+                ctx.arc(arrowX, arrowY, 4, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Party emoji
             ctx.fillStyle = '#fff';
-            ctx.font = 'bold 10px Courier New';
+            ctx.font = 'bold 14px Courier New';
             ctx.textAlign = 'center';
-            ctx.fillText('🧗', partyRock.x - 50, partyRock.y + 24);
+            ctx.textBaseline = 'middle';
+            ctx.fillText('🧗', px, py);
+
+            // Draw mini party members trailing behind
+            gameState.activeParty.slice(0, 3).forEach((id, i) => {
+                const climber = CLIMBERS.find(c => c.id === id);
+                const offset = (i + 1) * 18;
+                const trailX = px - offset * 0.7;
+                const trailY = py + offset * 0.3;
+
+                ctx.fillStyle = climber.color;
+                ctx.beginPath();
+                ctx.arc(trailX, trailY, 6, 0, Math.PI * 2);
+                ctx.fill();
+            });
         }
 
         function handleMapClick(e) {
             const rect = worldCanvas.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
+            const x = (e.clientX - rect.left) * (worldCanvas.width / rect.width);
+            const y = (e.clientY - rect.top) * (worldCanvas.height / rect.height);
 
-            // Check if clicked on a rock
+            // Check if clicked on a rock (teleport party to rock and enter)
             for (const rock of ROCKS) {
                 const dx = x - rock.x;
                 const dy = y - rock.y;
                 if (Math.sqrt(dx * dx + dy * dy) < 40) {
+                    // Move party to rock location
+                    gameState.partyPosition.x = rock.x - 50;
+                    gameState.partyPosition.y = rock.y + 20;
                     enterCrag(rock);
                     return;
                 }
             }
+
+            // Otherwise, set party destination (simple click-to-move)
+            gameState.partyPosition.x = x;
+            gameState.partyPosition.y = y;
+            checkNearbyRocks();
         }
 
         function updateRocksCleared() {
@@ -1015,7 +1361,10 @@
         function returnToMap() {
             gameState.currentRock = null;
             gameState.currentProblem = null;
+            gameState.movingDirection = null;
+            keysPressed = {};
             showScreen('world-map');
+            checkNearbyRocks();
             drawWorldMap();
         }
 
