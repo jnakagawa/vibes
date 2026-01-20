@@ -984,8 +984,8 @@
                 console.log('Map image not found, using fallback');
                 mapImageLoaded = false;
             };
-            // Try relative path first, then absolute
-            mapImage.src = 'assets/buttermilks_map.jpg';
+            // Load from assets folder
+            mapImage.src = 'assets/buttermilks.jpeg';
 
             resizeWorldCanvas();
             window.addEventListener('resize', resizeWorldCanvas);
