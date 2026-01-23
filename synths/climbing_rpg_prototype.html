@@ -100,6 +100,7 @@
             flex: 1;
             position: relative;
             overflow: hidden;
+            min-height: 0; /* Allow flex shrinking */
         }
 
         #world-canvas {
@@ -287,9 +288,17 @@
             flex: 1;
             display: flex;
             flex-direction: column;
-            align-items: center;
+            align-items: stretch;
             justify-content: flex-start;
-            padding-top: 10px;
+            min-width: 0;
+        }
+
+        .right-panel {
+            width: 280px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            flex-shrink: 0;
         }
 
         .climber-display {
@@ -309,22 +318,60 @@
             font-weight: bold;
         }
 
+        .effort-overlay {
+            position: absolute;
+            bottom: 12px;
+            left: 12px;
+            right: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            pointer-events: none;
+        }
+
+        .climber-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 6px 12px;
+            border-radius: 20px;
+            pointer-events: auto;
+        }
+
+        .climber-badge .climber-avatar-large {
+            width: 28px;
+            height: 28px;
+            font-size: 0.8rem;
+            margin: 0;
+        }
+
+        .climber-badge #current-climber-name {
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+
+        .climber-stats-inline {
+            font-size: 0.75rem;
+            color: #90a4ae;
+        }
+
         .effort-selection {
             display: flex;
-            gap: 15px;
-            margin-bottom: 30px;
+            gap: 6px;
+            pointer-events: auto;
         }
 
         .effort-btn {
-            padding: 20px 30px;
-            font-size: 1rem;
+            padding: 8px 14px;
+            font-size: 0.85rem;
             font-family: inherit;
-            background: rgba(255, 255, 255, 0.1);
+            background: rgba(0, 0, 0, 0.7);
             border: 2px solid #666;
             color: #e8e8e8;
             cursor: pointer;
             transition: all 0.3s;
-            border-radius: 8px;
+            border-radius: 6px;
         }
 
         .effort-btn:hover {
@@ -361,17 +408,15 @@
         }
 
         .attempt-stats {
-            background: rgba(0, 0, 0, 0.5);
-            padding: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 12px 15px;
             border-radius: 10px;
-            margin-bottom: 20px;
-            min-width: 300px;
         }
 
         .stat-row {
             display: flex;
             justify-content: space-between;
-            margin: 8px 0;
+            margin: 4px 0;
         }
 
         .stat-label {
@@ -395,10 +440,11 @@
         }
 
         .support-panel {
-            width: 300px;
             background: rgba(0, 0, 0, 0.7);
             border-radius: 10px;
-            padding: 20px;
+            padding: 15px;
+            flex: 1;
+            overflow-y: auto;
         }
 
         .support-title {
@@ -451,15 +497,17 @@
         .attempt-canvas-container {
             position: relative;
             width: 100%;
-            max-width: 400px;
-            margin-bottom: 20px;
+            flex: 1;
+            min-height: 0;
         }
 
         #attempt-canvas {
             width: 100%;
+            height: 100%;
             border-radius: 10px;
             box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
             background: #333;
+            object-fit: contain;
         }
 
         .climb-progress-bar {
@@ -498,6 +546,8 @@
             z-index: 2000;
             flex-direction: column;
             padding: 20px;
+            overflow: hidden;
+            box-sizing: border-box;
         }
 
         .route-editor-overlay.active {
@@ -584,6 +634,7 @@
             display: flex;
             gap: 20px;
             min-height: 0;
+            overflow: hidden;
         }
 
         .route-editor-canvas-container {
@@ -591,13 +642,17 @@
             display: flex;
             flex-direction: column;
             min-height: 0;
+            max-height: calc(100vh - 220px);
         }
 
         #route-editor-canvas {
-            flex: 1;
+            width: 100%;
+            height: 100%;
+            max-height: 100%;
             border-radius: 10px;
             cursor: crosshair;
             background: #222;
+            object-fit: contain;
         }
 
         .route-editor-sidebar {
@@ -827,10 +882,29 @@
             font-size: 0.8rem;
             color: #90a4ae;
         }
+
+        /* Pokemon-style pixel dissolve transition */
+        #pixel-transition {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 9999;
+            pointer-events: none;
+            display: none;
+        }
+
+        #pixel-transition.active {
+            display: block;
+        }
     </style>
 </head>
 
 <body>
+    <!-- Pixel Dissolve Transition Overlay -->
+    <canvas id="pixel-transition"></canvas>
+
     <!-- Title Screen -->
     <div id="title-screen" class="screen active">
         <h1 class="title">🧗 CLIMBING RPG</h1>
@@ -906,38 +980,33 @@
         </div>
         <div class="attempt-container">
             <div class="attempt-main">
-                <!-- Climbing Animation Canvas -->
                 <div class="attempt-canvas-container" id="attempt-canvas-container">
-                    <canvas id="attempt-canvas" width="400" height="350"></canvas>
-                    <div class="climb-progress-bar">
-                        <div class="climb-progress-fill" id="climb-progress-fill"></div>
+                    <canvas id="attempt-canvas" width="600" height="500"></canvas>
+                    <div class="effort-overlay">
+                        <div class="climber-badge" id="climber-badge">
+                            <div class="climber-avatar-large" id="current-climber-avatar"></div>
+                            <span id="current-climber-name"></span>
+                            <span id="climber-stats-display" class="climber-stats-inline"></span>
+                        </div>
+                        <div class="effort-selection">
+                            <button class="effort-btn casual" onclick="selectEffort('casual')">🧘 Casual</button>
+                            <button class="effort-btn send" onclick="selectEffort('send')">🔥 Send</button>
+                            <button class="effort-btn limit" onclick="selectEffort('limit')">⚡ Limit</button>
+                        </div>
                     </div>
-                    <div class="climb-progress-text" id="climb-progress-text">Select effort and commit to climb</div>
                 </div>
-
-                <div class="climber-display" style="margin-bottom: 10px;">
-                    <div class="climber-avatar-large" id="current-climber-avatar" style="width: 50px; height: 50px; font-size: 1.2rem;"></div>
-                    <h3 id="current-climber-name" style="margin-top: 5px;"></h3>
-                    <div id="climber-stats-display" style="font-size: 0.85rem;"></div>
+                <div class="climb-progress-bar">
+                    <div class="climb-progress-fill" id="climb-progress-fill"></div>
                 </div>
+                <div class="climb-progress-text" id="climb-progress-text">Select effort and commit to climb</div>
+                <button class="btn" id="commit-btn" onclick="commitAttempt()" disabled style="margin-top: 10px;">
+                    Select Effort Level
+                </button>
+            </div>
 
-                <div class="effort-selection">
-                    <button class="effort-btn casual" onclick="selectEffort('casual')">
-                        <div>🧘 Casual</div>
-                        <div style="font-size: 0.7rem; color: #90a4ae; margin-top: 3px;">Low risk</div>
-                    </button>
-                    <button class="effort-btn send" onclick="selectEffort('send')">
-                        <div>🔥 Send</div>
-                        <div style="font-size: 0.7rem; color: #90a4ae; margin-top: 3px;">Balanced</div>
-                    </button>
-                    <button class="effort-btn limit" onclick="selectEffort('limit')">
-                        <div>⚡ Limit</div>
-                        <div style="font-size: 0.7rem; color: #90a4ae; margin-top: 3px;">Max risk</div>
-                    </button>
-                </div>
-
+            <div class="right-panel">
                 <div class="attempt-stats">
-                    <h4 style="margin-bottom: 15px;">Attempt Odds</h4>
+                    <h4 style="margin-bottom: 10px;">Attempt Odds</h4>
                     <div class="stat-row">
                         <span class="stat-label">Base Success:</span>
                         <span class="stat-value" id="base-success">--</span>
@@ -954,21 +1023,17 @@
                         <span class="stat-label">Fatigue Penalty:</span>
                         <span class="stat-value" id="fatigue-penalty">-0%</span>
                     </div>
-                    <hr style="margin: 10px 0; border-color: #444;">
+                    <hr style="margin: 8px 0; border-color: #444;">
                     <div class="stat-row">
                         <span class="stat-label">Final Odds:</span>
-                        <span class="stat-value" id="final-odds" style="font-size: 1.3rem;">--</span>
+                        <span class="stat-value" id="final-odds" style="font-size: 1.2rem;">--</span>
                     </div>
                 </div>
 
-                <button class="btn" id="commit-btn" onclick="commitAttempt()" disabled>
-                    Select Effort Level
-                </button>
-            </div>
-
-            <div class="support-panel">
-                <div class="support-title">🤝 Party Support</div>
-                <div id="support-actions"></div>
+                <div class="support-panel">
+                    <div class="support-title">🤝 Party Support</div>
+                    <div id="support-actions"></div>
+                </div>
             </div>
         </div>
     </div>
@@ -1058,9 +1123,10 @@
             { id: 'jonah', name: 'Jonah', color: '#4caf50', power: 8, technique: 7, endurance: 9, psyche: 6, specialty: 'endurance', emoji: 'Jo' },
             { id: 'mary', name: 'Mary', color: '#ff9800', power: 5, technique: 10, endurance: 6, psyche: 8, specialty: 'tech', emoji: 'M' },
             { id: 'sam', name: 'Sam', color: '#00bcd4', power: 10, technique: 5, endurance: 7, psyche: 7, specialty: 'compression', emoji: 'S' },
-            { id: 'ralphie', name: 'Ralphie', color: '#795548', power: 7, technique: 7, endurance: 8, psyche: 8, specialty: 'allround', emoji: 'R' },
+            { id: 'ralphy', name: 'Ralphy', color: '#795548', power: 7, technique: 7, endurance: 8, psyche: 8, specialty: 'allround', emoji: 'R' },
             { id: 'jaime', name: 'Jaime', color: '#607d8b', power: 8, technique: 8, endurance: 5, psyche: 6, specialty: 'power', emoji: 'Ja' },
-            { id: 'cindy', name: 'Cindy', color: '#f44336', power: 6, technique: 7, endurance: 10, psyche: 9, specialty: 'endurance', emoji: 'C' }
+            { id: 'cindy', name: 'Cindy', color: '#f44336', power: 6, technique: 7, endurance: 10, psyche: 9, specialty: 'endurance', emoji: 'C' },
+            { id: 'justin', name: 'Justin', color: '#673ab7', power: 8, technique: 6, endurance: 7, psyche: 8, specialty: 'power', emoji: 'Ju' }
         ];
 
         // Default route for rocks/problems without custom routes
@@ -1169,7 +1235,7 @@
         // ========== GAME STATE ==========
         let gameState = {
             activeParty: ['karin', 'jason', 'phana', 'jonah'],
-            currentClimber: null,
+            currentClimber: 'karin', // Karin is always the leader/climber
             currentRock: null,
             currentProblem: null,
             selectedEffort: null,
@@ -1206,16 +1272,7 @@
             };
         });
 
-        // Initialize rock progress
-        ROCKS.forEach(r => {
-            gameState.rockProgress[r.id] = {
-                cleared: false,
-                problems: {}
-            };
-            r.problems.forEach(p => {
-                gameState.rockProgress[r.id].problems[p.id] = false;
-            });
-        });
+        // Rock progress is initialized in DOMContentLoaded after ROCKS loads from JSON
 
         // ========== CLIMBING ANIMATION SYSTEM ==========
         let attemptAnim = {
@@ -1226,12 +1283,17 @@
             rockImageLoaded: false,
             progress: 0,           // 0-100%
             targetProgress: 100,   // Where climber stops
-            speed: 0.8,            // % per frame
-            state: 'idle',         // idle, climbing, success, fall
+            speed: 0.2,            // % per frame (~8 seconds for full send)
+            state: 'idle',         // idle, climbing, success, fall, falling
             result: null,          // Store result for after animation
             animationId: null,     // For cancelAnimationFrame
             climberFrame: 0,       // Current sprite frame for climbing
-            frameTimer: 0          // Timer for sprite animation
+            frameTimer: 0,         // Timer for sprite animation
+            // Fall animation properties
+            fallProgress: 0,       // 0-1 for fall animation
+            fallStartPos: null,    // {x, y} position where fall started
+            fallEndPos: null,      // {x, y} first node position (landing)
+            fallRotation: 0        // Current rotation in radians
         };
 
         // Get position along route at given progress (0-100%)
@@ -1312,28 +1374,52 @@
                 const offsetX = (w - scaledW) / 2;
                 const offsetY = (h - scaledH) / 2;
                 ctx.drawImage(attemptAnim.rockImage, offsetX, offsetY, scaledW, scaledH);
+                // Store transform for coordinate conversion
+                attemptAnim.imageTransform = { scaledW, scaledH, offsetX, offsetY };
             } else {
-                // Procedural rock
+                // Procedural rock - no offset
+                attemptAnim.imageTransform = { scaledW: w, scaledH: h, offsetX: 0, offsetY: 0 };
                 drawProceduralRock(ctx, w, h);
+            }
+
+            // Helper to convert image coords to canvas coords
+            function imgToCanvas(ix, iy) {
+                const t = attemptAnim.imageTransform;
+                return { x: ix * t.scaledW + t.offsetX, y: iy * t.scaledH + t.offsetY };
             }
 
             // Draw route line
             const problem = gameState.currentProblem;
             if (problem) {
                 const route = problem.route || DEFAULT_ROUTE;
-                drawRouteLine(ctx, route, w, h, problem.grade);
+                drawRouteLine(ctx, route, attemptAnim.imageTransform, problem.grade);
             }
 
             // Draw climber at current progress
-            if (attemptAnim.active && problem) {
+            if (attemptAnim.state === 'falling' && problem && attemptAnim.fallStartPos && attemptAnim.fallEndPos) {
+                // Interpolate position during fall - straight down, keeping x, moving to start node's y
+                const t = attemptAnim.fallProgress;
+                const startPos = imgToCanvas(attemptAnim.fallStartPos.x, attemptAnim.fallStartPos.y);
+                const endPos = imgToCanvas(attemptAnim.fallStartPos.x, attemptAnim.fallEndPos.y);
+                // Ease out for more natural fall
+                const easeT = 1 - Math.pow(1 - t, 2);
+                const y = startPos.y + (endPos.y - startPos.y) * easeT;
+                drawClimberOnRock(ctx, startPos.x, y);
+            } else if (attemptAnim.state === 'fall' && problem && attemptAnim.fallStartPos && attemptAnim.fallEndPos) {
+                // Draw at final fall position (same x, start node's y)
+                const pos = imgToCanvas(attemptAnim.fallStartPos.x, attemptAnim.fallEndPos.y);
+                drawClimberOnRock(ctx, pos.x, pos.y);
+            } else if (attemptAnim.active && problem) {
                 const route = problem.route || DEFAULT_ROUTE;
-                const pos = getRoutePosition(route, attemptAnim.progress);
-                drawClimberOnRock(ctx, pos.x * w, pos.y * h);
+                const routePos = getRoutePosition(route, attemptAnim.progress);
+                const pos = imgToCanvas(routePos.x, routePos.y);
+                drawClimberOnRock(ctx, pos.x, pos.y);
             } else if (problem) {
                 // Draw climber at start position when idle
                 const route = problem.route || DEFAULT_ROUTE;
-                const pos = getRoutePosition(route, 0);
-                drawClimberOnRock(ctx, pos.x * w, pos.y * h);
+                const routePos = getRoutePosition(route, 0);
+                const pos = imgToCanvas(routePos.x, routePos.y);
+                drawClimberOnRock(ctx, pos.x, pos.y);
             }
 
             // Update progress bar
@@ -1375,8 +1461,13 @@
         }
 
         // Draw the route line on rock
-        function drawRouteLine(ctx, route, w, h, grade) {
+        function drawRouteLine(ctx, route, transform, grade) {
             if (!route || route.length < 2) return;
+
+            const t = transform;
+            function toCanvas(ix, iy) {
+                return { x: ix * t.scaledW + t.offsetX, y: iy * t.scaledH + t.offsetY };
+            }
 
             const color = getRouteColor(grade);
 
@@ -1386,9 +1477,11 @@
             ctx.setLineDash([8, 4]);
             ctx.globalAlpha = 0.7;
             ctx.beginPath();
-            ctx.moveTo(route[0].x * w, route[0].y * h);
+            const start = toCanvas(route[0].x, route[0].y);
+            ctx.moveTo(start.x, start.y);
             for (let i = 1; i < route.length; i++) {
-                ctx.lineTo(route[i].x * w, route[i].y * h);
+                const pt = toCanvas(route[i].x, route[i].y);
+                ctx.lineTo(pt.x, pt.y);
             }
             ctx.stroke();
             ctx.setLineDash([]);
@@ -1396,8 +1489,9 @@
 
             // Draw waypoints
             route.forEach((point, i) => {
-                const px = point.x * w;
-                const py = point.y * h;
+                const canvasPt = toCanvas(point.x, point.y);
+                const px = canvasPt.x;
+                const py = canvasPt.y;
 
                 // Outer ring
                 ctx.beginPath();
@@ -1418,6 +1512,14 @@
             const climber = CLIMBERS.find(c => c.id === gameState.currentClimber);
             if (!climber) return;
 
+            // Check if we're in falling state - apply rotation
+            const isFalling = attemptAnim.state === 'falling' || attemptAnim.state === 'fall';
+            const rotation = isFalling ? attemptAnim.fallRotation : 0;
+
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(rotation);
+
             // Use sprite if loaded, otherwise fallback
             if (leaderSpriteLoaded && leaderSprite) {
                 // Use "up" direction (row 3) for climbing
@@ -1430,28 +1532,32 @@
                 const drawWidth = spriteFrameWidth * scale;
                 const drawHeight = spriteFrameHeight * scale;
 
-                // Shadow
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-                ctx.beginPath();
-                ctx.ellipse(x, y + drawHeight / 2, drawWidth / 3, 5, 0, 0, Math.PI * 2);
-                ctx.fill();
+                // Shadow (only when not falling)
+                if (!isFalling) {
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+                    ctx.beginPath();
+                    ctx.ellipse(0, drawHeight / 2, drawWidth / 3, 5, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                }
 
                 // Draw sprite
                 ctx.drawImage(
                     leaderSprite,
                     sx, sy, spriteFrameWidth, spriteFrameHeight,
-                    x - drawWidth / 2, y - drawHeight / 2, drawWidth, drawHeight
+                    -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight
                 );
             } else {
                 // Fallback: colored circle with emoji
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-                ctx.beginPath();
-                ctx.ellipse(x, y + 12, 10, 4, 0, 0, Math.PI * 2);
-                ctx.fill();
+                if (!isFalling) {
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+                    ctx.beginPath();
+                    ctx.ellipse(0, 12, 10, 4, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                }
 
                 ctx.fillStyle = climber.color;
                 ctx.beginPath();
-                ctx.arc(x, y, 14, 0, Math.PI * 2);
+                ctx.arc(0, 0, 14, 0, Math.PI * 2);
                 ctx.fill();
                 ctx.strokeStyle = '#fff';
                 ctx.lineWidth = 2;
@@ -1461,8 +1567,10 @@
                 ctx.font = 'bold 12px Courier New';
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
-                ctx.fillText(climber.emoji, x, y);
+                ctx.fillText(climber.emoji, 0, 0);
             }
+
+            ctx.restore();
         }
 
         // Update the progress bar display
@@ -1523,16 +1631,51 @@
                 // Check if reached target
                 if (attemptAnim.progress >= attemptAnim.targetProgress) {
                     attemptAnim.progress = attemptAnim.targetProgress;
-                    attemptAnim.state = result.success ? 'success' : 'fall';
-                    attemptAnim.active = false;
 
-                    // Draw final frame
-                    drawAttemptCanvas();
+                    if (result.success) {
+                        attemptAnim.state = 'success';
+                        attemptAnim.active = false;
+                        drawAttemptCanvas();
+                        setTimeout(() => {
+                            onClimbingComplete();
+                        }, 1000);
+                    } else {
+                        // Start fall animation
+                        const problem = gameState.currentProblem;
+                        const route = problem.route || DEFAULT_ROUTE;
+                        const fallStartPos = getRoutePosition(route, attemptAnim.progress);
+                        const fallEndPos = route[0]; // First node
 
-                    // Show result after short delay
-                    setTimeout(() => {
-                        onClimbingComplete();
-                    }, result.success ? 1000 : 800);
+                        attemptAnim.state = 'falling';
+                        attemptAnim.fallProgress = 0;
+                        attemptAnim.fallStartPos = fallStartPos;
+                        attemptAnim.fallEndPos = fallEndPos;
+                        attemptAnim.fallRotation = 0;
+
+                        // Continue with fall animation
+                        function animateFall() {
+                            if (attemptAnim.state !== 'falling') return;
+
+                            attemptAnim.fallProgress += 0.02; // ~50 frames for fall
+                            attemptAnim.fallRotation = Math.min(attemptAnim.fallProgress * 2, 1) * (Math.PI / 2); // Rotate 90 degrees
+
+                            if (attemptAnim.fallProgress >= 1) {
+                                attemptAnim.fallProgress = 1;
+                                attemptAnim.state = 'fall';
+                                attemptAnim.active = false;
+                                drawAttemptCanvas();
+                                setTimeout(() => {
+                                    onClimbingComplete();
+                                }, 800);
+                                return;
+                            }
+
+                            drawAttemptCanvas();
+                            attemptAnim.animationId = requestAnimationFrame(animateFall);
+                        }
+
+                        attemptAnim.animationId = requestAnimationFrame(animateFall);
+                    }
                     return;
                 }
 
@@ -1559,6 +1702,11 @@
             attemptAnim.progress = 0;
             attemptAnim.state = 'idle';
             attemptAnim.result = null;
+            // Reset fall animation properties
+            attemptAnim.fallProgress = 0;
+            attemptAnim.fallStartPos = null;
+            attemptAnim.fallEndPos = null;
+            attemptAnim.fallRotation = 0;
         }
 
         // ========== SCREEN MANAGEMENT ==========
@@ -1566,6 +1714,132 @@
             document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
             document.getElementById(screenId).classList.add('active');
         }
+
+        // ========== PIXEL DISSOLVE TRANSITION ==========
+        const pixelTransition = {
+            canvas: null,
+            ctx: null,
+            pixels: [],
+            gridSize: 8, // Size of each "pixel" block
+            animating: false,
+            onComplete: null
+        };
+
+        function initPixelTransition() {
+            pixelTransition.canvas = document.getElementById('pixel-transition');
+            pixelTransition.ctx = pixelTransition.canvas.getContext('2d');
+            resizePixelTransition();
+            window.addEventListener('resize', resizePixelTransition);
+        }
+
+        function resizePixelTransition() {
+            if (!pixelTransition.canvas) return;
+            pixelTransition.canvas.width = window.innerWidth;
+            pixelTransition.canvas.height = window.innerHeight;
+        }
+
+        function startPixelDissolve(onComplete) {
+            if (pixelTransition.animating) return;
+
+            const canvas = pixelTransition.canvas;
+            const ctx = pixelTransition.ctx;
+            const gridSize = pixelTransition.gridSize;
+
+            // Calculate grid dimensions
+            const cols = Math.ceil(canvas.width / gridSize);
+            const rows = Math.ceil(canvas.height / gridSize);
+
+            // Create array of all pixel positions with random delays
+            pixelTransition.pixels = [];
+            for (let y = 0; y < rows; y++) {
+                for (let x = 0; x < cols; x++) {
+                    pixelTransition.pixels.push({
+                        x: x * gridSize,
+                        y: y * gridSize,
+                        delay: Math.random() * 0.6, // Random delay 0-0.6s
+                        opacity: 0
+                    });
+                }
+            }
+
+            // Shuffle for more random appearance
+            pixelTransition.pixels.sort(() => Math.random() - 0.5);
+
+            pixelTransition.animating = true;
+            pixelTransition.onComplete = onComplete;
+            canvas.classList.add('active');
+
+            const startTime = performance.now();
+            const duration = 800; // Total animation duration in ms
+
+            function animate(currentTime) {
+                const elapsed = currentTime - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#000';
+
+                // Draw each pixel based on its delay
+                for (const pixel of pixelTransition.pixels) {
+                    const pixelProgress = Math.max(0, (progress - pixel.delay) / (1 - pixel.delay));
+                    if (pixelProgress > 0) {
+                        ctx.globalAlpha = Math.min(pixelProgress * 2, 1);
+                        ctx.fillRect(pixel.x, pixel.y, gridSize, gridSize);
+                    }
+                }
+                ctx.globalAlpha = 1;
+
+                if (progress < 1) {
+                    requestAnimationFrame(animate);
+                } else {
+                    // Fill completely black
+                    ctx.fillStyle = '#000';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                    // Brief pause then fade out
+                    setTimeout(() => {
+                        fadeOutTransition();
+                    }, 150);
+
+                    // Call the completion callback
+                    if (pixelTransition.onComplete) {
+                        pixelTransition.onComplete();
+                    }
+                }
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        function fadeOutTransition() {
+            const canvas = pixelTransition.canvas;
+            const ctx = pixelTransition.ctx;
+            const startTime = performance.now();
+            const duration = 400;
+
+            function animate(currentTime) {
+                const elapsed = currentTime - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#000';
+                ctx.globalAlpha = 1 - progress;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.globalAlpha = 1;
+
+                if (progress < 1) {
+                    requestAnimationFrame(animate);
+                } else {
+                    canvas.classList.remove('active');
+                    pixelTransition.animating = false;
+                }
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // Initialize on load
+        document.addEventListener('DOMContentLoaded', initPixelTransition);
 
         function startGame() {
             showScreen('world-map');
@@ -2200,19 +2474,28 @@
             const container = document.getElementById('party-display');
             container.innerHTML = '<h4 style="margin-bottom: 10px;">Active Party</h4>';
 
-            gameState.activeParty.forEach(id => {
+            gameState.activeParty.forEach((id, index) => {
                 const climber = CLIMBERS.find(c => c.id === id);
                 const state = gameState.climberState[id];
+                const isLeader = id === 'karin';
                 const isSelected = gameState.currentClimber === id;
 
                 const div = document.createElement('div');
                 div.className = 'party-member' + (isSelected ? ' active' : '');
-                div.onclick = () => selectClimber(id);
 
+                // Leader (Karin) is not clickable, support members cycle on click
+                if (isLeader) {
+                    div.style.cursor = 'default';
+                } else {
+                    div.onclick = () => cycleSupport(index);
+                    div.title = 'Click to swap with bench';
+                }
+
+                const roleLabel = isLeader ? '★ Leader' : '↻ Support';
                 div.innerHTML = `
                     <div class="member-avatar" style="background: ${climber.color}">${climber.emoji}</div>
                     <div class="member-info">
-                        <div class="member-name">${climber.name}</div>
+                        <div class="member-name">${climber.name} <span style="font-size: 10px; opacity: 0.7;">${roleLabel}</span></div>
                         <div class="member-stats">
                             P${climber.power} T${climber.technique} E${climber.endurance}
                         </div>
@@ -2225,59 +2508,117 @@
                 container.appendChild(div);
             });
 
-            // Select first climber if none selected
-            if (!gameState.currentClimber && gameState.activeParty.length > 0) {
-                selectClimber(gameState.activeParty[0]);
+            // Ensure Karin is always the climber
+            if (gameState.currentClimber !== 'karin') {
+                gameState.currentClimber = 'karin';
             }
         }
 
         function selectClimber(id) {
-            gameState.currentClimber = id;
+            // Karin is always the climber - ignore attempts to select others
+            if (id !== 'karin') {
+                return;
+            }
+            gameState.currentClimber = 'karin';
             updatePartyDisplay();
             if (document.getElementById('attempt-phase').classList.contains('active')) {
                 updateAttemptUI();
             }
         }
 
-        function showPartySelect() {
-            // Simple party selection - toggle members
-            const current = gameState.activeParty;
-            const available = CLIMBERS.filter(c => !current.includes(c.id));
+        // Cycle a support member at the given party index with next available climber
+        function cycleSupport(partyIndex) {
+            // Don't allow cycling the leader (index 0 is always Karin)
+            if (partyIndex === 0) return;
 
-            if (available.length > 0) {
-                // Rotate party for now (simple implementation)
-                const removed = current.shift();
-                current.push(available[0].id);
-                log(`${CLIMBERS.find(c => c.id === removed).name} takes a break. ${available[0].name} joins the party.`, 'info');
-                updatePartyDisplay();
+            const currentId = gameState.activeParty[partyIndex];
+            const allSupport = CLIMBERS.filter(c => c.id !== 'karin').map(c => c.id);
+
+            // Find current member's position and get the next one in rotation
+            const currentIndex = allSupport.indexOf(currentId);
+            let nextIndex = (currentIndex + 1) % allSupport.length;
+            let newMemberId = allSupport[nextIndex];
+
+            // Skip any that are already in the party
+            let attempts = 0;
+            while (gameState.activeParty.includes(newMemberId) && attempts < allSupport.length) {
+                nextIndex = (nextIndex + 1) % allSupport.length;
+                newMemberId = allSupport[nextIndex];
+                attempts++;
             }
+
+            if (!gameState.activeParty.includes(newMemberId)) {
+                gameState.activeParty[partyIndex] = newMemberId;
+                const benchCount = allSupport.length - 3; // Total non-Karin minus 3 active support
+                log(`${CLIMBERS.find(c => c.id === currentId).name} → bench. ${CLIMBERS.find(c => c.id === newMemberId).name} joins! (${benchCount - 1} more on bench)`, 'info');
+                updatePartyDisplay();
+            } else {
+                log('No other climbers on the bench to swap in.', 'info');
+            }
+        }
+
+        function showPartySelect() {
+            // Only rotate support members (positions 1-3), never Karin (position 0)
+            // Get ALL non-Karin climbers in rotation order
+            const allSupport = CLIMBERS.filter(c => c.id !== 'karin').map(c => c.id);
+
+            // Find the current last support member's position in the full roster
+            const currentLast = gameState.activeParty[3]; // Last support slot
+            const currentIndex = allSupport.indexOf(currentLast);
+
+            // Get the next climber in rotation (wrap around)
+            const nextIndex = (currentIndex + 1) % allSupport.length;
+            const nextClimber = allSupport[nextIndex];
+
+            // If next climber is already in party, skip to one that isn't
+            let newMemberId = nextClimber;
+            let searchIndex = nextIndex;
+            while (gameState.activeParty.includes(newMemberId)) {
+                searchIndex = (searchIndex + 1) % allSupport.length;
+                newMemberId = allSupport[searchIndex];
+                // Safety: if we've gone full circle, break
+                if (searchIndex === nextIndex) break;
+            }
+
+            // Remove first support member, add new one at the end
+            const removed = gameState.activeParty[1];
+            gameState.activeParty = ['karin', gameState.activeParty[2], gameState.activeParty[3], newMemberId];
+
+            const removedClimber = CLIMBERS.find(c => c.id === removed);
+            const newClimber = CLIMBERS.find(c => c.id === newMemberId);
+            log(`${removedClimber.name} → bench. ${newClimber.name} joins!`, 'info');
+            updatePartyDisplay();
         }
 
         // ========== CRAG VIEW ==========
         function enterCrag(rock) {
             gameState.currentRock = rock;
-            showScreen('crag-view');
 
-            document.getElementById('rock-name').textContent = rock.name;
+            // Start pixel dissolve transition, then show crag view
+            startPixelDissolve(() => {
+                showScreen('crag-view');
 
-            // Load rock image if not already loaded
-            if (rock.image && !rockImages[rock.id]) {
-                const img = new Image();
-                img.onload = () => {
-                    rockImages[rock.id] = img;
-                    drawRock(); // Redraw with loaded image
-                };
-                img.onerror = () => {
-                    console.log('Failed to load rock image:', rock.image);
-                };
-                img.src = rock.image;
-            }
+                document.getElementById('rock-name').textContent = rock.name;
 
-            drawRock();
-            renderProblems();
-            updateRockProgress();
+                // Load rock image if not already loaded
+                if (rock.image && !rockImages[rock.id]) {
+                    const img = new Image();
+                    img.onload = () => {
+                        rockImages[rock.id] = img;
+                        drawRock(); // Redraw with loaded image
+                    };
+                    img.onerror = () => {
+                        console.log('Failed to load rock image:', rock.image);
+                    };
+                    img.src = rock.image;
+                }
 
-            log(`Approaching ${rock.name}. ${rock.description}`, 'info');
+                drawRock();
+                renderProblems();
+                updateRockProgress();
+
+                log(`Approaching ${rock.name}. ${rock.description}`, 'info');
+            });
         }
 
         function returnToMap() {
@@ -2418,10 +2759,20 @@
 
             // Draw problem markers
             rock.problems.forEach((problem, i) => {
-                const angle = (i / rock.problems.length) * Math.PI - Math.PI / 2;
-                const radius = 80 + (i % 2) * 40;
-                const cx = 250 + Math.cos(angle) * radius;
-                const cy = 200 + Math.sin(angle) * radius * 0.6;
+                let cx, cy;
+
+                // Use first node of route if available
+                if (problem.route && problem.route.length > 0) {
+                    const firstNode = problem.route[0];
+                    cx = rockBounds.x + firstNode.x * rockBounds.width;
+                    cy = rockBounds.y + firstNode.y * rockBounds.height;
+                } else {
+                    // Fallback to circular positioning
+                    const angle = (i / rock.problems.length) * Math.PI - Math.PI / 2;
+                    const radius = 80 + (i % 2) * 40;
+                    cx = 250 + Math.cos(angle) * radius;
+                    cy = 200 + Math.sin(angle) * radius * 0.6;
+                }
 
                 const sent = gameState.rockProgress[rock.id].problems[problem.id];
                 const selected = gameState.currentProblem?.id === problem.id;
@@ -3134,10 +3485,26 @@
             if (!routeEditor.canvas) return;
 
             const rect = routeEditor.canvas.getBoundingClientRect();
-            const x = (e.clientX - rect.left) / rect.width;
-            const y = (e.clientY - rect.top) / rect.height;
+            const canvasX = (e.clientX - rect.left) / rect.width;
+            const canvasY = (e.clientY - rect.top) / rect.height;
 
-            // Add point (as percentage coordinates)
+            // Convert canvas coordinates to image coordinates using stored transform
+            let x, y;
+            if (routeEditor.imageTransform) {
+                const t = routeEditor.imageTransform;
+                // Convert from canvas coords to image coords
+                x = (canvasX * routeEditor.canvas.width - t.offsetX) / t.scaledW;
+                y = (canvasY * routeEditor.canvas.height - t.offsetY) / t.scaledH;
+            } else {
+                x = canvasX;
+                y = canvasY;
+            }
+
+            // Clamp to 0-1 range
+            x = Math.max(0, Math.min(1, x));
+            y = Math.max(0, Math.min(1, y));
+
+            // Add point (as percentage coordinates relative to image)
             routeEditor.points.push({
                 x: Math.round(x * 100) / 100,
                 y: Math.round(y * 100) / 100
@@ -3175,9 +3542,22 @@
                 const offsetX = (w - scaledW) / 2;
                 const offsetY = (h - scaledH) / 2;
                 ctx.drawImage(routeEditor.rockImage, offsetX, offsetY, scaledW, scaledH);
+
+                // Store transform for coordinate conversion
+                routeEditor.imageTransform = { scaledW, scaledH, offsetX, offsetY };
             } else {
-                // Procedural rock
+                // Procedural rock - no offset needed
+                routeEditor.imageTransform = { scaledW: w, scaledH: h, offsetX: 0, offsetY: 0 };
                 drawProceduralRock(ctx, w, h);
+            }
+
+            // Helper to convert image coords to canvas coords
+            function imageToCanvas(ix, iy) {
+                const t = routeEditor.imageTransform || { scaledW: w, scaledH: h, offsetX: 0, offsetY: 0 };
+                return {
+                    x: ix * t.scaledW + t.offsetX,
+                    y: iy * t.scaledH + t.offsetY
+                };
             }
 
             // Draw route points and lines
@@ -3193,9 +3573,11 @@
                     ctx.setLineDash([8, 4]);
                     ctx.globalAlpha = 0.7;
                     ctx.beginPath();
-                    ctx.moveTo(points[0].x * w, points[0].y * h);
+                    const start = imageToCanvas(points[0].x, points[0].y);
+                    ctx.moveTo(start.x, start.y);
                     for (let i = 1; i < points.length; i++) {
-                        ctx.lineTo(points[i].x * w, points[i].y * h);
+                        const pt = imageToCanvas(points[i].x, points[i].y);
+                        ctx.lineTo(pt.x, pt.y);
                     }
                     ctx.stroke();
                     ctx.setLineDash([]);
@@ -3204,8 +3586,9 @@
 
                 // Draw points with numbers
                 points.forEach((point, i) => {
-                    const px = point.x * w;
-                    const py = point.y * h;
+                    const canvasPt = imageToCanvas(point.x, point.y);
+                    const px = canvasPt.x;
+                    const py = canvasPt.y;
 
                     // Outer ring
                     ctx.beginPath();
@@ -3301,6 +3684,33 @@
         document.addEventListener('DOMContentLoaded', async () => {
             // Load rocks from JSON file
             await loadRocksFromFile();
+
+            // Initialize rock progress (must happen after ROCKS is loaded)
+            ROCKS.forEach(r => {
+                gameState.rockProgress[r.id] = {
+                    cleared: false,
+                    problems: {}
+                };
+                r.problems.forEach(p => {
+                    gameState.rockProgress[r.id].problems[p.id] = false;
+                });
+            });
+
+            // Ensure Karin is always the leader (position 0) and current climber
+            if (gameState.activeParty[0] !== 'karin') {
+                // Move Karin to front if somehow not there
+                const karinIndex = gameState.activeParty.indexOf('karin');
+                if (karinIndex > 0) {
+                    gameState.activeParty.splice(karinIndex, 1);
+                    gameState.activeParty.unshift('karin');
+                } else if (karinIndex === -1) {
+                    gameState.activeParty.unshift('karin');
+                    if (gameState.activeParty.length > 4) {
+                        gameState.activeParty.pop();
+                    }
+                }
+            }
+            gameState.currentClimber = 'karin';
 
             // Check for dev mode via URL param
             const urlParams = new URLSearchParams(window.location.search);
