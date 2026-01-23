@@ -1,0 +1,136 @@
+[
+  {
+    "id": "birthday-boulder",
+    "name": "Birthday Boulder",
+    "xPct": 0.35,
+    "yPct": 0.52,
+    "image": "assets/birthday.png",
+    "description": "Sharp crimps and precise movement",
+    "problems": [
+      {
+        "id": "p1",
+        "name": "Birthday Left",
+        "grade": "V3",
+        "style": ["crimp", "tech"],
+        "risk": "medium",
+        "baseChance": 45,
+        "route": [
+          { "x": 0.30, "y": 0.95 },
+          { "x": 0.28, "y": 0.65 },
+          { "x": 0.25, "y": 0.35 },
+          { "x": 0.22, "y": 0.05 }
+        ]
+      },
+      {
+        "id": "p2",
+        "name": "Birthday Right",
+        "grade": "V5",
+        "style": ["crimp", "power"],
+        "risk": "high",
+        "baseChance": 28,
+        "route": [
+          { "x": 0.70, "y": 0.95 },
+          { "x": 0.72, "y": 0.65 },
+          { "x": 0.75, "y": 0.35 },
+          { "x": 0.78, "y": 0.05 }
+        ]
+      },
+      {
+        "id": "p3",
+        "name": "Candle Stick",
+        "grade": "V2",
+        "style": ["balance", "slab"],
+        "risk": "low",
+        "baseChance": 55,
+        "route": [
+          { "x": 0.50, "y": 0.95 },
+          { "x": 0.50, "y": 0.65 },
+          { "x": 0.50, "y": 0.35 },
+          { "x": 0.50, "y": 0.05 }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "iron-man",
+    "name": "Iron Man Boulder",
+    "xPct": 0.22,
+    "yPct": 0.42,
+    "image": "assets/ironman.png",
+    "description": "Long horizontal traverse testing endurance",
+    "problems": [
+      {
+        "id": "p4",
+        "name": "Iron Man Traverse",
+        "grade": "V4",
+        "style": ["traverse", "endurance"],
+        "risk": "low",
+        "baseChance": 40,
+        "route": [
+          { "x": 0.10, "y": 0.85 },
+          { "x": 0.25, "y": 0.75 },
+          { "x": 0.40, "y": 0.65 },
+          { "x": 0.55, "y": 0.55 },
+          { "x": 0.70, "y": 0.45 },
+          { "x": 0.85, "y": 0.35 },
+          { "x": 0.95, "y": 0.25 }
+        ]
+      },
+      {
+        "id": "p5",
+        "name": "Warm Up Traverse",
+        "grade": "V0",
+        "style": ["traverse", "jug"],
+        "risk": "low",
+        "baseChance": 85,
+        "route": [
+          { "x": 0.15, "y": 0.90 },
+          { "x": 0.35, "y": 0.88 },
+          { "x": 0.55, "y": 0.85 },
+          { "x": 0.75, "y": 0.82 },
+          { "x": 0.90, "y": 0.80 }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "green-wall",
+    "name": "Green Wall",
+    "xPct": 0.50,
+    "yPct": 0.30,
+    "image": "assets/green_wall.png",
+    "description": "Steep overhang with powerful moves",
+    "problems": [
+      {
+        "id": "p6",
+        "name": "Green Wall Center",
+        "grade": "V4",
+        "style": ["power", "overhang"],
+        "risk": "medium",
+        "baseChance": 38,
+        "route": [
+          { "x": 0.50, "y": 0.95 },
+          { "x": 0.48, "y": 0.70 },
+          { "x": 0.52, "y": 0.45 },
+          { "x": 0.50, "y": 0.20 },
+          { "x": 0.50, "y": 0.05 }
+        ]
+      },
+      {
+        "id": "p7",
+        "name": "King Tut",
+        "grade": "V5",
+        "style": ["compression", "power"],
+        "risk": "high",
+        "baseChance": 30,
+        "route": [
+          { "x": 0.30, "y": 0.95 },
+          { "x": 0.35, "y": 0.70 },
+          { "x": 0.40, "y": 0.45 },
+          { "x": 0.45, "y": 0.20 },
+          { "x": 0.50, "y": 0.05 }
+        ]
+      }
+    ]
+  }
+]

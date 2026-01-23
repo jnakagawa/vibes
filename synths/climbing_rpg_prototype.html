@@ -1,0 +1,3737 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Climbing RPG — Core Loop Prototype</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            color: #e8e8e8;
+            overflow: hidden;
+        }
+
+        .screen {
+            display: none;
+            width: 100vw;
+            height: 100vh;
+            position: absolute;
+            top: 0;
+            left: 0;
+            padding-bottom: 130px; /* Leave room for log panel */
+            box-sizing: border-box;
+            overflow-y: auto;
+        }
+
+        .screen.active {
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Title Screen */
+        #title-screen {
+            justify-content: center;
+            align-items: center;
+            background: linear-gradient(180deg, #0d1b2a 0%, #1b263b 50%, #415a77 100%);
+            padding-bottom: 0; /* No log panel on title */
+            overflow: hidden;
+        }
+
+        .title {
+            font-size: 3rem;
+            text-align: center;
+            margin-bottom: 2rem;
+            text-shadow: 0 0 20px rgba(255, 183, 77, 0.5);
+            color: #ffb74d;
+        }
+
+        .subtitle {
+            font-size: 1.2rem;
+            color: #90a4ae;
+            margin-bottom: 3rem;
+        }
+
+        .btn {
+            padding: 15px 40px;
+            font-size: 1.2rem;
+            font-family: inherit;
+            background: rgba(255, 183, 77, 0.2);
+            border: 2px solid #ffb74d;
+            color: #ffb74d;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin: 10px;
+        }
+
+        .btn:hover {
+            background: rgba(255, 183, 77, 0.4);
+            transform: scale(1.05);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* World Map */
+        #world-map {
+            background: linear-gradient(180deg, #87ceeb 0%, #e0c097 30%, #c9a86c 100%);
+            overflow: hidden; /* Map doesn't scroll */
+        }
+
+        .map-header {
+            padding: 15px 20px;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .map-container {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            min-height: 0; /* Allow flex shrinking */
+        }
+
+        #world-canvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        .party-sidebar {
+            position: absolute;
+            right: 10px;
+            top: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 8px;
+            max-width: 200px;
+        }
+
+        .party-member {
+            display: flex;
+            align-items: center;
+            margin: 8px 0;
+            padding: 5px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .party-member:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .party-member.active {
+            background: rgba(255, 183, 77, 0.3);
+            border: 1px solid #ffb74d;
+        }
+
+        .member-avatar {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            margin-right: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.8rem;
+        }
+
+        .member-info {
+            flex: 1;
+        }
+
+        .member-name {
+            font-size: 0.9rem;
+        }
+
+        .member-stats {
+            font-size: 0.7rem;
+            color: #90a4ae;
+        }
+
+        /* Crag View */
+        #crag-view {
+            background: linear-gradient(180deg, #5c7a8a 0%, #8b7355 50%, #6b5344 100%);
+        }
+
+        .crag-header {
+            padding: 15px 20px;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .crag-container {
+            flex: 1;
+            display: flex;
+            padding: 20px;
+            gap: 20px;
+            overflow-y: auto;
+            min-height: 0; /* Allow flex item to shrink below content size */
+        }
+
+        .rock-display {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #rock-canvas {
+            max-width: 100%;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        }
+
+        .problems-panel {
+            width: 350px;
+            background: rgba(0, 0, 0, 0.7);
+            border-radius: 10px;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .problem-card {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            cursor: pointer;
+            transition: all 0.3s;
+            border: 2px solid transparent;
+        }
+
+        .problem-card:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateX(-5px);
+        }
+
+        .problem-card.sent {
+            border-color: #4caf50;
+            opacity: 0.7;
+        }
+
+        .problem-card.selected {
+            border-color: #ffb74d;
+            background: rgba(255, 183, 77, 0.2);
+        }
+
+        .problem-name {
+            font-size: 1.1rem;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .problem-grade {
+            display: inline-block;
+            padding: 3px 10px;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 4px;
+            margin-right: 10px;
+        }
+
+        .problem-tags {
+            margin-top: 8px;
+        }
+
+        .tag {
+            display: inline-block;
+            padding: 2px 8px;
+            background: rgba(100, 150, 200, 0.3);
+            border-radius: 3px;
+            font-size: 0.75rem;
+            margin-right: 5px;
+            margin-top: 3px;
+        }
+
+        .problem-risk {
+            margin-top: 8px;
+            font-size: 0.8rem;
+            color: #ffab91;
+        }
+
+        /* Attempt Phase */
+        #attempt-phase {
+            background: linear-gradient(180deg, #2d3436 0%, #4a4a4a 100%);
+        }
+
+        .attempt-header {
+            padding: 15px 20px;
+            background: rgba(0, 0, 0, 0.7);
+        }
+
+        .attempt-container {
+            flex: 1;
+            display: flex;
+            padding: 20px;
+            gap: 20px;
+            overflow-y: auto;
+            min-height: 0; /* Allow flex item to shrink below content size */
+        }
+
+        .attempt-main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            justify-content: flex-start;
+            min-width: 0;
+        }
+
+        .right-panel {
+            width: 280px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            flex-shrink: 0;
+        }
+
+        .climber-display {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .climber-avatar-large {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            margin: 0 auto 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            font-weight: bold;
+        }
+
+        .effort-overlay {
+            position: absolute;
+            bottom: 12px;
+            left: 12px;
+            right: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            pointer-events: none;
+        }
+
+        .climber-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 6px 12px;
+            border-radius: 20px;
+            pointer-events: auto;
+        }
+
+        .climber-badge .climber-avatar-large {
+            width: 28px;
+            height: 28px;
+            font-size: 0.8rem;
+            margin: 0;
+        }
+
+        .climber-badge #current-climber-name {
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+
+        .climber-stats-inline {
+            font-size: 0.75rem;
+            color: #90a4ae;
+        }
+
+        .effort-selection {
+            display: flex;
+            gap: 6px;
+            pointer-events: auto;
+        }
+
+        .effort-btn {
+            padding: 8px 14px;
+            font-size: 0.85rem;
+            font-family: inherit;
+            background: rgba(0, 0, 0, 0.7);
+            border: 2px solid #666;
+            color: #e8e8e8;
+            cursor: pointer;
+            transition: all 0.3s;
+            border-radius: 6px;
+        }
+
+        .effort-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .effort-btn.selected {
+            border-color: #ffb74d;
+            background: rgba(255, 183, 77, 0.3);
+        }
+
+        .effort-btn.casual {
+            border-color: #4caf50;
+        }
+
+        .effort-btn.casual.selected {
+            background: rgba(76, 175, 80, 0.3);
+        }
+
+        .effort-btn.send {
+            border-color: #ff9800;
+        }
+
+        .effort-btn.send.selected {
+            background: rgba(255, 152, 0, 0.3);
+        }
+
+        .effort-btn.limit {
+            border-color: #f44336;
+        }
+
+        .effort-btn.limit.selected {
+            background: rgba(244, 67, 54, 0.3);
+        }
+
+        .attempt-stats {
+            background: rgba(0, 0, 0, 0.7);
+            padding: 12px 15px;
+            border-radius: 10px;
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 4px 0;
+        }
+
+        .stat-label {
+            color: #90a4ae;
+        }
+
+        .stat-value {
+            font-weight: bold;
+        }
+
+        .stat-value.good {
+            color: #4caf50;
+        }
+
+        .stat-value.medium {
+            color: #ff9800;
+        }
+
+        .stat-value.bad {
+            color: #f44336;
+        }
+
+        .support-panel {
+            background: rgba(0, 0, 0, 0.7);
+            border-radius: 10px;
+            padding: 15px;
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .support-title {
+            font-size: 1.2rem;
+            margin-bottom: 15px;
+            color: #ffb74d;
+        }
+
+        .support-action {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+            border: 2px solid transparent;
+        }
+
+        .support-action:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .support-action.selected {
+            border-color: #64b5f6;
+            background: rgba(100, 181, 246, 0.2);
+        }
+
+        .support-action.used {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .support-name {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .support-desc {
+            font-size: 0.8rem;
+            color: #90a4ae;
+        }
+
+        .support-by {
+            font-size: 0.75rem;
+            color: #64b5f6;
+            margin-top: 5px;
+        }
+
+        /* Attempt Canvas */
+        .attempt-canvas-container {
+            position: relative;
+            width: 100%;
+            flex: 1;
+            min-height: 0;
+        }
+
+        #attempt-canvas {
+            width: 100%;
+            height: 100%;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+            background: #333;
+            object-fit: contain;
+        }
+
+        .climb-progress-bar {
+            width: 100%;
+            height: 12px;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 6px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+
+        .climb-progress-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #4caf50, #8bc34a, #ffeb3b);
+            transition: width 0.1s linear;
+            border-radius: 6px;
+        }
+
+        .climb-progress-text {
+            text-align: center;
+            margin-top: 5px;
+            font-size: 0.9rem;
+            color: #90a4ae;
+        }
+
+        /* Route Editor (Dev Tool) */
+        .route-editor-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 2000;
+            flex-direction: column;
+            padding: 20px;
+            overflow: hidden;
+            box-sizing: border-box;
+        }
+
+        .route-editor-overlay.active {
+            display: flex;
+        }
+
+        .route-editor-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .route-editor-header h2 {
+            color: #ffb74d;
+        }
+
+        .route-editor-controls {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+
+        .route-editor-controls select,
+        .route-editor-controls input {
+            padding: 8px 12px;
+            font-family: inherit;
+            font-size: 1rem;
+            background: #333;
+            color: #fff;
+            border: 1px solid #666;
+            border-radius: 4px;
+        }
+
+        .route-editor-controls input {
+            width: 150px;
+        }
+
+        .route-editor-controls .btn-small {
+            padding: 8px 12px;
+            font-size: 0.9rem;
+        }
+
+        .editor-problem-details {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            padding: 10px;
+            background: #2a2a2a;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+
+        .editor-problem-details label {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .editor-problem-details input,
+        .editor-problem-details select {
+            padding: 6px 10px;
+            font-family: inherit;
+            font-size: 0.9rem;
+            background: #333;
+            color: #fff;
+            border: 1px solid #666;
+            border-radius: 4px;
+        }
+
+        .editor-problem-details input[type="text"] {
+            width: 140px;
+        }
+
+        .editor-problem-details input[type="number"] {
+            width: 60px;
+        }
+
+        .route-editor-main {
+            flex: 1;
+            display: flex;
+            gap: 20px;
+            min-height: 0;
+            overflow: hidden;
+        }
+
+        .route-editor-canvas-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            max-height: calc(100vh - 220px);
+        }
+
+        #route-editor-canvas {
+            width: 100%;
+            height: 100%;
+            max-height: 100%;
+            border-radius: 10px;
+            cursor: crosshair;
+            background: #222;
+            object-fit: contain;
+        }
+
+        .route-editor-sidebar {
+            width: 350px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .route-editor-buttons {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .route-editor-output {
+            flex: 1;
+            background: #1a1a2e;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            color: #4caf50;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+
+        .route-point-list {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            padding: 10px;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+
+        .route-point-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px;
+            border-bottom: 1px solid #333;
+        }
+
+        .route-point-item:last-child {
+            border-bottom: none;
+        }
+
+        /* Result Modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            padding: 40px;
+            border-radius: 15px;
+            text-align: center;
+            max-width: 500px;
+            border: 2px solid #ffb74d;
+        }
+
+        .result-icon {
+            font-size: 4rem;
+            margin-bottom: 20px;
+        }
+
+        .result-title {
+            font-size: 2rem;
+            margin-bottom: 15px;
+        }
+
+        .result-title.success {
+            color: #4caf50;
+        }
+
+        .result-title.fail {
+            color: #ff9800;
+        }
+
+        .result-title.injury {
+            color: #f44336;
+        }
+
+        .result-details {
+            margin: 20px 0;
+            text-align: left;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 15px;
+            border-radius: 8px;
+        }
+
+        .result-detail {
+            margin: 8px 0;
+        }
+
+        /* Log Panel */
+        .log-panel {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 120px;
+            background: rgba(0, 0, 0, 0.9);
+            padding: 10px 20px;
+            overflow-y: auto;
+            font-size: 0.85rem;
+            border-top: 1px solid #333;
+        }
+
+        .log-entry {
+            margin: 3px 0;
+            padding: 3px 0;
+        }
+
+        .log-entry.action {
+            color: #64b5f6;
+        }
+
+        .log-entry.success {
+            color: #4caf50;
+        }
+
+        .log-entry.fail {
+            color: #ff9800;
+        }
+
+        .log-entry.info {
+            color: #90a4ae;
+        }
+
+        /* Progress bar */
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 5px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            transition: width 0.3s;
+        }
+
+        .progress-fill.psyche {
+            background: linear-gradient(90deg, #f44336, #ff9800, #4caf50);
+        }
+
+        .progress-fill.skin {
+            background: linear-gradient(90deg, #f44336, #ffeb3b);
+        }
+
+        .progress-fill.fatigue {
+            background: linear-gradient(90deg, #4caf50, #f44336);
+        }
+
+        /* Rock cleared overlay */
+        .rock-cleared {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(76, 175, 80, 0.9);
+            padding: 30px 60px;
+            border-radius: 15px;
+            font-size: 2rem;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+            z-index: 100;
+        }
+
+        .completion-badge {
+            font-size: 1rem;
+            margin-top: 10px;
+            color: #c8e6c9;
+        }
+
+        /* Nearby rock indicator */
+        .nearby-indicator {
+            position: absolute;
+            left: 20px;
+            bottom: 320px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 10px 15px;
+            border-radius: 8px;
+            border: 2px solid #4caf50;
+            display: none;
+        }
+
+        .nearby-indicator.active {
+            display: block;
+        }
+
+        .nearby-rock-name {
+            color: #4caf50;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .nearby-hint {
+            color: #90a4ae;
+            font-size: 0.8rem;
+        }
+
+        /* Movement hint */
+        .movement-hint {
+            position: absolute;
+            left: 20px;
+            top: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            color: #90a4ae;
+        }
+
+        /* Pokemon-style pixel dissolve transition */
+        #pixel-transition {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 9999;
+            pointer-events: none;
+            display: none;
+        }
+
+        #pixel-transition.active {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Pixel Dissolve Transition Overlay -->
+    <canvas id="pixel-transition"></canvas>
+
+    <!-- Title Screen -->
+    <div id="title-screen" class="screen active">
+        <h1 class="title">🧗 CLIMBING RPG</h1>
+        <p class="subtitle">A Bouldering Session Simulator</p>
+        <button class="btn" onclick="startGame()">Start Session</button>
+        <p style="margin-top: 30px; color: #607d8b; font-size: 0.9rem;">
+            Explore the Buttermilks • Build your party • Send problems
+        </p>
+    </div>
+
+    <!-- World Map -->
+    <div id="world-map" class="screen">
+        <div class="map-header">
+            <h2>🗺️ The Buttermilks</h2>
+            <div>
+                <span id="rocks-cleared">0/0 Rocks Cleared</span>
+                <button class="btn" style="padding: 8px 15px; font-size: 0.9rem; margin-left: 15px;"
+                    onclick="showPartySelect()">Party</button>
+            </div>
+        </div>
+        <div class="map-container">
+            <canvas id="world-canvas"></canvas>
+            <div class="party-sidebar" id="party-display"></div>
+
+            <!-- Movement hint -->
+            <div class="movement-hint">
+                Click to move • Click on rock to climb
+            </div>
+
+            <!-- Nearby rock indicator -->
+            <div class="nearby-indicator" id="nearby-indicator">
+                <div class="nearby-rock-name" id="nearby-rock-name"></div>
+                <div class="nearby-hint">Press ENTER or click rock to approach</div>
+            </div>
+
+                    </div>
+    </div>
+
+    <!-- Crag View -->
+    <div id="crag-view" class="screen">
+        <div class="crag-header">
+            <div>
+                <button class="btn" style="padding: 8px 15px; font-size: 0.9rem;" onclick="returnToMap()">←
+                    Back</button>
+                <span id="rock-name" style="margin-left: 15px; font-size: 1.3rem;"></span>
+            </div>
+            <div id="rock-progress"></div>
+        </div>
+        <div class="crag-container">
+            <div class="rock-display">
+                <canvas id="rock-canvas" width="500" height="400"></canvas>
+                <div id="rock-cleared-overlay" class="rock-cleared" style="display: none;">
+                    ROCK CLEARED!
+                    <div class="completion-badge" id="completion-badge"></div>
+                </div>
+            </div>
+            <div class="problems-panel">
+                <h3 style="margin-bottom: 15px;">Problems</h3>
+                <div id="problems-list"></div>
+                <button class="btn" id="attempt-btn" style="width: 100%; margin-top: 15px;" onclick="startAttempt()"
+                    disabled>
+                    Select a Problem
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Attempt Phase -->
+    <div id="attempt-phase" class="screen">
+        <div class="attempt-header">
+            <button class="btn" style="padding: 8px 15px; font-size: 0.9rem;" onclick="cancelAttempt()">← Back</button>
+            <span id="attempt-problem-name" style="margin-left: 15px; font-size: 1.3rem;"></span>
+        </div>
+        <div class="attempt-container">
+            <div class="attempt-main">
+                <div class="attempt-canvas-container" id="attempt-canvas-container">
+                    <canvas id="attempt-canvas" width="600" height="500"></canvas>
+                    <div class="effort-overlay">
+                        <div class="climber-badge" id="climber-badge">
+                            <div class="climber-avatar-large" id="current-climber-avatar"></div>
+                            <span id="current-climber-name"></span>
+                            <span id="climber-stats-display" class="climber-stats-inline"></span>
+                        </div>
+                        <div class="effort-selection">
+                            <button class="effort-btn casual" onclick="selectEffort('casual')">🧘 Casual</button>
+                            <button class="effort-btn send" onclick="selectEffort('send')">🔥 Send</button>
+                            <button class="effort-btn limit" onclick="selectEffort('limit')">⚡ Limit</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="climb-progress-bar">
+                    <div class="climb-progress-fill" id="climb-progress-fill"></div>
+                </div>
+                <div class="climb-progress-text" id="climb-progress-text">Select effort and commit to climb</div>
+                <button class="btn" id="commit-btn" onclick="commitAttempt()" disabled style="margin-top: 10px;">
+                    Select Effort Level
+                </button>
+            </div>
+
+            <div class="right-panel">
+                <div class="attempt-stats">
+                    <h4 style="margin-bottom: 10px;">Attempt Odds</h4>
+                    <div class="stat-row">
+                        <span class="stat-label">Base Success:</span>
+                        <span class="stat-value" id="base-success">--</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Beta Bonus:</span>
+                        <span class="stat-value" id="beta-bonus">+0%</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Support Bonus:</span>
+                        <span class="stat-value" id="support-bonus">+0%</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Fatigue Penalty:</span>
+                        <span class="stat-value" id="fatigue-penalty">-0%</span>
+                    </div>
+                    <hr style="margin: 8px 0; border-color: #444;">
+                    <div class="stat-row">
+                        <span class="stat-label">Final Odds:</span>
+                        <span class="stat-value" id="final-odds" style="font-size: 1.2rem;">--</span>
+                    </div>
+                </div>
+
+                <div class="support-panel">
+                    <div class="support-title">🤝 Party Support</div>
+                    <div id="support-actions"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Result Modal -->
+    <div class="modal-overlay" id="result-modal">
+        <div class="modal">
+            <div class="result-icon" id="result-icon">🎯</div>
+            <h2 class="result-title" id="result-title">Result</h2>
+            <p id="result-message"></p>
+            <div class="result-details" id="result-details"></div>
+            <button class="btn" onclick="closeResult()">Continue</button>
+        </div>
+    </div>
+
+    <!-- Route Editor (Dev Tool) -->
+    <div class="route-editor-overlay" id="route-editor">
+        <div class="route-editor-header">
+            <h2>🛠️ Route Editor (Dev Tool)</h2>
+            <button class="btn" onclick="exportAllRocksCode()" style="background: #1565c0;">📋 Copy JSON to Clipboard</button>
+            <button class="btn" onclick="resetRocksToDefaults()" style="background: #795548;">Reload from File</button>
+            <button class="btn" onclick="closeRouteEditor()">Close</button>
+        </div>
+        <div class="route-editor-controls">
+            <label>Rock: <select id="editor-rock-select" onchange="onEditorRockChange()"></select></label>
+            <label>Problem: <select id="editor-problem-select" onchange="onEditorProblemChange()"></select></label>
+            <button class="btn btn-small" onclick="addNewProblem()">+ Add Problem</button>
+            <button class="btn btn-small" onclick="deleteProblem()" style="background: #c62828;">Delete Problem</button>
+        </div>
+        <div class="editor-problem-details" id="editor-problem-details">
+            <label>Name: <input type="text" id="editor-problem-name" onchange="updateProblemDetails()"></label>
+            <label>Grade: <select id="editor-problem-grade" onchange="updateProblemDetails()">
+                <option value="V0">V0</option>
+                <option value="V1">V1</option>
+                <option value="V2">V2</option>
+                <option value="V3">V3</option>
+                <option value="V4">V4</option>
+                <option value="V5">V5</option>
+                <option value="V6">V6</option>
+                <option value="V7">V7</option>
+                <option value="V8">V8</option>
+                <option value="V9">V9</option>
+                <option value="V10">V10</option>
+            </select></label>
+            <label>Base Chance: <input type="number" id="editor-problem-chance" min="1" max="100" onchange="updateProblemDetails()">%</label>
+            <label>Risk: <select id="editor-problem-risk" onchange="updateProblemDetails()">
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+            </select></label>
+            <button class="btn btn-small" onclick="saveProblemToData()" style="background: #2e7d32;">Save Changes</button>
+        </div>
+        <div class="route-editor-main">
+            <div class="route-editor-canvas-container">
+                <canvas id="route-editor-canvas"></canvas>
+            </div>
+            <div class="route-editor-sidebar">
+                <h4>Route Points</h4>
+                <div class="route-point-list" id="route-point-list">
+                    <em style="color: #90a4ae;">Click on rock to add points</em>
+                </div>
+                <div class="route-editor-buttons">
+                    <button class="btn" onclick="undoRoutePoint()">Undo</button>
+                    <button class="btn" onclick="clearRoutePoints()">Clear</button>
+                    <button class="btn" onclick="copyRouteJSON()">Copy JSON</button>
+                </div>
+                <h4>Output</h4>
+                <div class="route-editor-output" id="route-editor-output">
+// Click on rock to define route points
+// Copy this into ROCKS data
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Game Log -->
+    <div class="log-panel" id="game-log">
+        <div class="log-entry info">Welcome to the Buttermilks! Select a boulder to begin your session.</div>
+    </div>
+
+    <script>
+        // ========== GAME DATA ==========
+        const CLIMBERS = [
+            { id: 'karin', name: 'Karin', color: '#e91e63', power: 7, technique: 9, endurance: 6, psyche: 8, specialty: 'tech', emoji: 'K' },
+            { id: 'jason', name: 'Jason', color: '#2196f3', power: 9, technique: 6, endurance: 8, psyche: 7, specialty: 'power', emoji: 'J' },
+            { id: 'phana', name: 'Phana', color: '#9c27b0', power: 6, technique: 8, endurance: 7, psyche: 9, specialty: 'slab', emoji: 'P' },
+            { id: 'jonah', name: 'Jonah', color: '#4caf50', power: 8, technique: 7, endurance: 9, psyche: 6, specialty: 'endurance', emoji: 'Jo' },
+            { id: 'mary', name: 'Mary', color: '#ff9800', power: 5, technique: 10, endurance: 6, psyche: 8, specialty: 'tech', emoji: 'M' },
+            { id: 'sam', name: 'Sam', color: '#00bcd4', power: 10, technique: 5, endurance: 7, psyche: 7, specialty: 'compression', emoji: 'S' },
+            { id: 'ralphy', name: 'Ralphy', color: '#795548', power: 7, technique: 7, endurance: 8, psyche: 8, specialty: 'allround', emoji: 'R' },
+            { id: 'jaime', name: 'Jaime', color: '#607d8b', power: 8, technique: 8, endurance: 5, psyche: 6, specialty: 'power', emoji: 'Ja' },
+            { id: 'cindy', name: 'Cindy', color: '#f44336', power: 6, technique: 7, endurance: 10, psyche: 9, specialty: 'endurance', emoji: 'C' },
+            { id: 'justin', name: 'Justin', color: '#673ab7', power: 8, technique: 6, endurance: 7, psyche: 8, specialty: 'power', emoji: 'Ju' }
+        ];
+
+        // Default route for rocks/problems without custom routes
+        const DEFAULT_ROUTE = [
+            { x: 0.50, y: 0.95 },
+            { x: 0.45, y: 0.70 },
+            { x: 0.55, y: 0.45 },
+            { x: 0.50, y: 0.20 },
+            { x: 0.50, y: 0.05 }
+        ];
+
+        // ROCKS data is loaded from rocks.json
+        let ROCKS = [];
+        let rocksFileHandle = null; // File handle for direct saving
+
+        // Load rocks from JSON file
+        async function loadRocksFromFile() {
+            try {
+                const response = await fetch('rocks.json');
+                if (!response.ok) throw new Error('Failed to load rocks.json');
+                ROCKS = await response.json();
+                console.log('Loaded rocks from rocks.json');
+                return true;
+            } catch (e) {
+                console.error('Error loading rocks.json:', e);
+                alert('Error loading rocks.json - make sure the file exists');
+                return false;
+            }
+        }
+
+        // Save rocks directly to the JSON file using File System Access API
+        async function saveRocksToFile() {
+            try {
+                // If we don't have a file handle, ask user to select rocks.json
+                if (!rocksFileHandle) {
+                    const handles = await window.showOpenFilePicker({
+                        types: [{
+                            description: 'JSON Files',
+                            accept: { 'application/json': ['.json'] }
+                        }],
+                        multiple: false
+                    });
+                    rocksFileHandle = handles[0];
+                }
+
+                // Write the updated ROCKS to file
+                const writable = await rocksFileHandle.createWritable();
+                await writable.write(JSON.stringify(ROCKS, null, 2));
+                await writable.close();
+
+                console.log('Saved rocks to file');
+                return true;
+            } catch (err) {
+                if (err.name === 'AbortError') {
+                    console.log('File picker cancelled');
+                    return false;
+                }
+                console.error('Error saving to file:', err);
+                rocksFileHandle = null;
+                return false;
+            }
+        }
+
+        function resetRocksToDefaults() {
+            if (confirm('Reset rocks to what is saved in rocks.json?\n\nThis will reload the file and discard unsaved changes.')) {
+                loadRocksFromFile().then(() => {
+                    // Refresh the editor if open
+                    if (routeEditor.active) {
+                        initRouteEditor();
+                    }
+                    alert('Rocks reloaded from file!');
+                });
+            }
+        }
+
+        // Export rocks JSON to clipboard (fallback if file save doesn't work)
+        function exportAllRocksCode() {
+            const json = JSON.stringify(ROCKS, null, 2);
+            navigator.clipboard.writeText(json).then(() => {
+                alert('Rocks JSON copied to clipboard!\n\nPaste into rocks.json to save permanently.');
+                console.log('Exported ROCKS JSON:\n', json);
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+                const output = document.getElementById('route-editor-output');
+                output.textContent = json;
+                alert('Could not copy to clipboard. JSON is shown in the output panel.');
+            });
+        }
+
+        // Helper to get rock pixel positions
+        function getRockPosition(rock) {
+            return {
+                x: rock.xPct * worldCanvas.width,
+                y: rock.yPct * worldCanvas.height
+            };
+        }
+
+        const SUPPORT_ACTIONS = [
+            { id: 'beta', name: 'Call Beta', desc: 'Share sequence knowledge (+15% success)', effect: 'success', value: 15 },
+            { id: 'demo', name: 'Demonstrate Move', desc: 'Show the crux move (+10% success)', effect: 'success', value: 10 },
+            { id: 'hype', name: 'Hype Up', desc: 'Boost psyche for this attempt (+8%)', effect: 'psyche', value: 8 },
+            { id: 'brush', name: 'Brush Holds', desc: 'Clean the holds (+5% success)', effect: 'success', value: 5 },
+            { id: 'spot', name: 'Solid Spot', desc: 'Reduce injury risk significantly', effect: 'safety', value: 50 }
+        ];
+
+        // ========== GAME STATE ==========
+        let gameState = {
+            activeParty: ['karin', 'jason', 'phana', 'jonah'],
+            currentClimber: 'karin', // Karin is always the leader/climber
+            currentRock: null,
+            currentProblem: null,
+            selectedEffort: null,
+            selectedSupport: null,
+
+            // Party position on world map (starts near bottom-left of map)
+            partyPosition: { x: 80, y: 350 },
+            partySpeed: 1.5,
+            movingDirection: null,
+            targetPosition: null, // Click-to-walk destination
+            nearbyRock: null,
+
+            // Position history for follower trail (like Pokemon)
+            positionHistory: [],
+            historyMaxLength: 100,
+            followerSpacing: 12, // frames between each follower
+
+            // Progress tracking
+            rockProgress: {}, // { rockId: { cleared: bool, problems: { problemId: sent } } }
+            climberState: {}, // { climberId: { fatigue, psyche, skin, beta: {} } }
+
+            // Session stats
+            totalSends: 0,
+            totalAttempts: 0
+        };
+
+        // Initialize climber states
+        CLIMBERS.forEach(c => {
+            gameState.climberState[c.id] = {
+                fatigue: 0,
+                psyche: 100,
+                skin: 100,
+                beta: {} // { problemId: betaLevel 0-3 }
+            };
+        });
+
+        // Rock progress is initialized in DOMContentLoaded after ROCKS loads from JSON
+
+        // ========== CLIMBING ANIMATION SYSTEM ==========
+        let attemptAnim = {
+            active: false,
+            canvas: null,
+            ctx: null,
+            rockImage: null,
+            rockImageLoaded: false,
+            progress: 0,           // 0-100%
+            targetProgress: 100,   // Where climber stops
+            speed: 0.2,            // % per frame (~8 seconds for full send)
+            state: 'idle',         // idle, climbing, success, fall, falling
+            result: null,          // Store result for after animation
+            animationId: null,     // For cancelAnimationFrame
+            climberFrame: 0,       // Current sprite frame for climbing
+            frameTimer: 0,         // Timer for sprite animation
+            // Fall animation properties
+            fallProgress: 0,       // 0-1 for fall animation
+            fallStartPos: null,    // {x, y} position where fall started
+            fallEndPos: null,      // {x, y} first node position (landing)
+            fallRotation: 0        // Current rotation in radians
+        };
+
+        // Get position along route at given progress (0-100%)
+        function getRoutePosition(route, progress) {
+            const t = Math.min(1, Math.max(0, progress / 100));
+            const segmentCount = route.length - 1;
+            if (segmentCount <= 0) return route[0];
+
+            const segment = Math.min(Math.floor(t * segmentCount), segmentCount - 1);
+            const segmentT = (t * segmentCount) - segment;
+
+            const p1 = route[segment];
+            const p2 = route[segment + 1] || route[segment];
+            return {
+                x: p1.x + (p2.x - p1.x) * segmentT,
+                y: p1.y + (p2.y - p1.y) * segmentT
+            };
+        }
+
+        // Get route color based on grade
+        function getRouteColor(grade) {
+            const gradeNum = parseInt(grade.replace('V', ''));
+            if (gradeNum <= 2) return '#4caf50'; // Green - easy
+            if (gradeNum <= 4) return '#ffeb3b'; // Yellow - medium
+            return '#f44336'; // Red - hard
+        }
+
+        // Initialize the attempt canvas with rock image or procedural rock
+        function initAttemptCanvas() {
+            attemptAnim.canvas = document.getElementById('attempt-canvas');
+            attemptAnim.ctx = attemptAnim.canvas.getContext('2d');
+
+            const rock = gameState.currentRock;
+
+            // Load rock image if available
+            if (rock && rock.image) {
+                attemptAnim.rockImage = new Image();
+                attemptAnim.rockImage.onload = () => {
+                    attemptAnim.rockImageLoaded = true;
+                    drawAttemptCanvas();
+                };
+                attemptAnim.rockImage.onerror = () => {
+                    attemptAnim.rockImageLoaded = false;
+                    drawAttemptCanvas();
+                };
+                attemptAnim.rockImage.src = rock.image;
+            } else {
+                attemptAnim.rockImageLoaded = false;
+                drawAttemptCanvas();
+            }
+        }
+
+        // Draw the attempt canvas (rock, route, climber)
+        function drawAttemptCanvas() {
+            const ctx = attemptAnim.ctx;
+            const canvas = attemptAnim.canvas;
+            const w = canvas.width;
+            const h = canvas.height;
+
+            // Clear
+            ctx.clearRect(0, 0, w, h);
+
+            // Draw background (sky gradient)
+            const skyGrad = ctx.createLinearGradient(0, 0, 0, h);
+            skyGrad.addColorStop(0, '#87ceeb');
+            skyGrad.addColorStop(1, '#e0c097');
+            ctx.fillStyle = skyGrad;
+            ctx.fillRect(0, 0, w, h);
+
+            // Draw rock image or procedural rock
+            if (attemptAnim.rockImageLoaded && attemptAnim.rockImage) {
+                // Draw rock image to fill canvas while maintaining aspect ratio
+                const imgW = attemptAnim.rockImage.width;
+                const imgH = attemptAnim.rockImage.height;
+                const scale = Math.max(w / imgW, h / imgH);
+                const scaledW = imgW * scale;
+                const scaledH = imgH * scale;
+                const offsetX = (w - scaledW) / 2;
+                const offsetY = (h - scaledH) / 2;
+                ctx.drawImage(attemptAnim.rockImage, offsetX, offsetY, scaledW, scaledH);
+                // Store transform for coordinate conversion
+                attemptAnim.imageTransform = { scaledW, scaledH, offsetX, offsetY };
+            } else {
+                // Procedural rock - no offset
+                attemptAnim.imageTransform = { scaledW: w, scaledH: h, offsetX: 0, offsetY: 0 };
+                drawProceduralRock(ctx, w, h);
+            }
+
+            // Helper to convert image coords to canvas coords
+            function imgToCanvas(ix, iy) {
+                const t = attemptAnim.imageTransform;
+                return { x: ix * t.scaledW + t.offsetX, y: iy * t.scaledH + t.offsetY };
+            }
+
+            // Draw route line
+            const problem = gameState.currentProblem;
+            if (problem) {
+                const route = problem.route || DEFAULT_ROUTE;
+                drawRouteLine(ctx, route, attemptAnim.imageTransform, problem.grade);
+            }
+
+            // Draw climber at current progress
+            if (attemptAnim.state === 'falling' && problem && attemptAnim.fallStartPos && attemptAnim.fallEndPos) {
+                // Interpolate position during fall - straight down, keeping x, moving to start node's y
+                const t = attemptAnim.fallProgress;
+                const startPos = imgToCanvas(attemptAnim.fallStartPos.x, attemptAnim.fallStartPos.y);
+                const endPos = imgToCanvas(attemptAnim.fallStartPos.x, attemptAnim.fallEndPos.y);
+                // Ease out for more natural fall
+                const easeT = 1 - Math.pow(1 - t, 2);
+                const y = startPos.y + (endPos.y - startPos.y) * easeT;
+                drawClimberOnRock(ctx, startPos.x, y);
+            } else if (attemptAnim.state === 'fall' && problem && attemptAnim.fallStartPos && attemptAnim.fallEndPos) {
+                // Draw at final fall position (same x, start node's y)
+                const pos = imgToCanvas(attemptAnim.fallStartPos.x, attemptAnim.fallEndPos.y);
+                drawClimberOnRock(ctx, pos.x, pos.y);
+            } else if (attemptAnim.active && problem) {
+                const route = problem.route || DEFAULT_ROUTE;
+                const routePos = getRoutePosition(route, attemptAnim.progress);
+                const pos = imgToCanvas(routePos.x, routePos.y);
+                drawClimberOnRock(ctx, pos.x, pos.y);
+            } else if (problem) {
+                // Draw climber at start position when idle
+                const route = problem.route || DEFAULT_ROUTE;
+                const routePos = getRoutePosition(route, 0);
+                const pos = imgToCanvas(routePos.x, routePos.y);
+                drawClimberOnRock(ctx, pos.x, pos.y);
+            }
+
+            // Update progress bar
+            updateClimbProgressBar();
+        }
+
+        // Draw a procedural rock shape
+        function drawProceduralRock(ctx, w, h) {
+            const rockGrad = ctx.createLinearGradient(w * 0.2, 0, w * 0.8, h);
+            rockGrad.addColorStop(0, '#8d8d8d');
+            rockGrad.addColorStop(0.5, '#6d6d6d');
+            rockGrad.addColorStop(1, '#4d4d4d');
+
+            ctx.fillStyle = rockGrad;
+            ctx.beginPath();
+            ctx.moveTo(w * 0.1, h * 0.95);
+            ctx.lineTo(w * 0.15, h * 0.4);
+            ctx.lineTo(w * 0.25, h * 0.15);
+            ctx.lineTo(w * 0.5, h * 0.05);
+            ctx.lineTo(w * 0.75, h * 0.12);
+            ctx.lineTo(w * 0.85, h * 0.35);
+            ctx.lineTo(w * 0.9, h * 0.95);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.strokeStyle = '#3d3d3d';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Add some texture
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            for (let i = 0; i < 20; i++) {
+                const rx = w * 0.2 + Math.random() * w * 0.6;
+                const ry = h * 0.1 + Math.random() * h * 0.8;
+                ctx.beginPath();
+                ctx.arc(rx, ry, 3 + Math.random() * 5, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // Draw the route line on rock
+        function drawRouteLine(ctx, route, transform, grade) {
+            if (!route || route.length < 2) return;
+
+            const t = transform;
+            function toCanvas(ix, iy) {
+                return { x: ix * t.scaledW + t.offsetX, y: iy * t.scaledH + t.offsetY };
+            }
+
+            const color = getRouteColor(grade);
+
+            // Draw connecting lines
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 3;
+            ctx.setLineDash([8, 4]);
+            ctx.globalAlpha = 0.7;
+            ctx.beginPath();
+            const start = toCanvas(route[0].x, route[0].y);
+            ctx.moveTo(start.x, start.y);
+            for (let i = 1; i < route.length; i++) {
+                const pt = toCanvas(route[i].x, route[i].y);
+                ctx.lineTo(pt.x, pt.y);
+            }
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.globalAlpha = 1.0;
+
+            // Draw waypoints
+            route.forEach((point, i) => {
+                const canvasPt = toCanvas(point.x, point.y);
+                const px = canvasPt.x;
+                const py = canvasPt.y;
+
+                // Outer ring
+                ctx.beginPath();
+                ctx.arc(px, py, 8, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                ctx.fill();
+
+                // Inner dot
+                ctx.beginPath();
+                ctx.arc(px, py, 5, 0, Math.PI * 2);
+                ctx.fillStyle = i === 0 ? '#4caf50' : (i === route.length - 1 ? '#ffb74d' : color);
+                ctx.fill();
+            });
+        }
+
+        // Draw the climber sprite on the rock at position
+        function drawClimberOnRock(ctx, x, y) {
+            const climber = CLIMBERS.find(c => c.id === gameState.currentClimber);
+            if (!climber) return;
+
+            // Check if we're in falling state - apply rotation
+            const isFalling = attemptAnim.state === 'falling' || attemptAnim.state === 'fall';
+            const rotation = isFalling ? attemptAnim.fallRotation : 0;
+
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(rotation);
+
+            // Use sprite if loaded, otherwise fallback
+            if (leaderSpriteLoaded && leaderSprite) {
+                // Use "up" direction (row 3) for climbing
+                const spriteRow = 3; // Up direction
+                const spriteCol = attemptAnim.active ? (attemptAnim.climberFrame % 4) : 0;
+                const sx = spriteCol * spriteFrameWidth;
+                const sy = spriteRow * spriteFrameHeight;
+
+                const scale = 0.25;
+                const drawWidth = spriteFrameWidth * scale;
+                const drawHeight = spriteFrameHeight * scale;
+
+                // Shadow (only when not falling)
+                if (!isFalling) {
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+                    ctx.beginPath();
+                    ctx.ellipse(0, drawHeight / 2, drawWidth / 3, 5, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                // Draw sprite
+                ctx.drawImage(
+                    leaderSprite,
+                    sx, sy, spriteFrameWidth, spriteFrameHeight,
+                    -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight
+                );
+            } else {
+                // Fallback: colored circle with emoji
+                if (!isFalling) {
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+                    ctx.beginPath();
+                    ctx.ellipse(0, 12, 10, 4, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                ctx.fillStyle = climber.color;
+                ctx.beginPath();
+                ctx.arc(0, 0, 14, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 12px Courier New';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(climber.emoji, 0, 0);
+            }
+
+            ctx.restore();
+        }
+
+        // Update the progress bar display
+        function updateClimbProgressBar() {
+            const fill = document.getElementById('climb-progress-fill');
+            const text = document.getElementById('climb-progress-text');
+
+            if (fill) {
+                fill.style.width = `${attemptAnim.progress}%`;
+
+                // Change color based on state
+                if (attemptAnim.state === 'success') {
+                    fill.style.background = 'linear-gradient(90deg, #4caf50, #8bc34a)';
+                } else if (attemptAnim.state === 'fall') {
+                    fill.style.background = 'linear-gradient(90deg, #ff9800, #f44336)';
+                } else {
+                    fill.style.background = 'linear-gradient(90deg, #4caf50, #8bc34a, #ffeb3b)';
+                }
+            }
+
+            if (text) {
+                if (attemptAnim.state === 'climbing') {
+                    text.textContent = `Climbing... ${Math.round(attemptAnim.progress)}%`;
+                } else if (attemptAnim.state === 'success') {
+                    text.textContent = '🎉 SENT!';
+                } else if (attemptAnim.state === 'fall') {
+                    text.textContent = `💪 Fell at ${Math.round(attemptAnim.progress)}%`;
+                } else {
+                    text.textContent = 'Select effort and commit to climb';
+                }
+            }
+        }
+
+        // Start the climbing animation
+        function startClimbingAnimation(result, targetProgress) {
+            attemptAnim.active = true;
+            attemptAnim.progress = 0;
+            attemptAnim.targetProgress = targetProgress;
+            attemptAnim.state = 'climbing';
+            attemptAnim.result = result;
+            attemptAnim.climberFrame = 0;
+            attemptAnim.frameTimer = 0;
+
+            // Start animation loop
+            function animate() {
+                if (!attemptAnim.active) return;
+
+                // Update progress
+                attemptAnim.progress += attemptAnim.speed;
+
+                // Update sprite animation
+                attemptAnim.frameTimer++;
+                if (attemptAnim.frameTimer >= 10) {
+                    attemptAnim.frameTimer = 0;
+                    attemptAnim.climberFrame = (attemptAnim.climberFrame + 1) % 4;
+                }
+
+                // Check if reached target
+                if (attemptAnim.progress >= attemptAnim.targetProgress) {
+                    attemptAnim.progress = attemptAnim.targetProgress;
+
+                    if (result.success) {
+                        attemptAnim.state = 'success';
+                        attemptAnim.active = false;
+                        drawAttemptCanvas();
+                        setTimeout(() => {
+                            onClimbingComplete();
+                        }, 1000);
+                    } else {
+                        // Start fall animation
+                        const problem = gameState.currentProblem;
+                        const route = problem.route || DEFAULT_ROUTE;
+                        const fallStartPos = getRoutePosition(route, attemptAnim.progress);
+                        const fallEndPos = route[0]; // First node
+
+                        attemptAnim.state = 'falling';
+                        attemptAnim.fallProgress = 0;
+                        attemptAnim.fallStartPos = fallStartPos;
+                        attemptAnim.fallEndPos = fallEndPos;
+                        attemptAnim.fallRotation = 0;
+
+                        // Continue with fall animation
+                        function animateFall() {
+                            if (attemptAnim.state !== 'falling') return;
+
+                            attemptAnim.fallProgress += 0.02; // ~50 frames for fall
+                            attemptAnim.fallRotation = Math.min(attemptAnim.fallProgress * 2, 1) * (Math.PI / 2); // Rotate 90 degrees
+
+                            if (attemptAnim.fallProgress >= 1) {
+                                attemptAnim.fallProgress = 1;
+                                attemptAnim.state = 'fall';
+                                attemptAnim.active = false;
+                                drawAttemptCanvas();
+                                setTimeout(() => {
+                                    onClimbingComplete();
+                                }, 800);
+                                return;
+                            }
+
+                            drawAttemptCanvas();
+                            attemptAnim.animationId = requestAnimationFrame(animateFall);
+                        }
+
+                        attemptAnim.animationId = requestAnimationFrame(animateFall);
+                    }
+                    return;
+                }
+
+                drawAttemptCanvas();
+                attemptAnim.animationId = requestAnimationFrame(animate);
+            }
+
+            attemptAnim.animationId = requestAnimationFrame(animate);
+        }
+
+        // Called when climbing animation completes
+        function onClimbingComplete() {
+            const climber = CLIMBERS.find(c => c.id === gameState.currentClimber);
+            const problem = gameState.currentProblem;
+            showResult(attemptAnim.result, climber, problem);
+        }
+
+        // Reset the animation state
+        function resetAttemptAnimation() {
+            if (attemptAnim.animationId) {
+                cancelAnimationFrame(attemptAnim.animationId);
+            }
+            attemptAnim.active = false;
+            attemptAnim.progress = 0;
+            attemptAnim.state = 'idle';
+            attemptAnim.result = null;
+            // Reset fall animation properties
+            attemptAnim.fallProgress = 0;
+            attemptAnim.fallStartPos = null;
+            attemptAnim.fallEndPos = null;
+            attemptAnim.fallRotation = 0;
+        }
+
+        // ========== SCREEN MANAGEMENT ==========
+        function showScreen(screenId) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(screenId).classList.add('active');
+        }
+
+        // ========== PIXEL DISSOLVE TRANSITION ==========
+        const pixelTransition = {
+            canvas: null,
+            ctx: null,
+            pixels: [],
+            gridSize: 8, // Size of each "pixel" block
+            animating: false,
+            onComplete: null
+        };
+
+        function initPixelTransition() {
+            pixelTransition.canvas = document.getElementById('pixel-transition');
+            pixelTransition.ctx = pixelTransition.canvas.getContext('2d');
+            resizePixelTransition();
+            window.addEventListener('resize', resizePixelTransition);
+        }
+
+        function resizePixelTransition() {
+            if (!pixelTransition.canvas) return;
+            pixelTransition.canvas.width = window.innerWidth;
+            pixelTransition.canvas.height = window.innerHeight;
+        }
+
+        function startPixelDissolve(onComplete) {
+            if (pixelTransition.animating) return;
+
+            const canvas = pixelTransition.canvas;
+            const ctx = pixelTransition.ctx;
+            const gridSize = pixelTransition.gridSize;
+
+            // Calculate grid dimensions
+            const cols = Math.ceil(canvas.width / gridSize);
+            const rows = Math.ceil(canvas.height / gridSize);
+
+            // Create array of all pixel positions with random delays
+            pixelTransition.pixels = [];
+            for (let y = 0; y < rows; y++) {
+                for (let x = 0; x < cols; x++) {
+                    pixelTransition.pixels.push({
+                        x: x * gridSize,
+                        y: y * gridSize,
+                        delay: Math.random() * 0.6, // Random delay 0-0.6s
+                        opacity: 0
+                    });
+                }
+            }
+
+            // Shuffle for more random appearance
+            pixelTransition.pixels.sort(() => Math.random() - 0.5);
+
+            pixelTransition.animating = true;
+            pixelTransition.onComplete = onComplete;
+            canvas.classList.add('active');
+
+            const startTime = performance.now();
+            const duration = 800; // Total animation duration in ms
+
+            function animate(currentTime) {
+                const elapsed = currentTime - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#000';
+
+                // Draw each pixel based on its delay
+                for (const pixel of pixelTransition.pixels) {
+                    const pixelProgress = Math.max(0, (progress - pixel.delay) / (1 - pixel.delay));
+                    if (pixelProgress > 0) {
+                        ctx.globalAlpha = Math.min(pixelProgress * 2, 1);
+                        ctx.fillRect(pixel.x, pixel.y, gridSize, gridSize);
+                    }
+                }
+                ctx.globalAlpha = 1;
+
+                if (progress < 1) {
+                    requestAnimationFrame(animate);
+                } else {
+                    // Fill completely black
+                    ctx.fillStyle = '#000';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                    // Brief pause then fade out
+                    setTimeout(() => {
+                        fadeOutTransition();
+                    }, 150);
+
+                    // Call the completion callback
+                    if (pixelTransition.onComplete) {
+                        pixelTransition.onComplete();
+                    }
+                }
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        function fadeOutTransition() {
+            const canvas = pixelTransition.canvas;
+            const ctx = pixelTransition.ctx;
+            const startTime = performance.now();
+            const duration = 400;
+
+            function animate(currentTime) {
+                const elapsed = currentTime - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#000';
+                ctx.globalAlpha = 1 - progress;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.globalAlpha = 1;
+
+                if (progress < 1) {
+                    requestAnimationFrame(animate);
+                } else {
+                    canvas.classList.remove('active');
+                    pixelTransition.animating = false;
+                }
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // Initialize on load
+        document.addEventListener('DOMContentLoaded', initPixelTransition);
+
+        function startGame() {
+            showScreen('world-map');
+            initWorldMap();
+            preloadRockImages();
+            updatePartyDisplay();
+            log('Your party arrives at the Buttermilks. The granite gleams in the morning light.', 'info');
+        }
+
+        // ========== WORLD MAP ==========
+        let worldCanvas, worldCtx;
+        let selectedRockId = null;
+        let gameLoopId = null;
+        let keysPressed = {};
+        let mapImage = null; // Background map image
+        let mapImageLoaded = false;
+
+        // Rock image cache
+        const rockImages = {};
+
+        function loadRockImage(rock) {
+            if (!rock.image || rockImages[rock.id]) return;
+
+            const img = new Image();
+            img.onload = () => {
+                rockImages[rock.id] = img;
+                // Redraw if this rock is currently being viewed
+                if (gameState.currentRock?.id === rock.id) {
+                    drawRock();
+                }
+            };
+            img.src = rock.image;
+        }
+
+        // Preload all rock images
+        function preloadRockImages() {
+            ROCKS.forEach(rock => loadRockImage(rock));
+        }
+
+        // Sprite system for leader
+        let leaderSprite = null;
+        let leaderSpriteLoaded = false;
+        const SPRITE_COLS = 4; // 4 frames per row
+        const SPRITE_ROWS = 4; // 4 directions: down, left, right, up
+        let spriteFrameWidth = 0;
+        let spriteFrameHeight = 0;
+        let animationFrame = 0;
+        let animationTimer = 0;
+        const ANIMATION_SPEED = 8; // frames between sprite changes
+        let lastDirection = 'down'; // Track last direction for idle sprite
+
+        function initWorldMap() {
+            worldCanvas = document.getElementById('world-canvas');
+            worldCtx = worldCanvas.getContext('2d');
+
+            // Load the Buttermilks map image
+            mapImage = new Image();
+            mapImage.crossOrigin = 'anonymous';
+            mapImage.onload = () => {
+                mapImageLoaded = true;
+                drawWorldMap();
+            };
+            mapImage.onerror = () => {
+                console.log('Map image not found, using fallback');
+                mapImageLoaded = false;
+            };
+            // Load from assets folder
+            mapImage.src = 'assets/buttermilks.jpeg';
+
+            // Load leader sprite
+            leaderSprite = new Image();
+            leaderSprite.onload = () => {
+                leaderSpriteLoaded = true;
+                // Sprite sheet is 4 columns x 4 rows (down, left, right, up)
+                spriteFrameWidth = leaderSprite.width / 4;
+                spriteFrameHeight = leaderSprite.height / 4;
+                console.log('Leader sprite loaded:', spriteFrameWidth, 'x', spriteFrameHeight);
+            };
+            leaderSprite.onerror = () => {
+                console.log('Leader sprite not found, using fallback');
+                leaderSpriteLoaded = false;
+            };
+            leaderSprite.src = 'assets/karinwalk.png';
+
+            resizeWorldCanvas();
+            window.addEventListener('resize', resizeWorldCanvas);
+            worldCanvas.addEventListener('click', handleMapClick);
+
+            // Keyboard controls
+            window.addEventListener('keydown', handleKeyDown);
+            window.addEventListener('keyup', handleKeyUp);
+
+            // Start game loop
+            startGameLoop();
+
+            drawWorldMap();
+            updateRocksCleared();
+        }
+
+        function handleKeyDown(e) {
+            if (!document.getElementById('world-map').classList.contains('active')) return;
+
+            keysPressed[e.key] = true;
+
+            // Arrow keys
+            if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
+                gameState.movingDirection = 'up';
+                e.preventDefault();
+            } else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
+                gameState.movingDirection = 'down';
+                e.preventDefault();
+            } else if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
+                gameState.movingDirection = 'left';
+                e.preventDefault();
+            } else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
+                gameState.movingDirection = 'right';
+                e.preventDefault();
+            }
+
+            // Enter/Space to interact
+            if (e.key === 'Enter' || e.key === ' ') {
+                interactWithNearbyRock();
+                e.preventDefault();
+            }
+        }
+
+        function handleKeyUp(e) {
+            keysPressed[e.key] = false;
+
+            // Check if any movement keys are still pressed
+            const upPressed = keysPressed['ArrowUp'] || keysPressed['w'] || keysPressed['W'];
+            const downPressed = keysPressed['ArrowDown'] || keysPressed['s'] || keysPressed['S'];
+            const leftPressed = keysPressed['ArrowLeft'] || keysPressed['a'] || keysPressed['A'];
+            const rightPressed = keysPressed['ArrowRight'] || keysPressed['d'] || keysPressed['D'];
+
+            if (!upPressed && !downPressed && !leftPressed && !rightPressed) {
+                gameState.movingDirection = null;
+            } else if (upPressed) {
+                gameState.movingDirection = 'up';
+            } else if (downPressed) {
+                gameState.movingDirection = 'down';
+            } else if (leftPressed) {
+                gameState.movingDirection = 'left';
+            } else if (rightPressed) {
+                gameState.movingDirection = 'right';
+            }
+        }
+
+        function startMove(direction) {
+            gameState.movingDirection = direction;
+        }
+
+        function stopMove() {
+            gameState.movingDirection = null;
+        }
+
+        function startGameLoop() {
+            if (gameLoopId) cancelAnimationFrame(gameLoopId);
+
+            function gameLoop() {
+                if (document.getElementById('world-map').classList.contains('active')) {
+                    updatePartyPosition();
+                    checkNearbyRocks();
+                    drawWorldMap();
+                }
+                gameLoopId = requestAnimationFrame(gameLoop);
+            }
+
+            gameLoopId = requestAnimationFrame(gameLoop);
+        }
+
+        function updatePartyPosition() {
+            const speed = gameState.partySpeed;
+            const pos = gameState.partyPosition;
+            const margin = 30;
+
+            // Store old position before moving
+            const oldX = pos.x;
+            const oldY = pos.y;
+
+            // Handle click-to-walk movement
+            if (gameState.targetPosition) {
+                const target = gameState.targetPosition;
+                const dx = target.x - pos.x;
+                const dy = target.y - pos.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist < speed) {
+                    // Arrived at destination
+                    pos.x = target.x;
+                    pos.y = target.y;
+                    const rockToEnter = target.rock;
+                    gameState.targetPosition = null;
+                    gameState.movingDirection = null;
+
+                    // If clicked on a rock, enter it on arrival
+                    if (rockToEnter) {
+                        enterCrag(rockToEnter);
+                    }
+                } else {
+                    // Move toward target
+                    const ratio = speed / dist;
+                    pos.x += dx * ratio;
+                    pos.y += dy * ratio;
+
+                    // Set facing direction based on movement
+                    if (Math.abs(dx) > Math.abs(dy)) {
+                        gameState.movingDirection = dx > 0 ? 'right' : 'left';
+                    } else {
+                        gameState.movingDirection = dy > 0 ? 'down' : 'up';
+                    }
+                }
+
+                // Clamp to bounds
+                pos.x = Math.max(margin, Math.min(worldCanvas.width - margin, pos.x));
+                pos.y = Math.max(margin, Math.min(worldCanvas.height - margin, pos.y));
+            } else if (gameState.movingDirection) {
+                // Handle keyboard movement
+                switch (gameState.movingDirection) {
+                    case 'up':
+                        pos.y = Math.max(margin, pos.y - speed);
+                        break;
+                    case 'down':
+                        pos.y = Math.min(worldCanvas.height - margin, pos.y + speed);
+                        break;
+                    case 'left':
+                        pos.x = Math.max(margin, pos.x - speed);
+                        break;
+                    case 'right':
+                        pos.x = Math.min(worldCanvas.width - margin, pos.x + speed);
+                        break;
+                }
+            }
+
+            // If position changed, record it in history
+            if (pos.x !== oldX || pos.y !== oldY) {
+                gameState.positionHistory.unshift({ x: pos.x, y: pos.y });
+
+                // Trim history to max length
+                if (gameState.positionHistory.length > gameState.historyMaxLength) {
+                    gameState.positionHistory.pop();
+                }
+            }
+        }
+
+        function checkNearbyRocks() {
+            const pos = gameState.partyPosition;
+            const interactDistance = 60;
+
+            let nearest = null;
+            let nearestDist = Infinity;
+
+            for (const rock of ROCKS) {
+                const rockPos = getRockPosition(rock);
+                const dx = pos.x - rockPos.x;
+                const dy = pos.y - rockPos.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist < interactDistance && dist < nearestDist) {
+                    nearest = rock;
+                    nearestDist = dist;
+                }
+            }
+
+            gameState.nearbyRock = nearest;
+
+            // Update UI indicator
+            const indicator = document.getElementById('nearby-indicator');
+            if (nearest) {
+                indicator.classList.add('active');
+                document.getElementById('nearby-rock-name').textContent = nearest.name;
+            } else {
+                indicator.classList.remove('active');
+            }
+        }
+
+        function interactWithNearbyRock() {
+            if (gameState.nearbyRock) {
+                enterCrag(gameState.nearbyRock);
+            }
+        }
+
+        function resizeWorldCanvas() {
+            const container = worldCanvas.parentElement;
+            const availableHeight = container.clientHeight;
+            const availableWidth = container.clientWidth;
+
+            // If map image is loaded, fit canvas to show full image (fit vertically)
+            if (mapImageLoaded && mapImage) {
+                const imgAspect = mapImage.width / mapImage.height;
+                // Fit to available height, calculate width from aspect ratio
+                worldCanvas.height = availableHeight;
+                worldCanvas.width = Math.min(availableWidth, availableHeight * imgAspect);
+            } else {
+                worldCanvas.width = availableWidth;
+                worldCanvas.height = availableHeight;
+            }
+
+            // Keep party in bounds (using percentage-based position)
+            gameState.partyPosition.x = Math.min(gameState.partyPosition.x, worldCanvas.width - 30);
+            gameState.partyPosition.y = Math.min(gameState.partyPosition.y, worldCanvas.height - 30);
+        }
+
+        function drawWorldMap() {
+            const ctx = worldCtx;
+            const w = worldCanvas.width;
+            const h = worldCanvas.height;
+
+            // Clear
+            ctx.clearRect(0, 0, w, h);
+
+            // Draw map image background (or stylized fallback)
+            if (mapImageLoaded && mapImage) {
+                // Draw full image - canvas is sized to match aspect ratio
+                ctx.drawImage(mapImage, 0, 0, w, h);
+            } else {
+                // Stylized fallback terrain (Buttermilks-inspired)
+                // Base sandy color with blue-ish edges
+                const gradient = ctx.createRadialGradient(w * 0.4, h * 0.5, 0, w * 0.5, h * 0.5, w * 0.8);
+                gradient.addColorStop(0, '#d4c4a8');
+                gradient.addColorStop(0.6, '#c9b896');
+                gradient.addColorStop(1, '#9ab8bc');
+                ctx.fillStyle = gradient;
+                ctx.fillRect(0, 0, w, h);
+
+                // Add subtle boulder shapes in background (deterministic positions)
+                ctx.globalAlpha = 0.4;
+                ctx.fillStyle = '#a09080';
+                ROCKS.forEach(rock => {
+                    const pos = getRockPosition(rock);
+                    // Draw a subtle boulder silhouette
+                    ctx.beginPath();
+                    ctx.ellipse(pos.x, pos.y - 3, 28, 20, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+                ctx.globalAlpha = 1.0;
+            }
+
+            // Draw rock markers and labels
+            ROCKS.forEach(rock => {
+                const pos = getRockPosition(rock);
+                const progress = gameState.rockProgress[rock.id];
+                const isCleared = progress.cleared;
+                const sentCount = Object.values(progress.problems).filter(Boolean).length;
+                const totalCount = rock.problems.length;
+                const isComplete = sentCount === totalCount;
+
+                // Check if party is nearby
+                const dx = gameState.partyPosition.x - pos.x;
+                const dy = gameState.partyPosition.y - pos.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                const isNearby = dist < 60;
+
+                // Draw marker circle
+                const markerRadius = isNearby ? 18 : 14;
+
+                // Outer glow for nearby
+                if (isNearby) {
+                    ctx.beginPath();
+                    ctx.arc(pos.x, pos.y, markerRadius + 8, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(255, 183, 77, 0.4)';
+                    ctx.fill();
+                }
+
+                // Marker background
+                ctx.beginPath();
+                ctx.arc(pos.x, pos.y, markerRadius, 0, Math.PI * 2);
+                if (isComplete) {
+                    ctx.fillStyle = '#ffd700';
+                } else if (isCleared) {
+                    ctx.fillStyle = '#4caf50';
+                } else {
+                    ctx.fillStyle = 'rgba(80, 80, 80, 0.85)';
+                }
+                ctx.fill();
+
+                // Marker border
+                ctx.strokeStyle = isNearby ? '#ffb74d' : 'rgba(255,255,255,0.8)';
+                ctx.lineWidth = isNearby ? 3 : 2;
+                ctx.stroke();
+
+                // Progress text inside marker
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 10px Courier New';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(`${sentCount}/${totalCount}`, pos.x, pos.y);
+
+                // Rock name label with background
+                const labelY = pos.y + markerRadius + 12;
+                ctx.font = 'bold 11px Courier New';
+                const textWidth = ctx.measureText(rock.name).width;
+
+                // Label background
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                const padding = 4;
+                ctx.fillRect(pos.x - textWidth / 2 - padding, labelY - 8, textWidth + padding * 2, 16);
+
+                // Label border for cleared/complete
+                if (isComplete) {
+                    ctx.strokeStyle = '#ffd700';
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(pos.x - textWidth / 2 - padding, labelY - 8, textWidth + padding * 2, 16);
+                } else if (isCleared) {
+                    ctx.strokeStyle = '#4caf50';
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(pos.x - textWidth / 2 - padding, labelY - 8, textWidth + padding * 2, 16);
+                }
+
+                // Label text
+                ctx.fillStyle = isComplete ? '#ffd700' : (isCleared ? '#81c784' : '#fff');
+                ctx.textBaseline = 'middle';
+                ctx.fillText(rock.name, pos.x, labelY);
+            });
+
+            // Draw party leader at current position
+            const px = gameState.partyPosition.x;
+            const py = gameState.partyPosition.y;
+
+            // Update animation if moving
+            if (gameState.movingDirection) {
+                lastDirection = gameState.movingDirection;
+                animationTimer++;
+                if (animationTimer >= ANIMATION_SPEED) {
+                    animationTimer = 0;
+                    animationFrame = (animationFrame + 1) % 4;
+                }
+            } else {
+                // Reset to standing frame when idle
+                animationFrame = 0;
+                animationTimer = 0;
+            }
+
+            // Draw leader sprite or fallback
+            if (leaderSpriteLoaded && leaderSprite) {
+                // Direction mapping for the sprite sheet
+                // 0: Down, 1: Left-facing sprite, 2: Right-facing sprite, 3: Up
+                // Swapped so movement direction matches sprite facing direction
+                const directionRowMap = {
+                    'down': 0,
+                    'left': 2,
+                    'right': 1,
+                    'up': 3
+                };
+
+                // Per-frame offsets [row][col] - calculated from sprite analysis
+                // These center each frame's sprite content to eliminate animation jitter
+                // Sprite sheet row order: 0=down, 1=left, 2=right, 3=up
+                const spriteFrameOffsets = {
+                    0: [ // row 0: down
+                        { x: -57, y: -9 }, // frame 0
+                        { x: 22, y: -9 },  // frame 1
+                        { x: -11, y: -9 }, // frame 2
+                        { x: 54, y: -9 }   // frame 3
+                    ],
+                    1: [ // row 1: left
+                        { x: -58, y: -6 }, // frame 0
+                        { x: 31, y: -2 },  // frame 1
+                        { x: -10, y: -4 }, // frame 2
+                        { x: 64, y: -5 }   // frame 3
+                    ],
+                    2: [ // row 2: right
+                        { x: -59, y: 36 }, // frame 0
+                        { x: 29, y: 35 },  // frame 1
+                        { x: -11, y: 36 }, // frame 2
+                        { x: 61, y: 36 }   // frame 3
+                    ],
+                    3: [ // row 3: up
+                        { x: -56, y: 67 }, // frame 0
+                        { x: 9, y: 66 },   // frame 1
+                        { x: -9, y: 66 },  // frame 2
+                        { x: 65, y: 68 }   // frame 3
+                    ]
+                };
+
+                const spriteRow = directionRowMap[lastDirection];
+                const spriteCol = animationFrame % 4;
+                const sx = spriteCol * spriteFrameWidth;
+                const sy = spriteRow * spriteFrameHeight;
+
+                // Draw size (scaled for visibility - sprite is massive 1024x1536 sheet)
+                const scale = 0.2;
+                const drawWidth = spriteFrameWidth * scale;
+                const drawHeight = spriteFrameHeight * scale;
+
+                // Leader shadow
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+                ctx.beginPath();
+                ctx.ellipse(px, py + drawHeight / 2 - 5, drawWidth / 3, 6, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Per-frame offset (scaled to match draw size)
+                const frameOffset = spriteFrameOffsets[spriteRow][spriteCol];
+                const offset = { x: frameOffset.x * scale, y: frameOffset.y * scale };
+
+                // Clip to prevent neighboring sprite bleed
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(px - drawWidth / 2, py - drawHeight / 2, drawWidth, drawHeight);
+                ctx.clip();
+
+                // Draw sprite with offset
+                ctx.drawImage(
+                    leaderSprite,
+                    sx, sy, spriteFrameWidth, spriteFrameHeight,
+                    px - drawWidth / 2 + offset.x, py - drawHeight / 2 + offset.y, drawWidth, drawHeight
+                );
+
+                ctx.restore();
+            } else {
+                // Fallback: Party shadow
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+                ctx.beginPath();
+                ctx.ellipse(px, py + 12, 15, 6, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Party circle
+                ctx.fillStyle = '#ffb74d';
+                ctx.beginPath();
+                ctx.arc(px, py, 14, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = '#ff8f00';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+
+                // Direction indicator when moving
+                if (gameState.movingDirection) {
+                    ctx.fillStyle = '#fff';
+                    ctx.beginPath();
+                    let arrowX = px, arrowY = py;
+                    switch (gameState.movingDirection) {
+                        case 'up': arrowY -= 20; break;
+                        case 'down': arrowY += 20; break;
+                        case 'left': arrowX -= 20; break;
+                        case 'right': arrowX += 20; break;
+                    }
+                    ctx.arc(arrowX, arrowY, 4, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                // Party emoji
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 14px Courier New';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('🧗', px, py);
+            }
+
+            // Draw party members following the leader's path (Pokemon style)
+            const followers = gameState.activeParty.slice(1, 4); // Up to 3 followers
+            const spacing = gameState.followerSpacing;
+            const history = gameState.positionHistory;
+
+            followers.forEach((id, i) => {
+                const climber = CLIMBERS.find(c => c.id === id);
+                const historyIndex = (i + 1) * spacing;
+
+                // Get position from history, or fallback to offset from leader
+                let followerX, followerY;
+                if (history.length > historyIndex) {
+                    followerX = history[historyIndex].x;
+                    followerY = history[historyIndex].y;
+                } else if (history.length > 0) {
+                    // Use last known position if history isn't long enough yet
+                    const lastPos = history[history.length - 1];
+                    followerX = lastPos.x - (i + 1) * 15;
+                    followerY = lastPos.y + (i + 1) * 8;
+                } else {
+                    // No history yet, offset from leader
+                    followerX = px - (i + 1) * 15;
+                    followerY = py + (i + 1) * 8;
+                }
+
+                // Follower shadow
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+                ctx.beginPath();
+                ctx.ellipse(followerX, followerY + 6, 7, 3, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Follower circle
+                ctx.fillStyle = climber.color;
+                ctx.beginPath();
+                ctx.arc(followerX, followerY, 8, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Follower border
+                ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // Follower initial
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 8px Courier New';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(climber.emoji.charAt(0), followerX, followerY);
+            });
+        }
+
+        function handleMapClick(e) {
+            const rect = worldCanvas.getBoundingClientRect();
+            const x = (e.clientX - rect.left) * (worldCanvas.width / rect.width);
+            const y = (e.clientY - rect.top) * (worldCanvas.height / rect.height);
+
+            // Check if clicked on a rock - walk to it then enter
+            for (const rock of ROCKS) {
+                const rockPos = getRockPosition(rock);
+                const dx = x - rockPos.x;
+                const dy = y - rockPos.y;
+                if (Math.sqrt(dx * dx + dy * dy) < 40) {
+                    // Set target to walk to rock, store rock to enter on arrival
+                    gameState.targetPosition = {
+                        x: rockPos.x - 50,
+                        y: rockPos.y + 20,
+                        rock: rock // Enter this rock on arrival
+                    };
+                    return;
+                }
+            }
+
+            // Otherwise, walk to clicked location
+            gameState.targetPosition = { x: x, y: y };
+        }
+
+        function updateRocksCleared() {
+            const cleared = ROCKS.filter(r => gameState.rockProgress[r.id].cleared).length;
+            document.getElementById('rocks-cleared').textContent = `${cleared}/${ROCKS.length} Rocks Cleared`;
+        }
+
+        // ========== PARTY MANAGEMENT ==========
+        function updatePartyDisplay() {
+            const container = document.getElementById('party-display');
+            container.innerHTML = '<h4 style="margin-bottom: 10px;">Active Party</h4>';
+
+            gameState.activeParty.forEach((id, index) => {
+                const climber = CLIMBERS.find(c => c.id === id);
+                const state = gameState.climberState[id];
+                const isLeader = id === 'karin';
+                const isSelected = gameState.currentClimber === id;
+
+                const div = document.createElement('div');
+                div.className = 'party-member' + (isSelected ? ' active' : '');
+
+                // Leader (Karin) is not clickable, support members cycle on click
+                if (isLeader) {
+                    div.style.cursor = 'default';
+                } else {
+                    div.onclick = () => cycleSupport(index);
+                    div.title = 'Click to swap with bench';
+                }
+
+                const roleLabel = isLeader ? '★ Leader' : '↻ Support';
+                div.innerHTML = `
+                    <div class="member-avatar" style="background: ${climber.color}">${climber.emoji}</div>
+                    <div class="member-info">
+                        <div class="member-name">${climber.name} <span style="font-size: 10px; opacity: 0.7;">${roleLabel}</span></div>
+                        <div class="member-stats">
+                            P${climber.power} T${climber.technique} E${climber.endurance}
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill psyche" style="width: ${state.psyche}%"></div>
+                        </div>
+                    </div>
+                `;
+
+                container.appendChild(div);
+            });
+
+            // Ensure Karin is always the climber
+            if (gameState.currentClimber !== 'karin') {
+                gameState.currentClimber = 'karin';
+            }
+        }
+
+        function selectClimber(id) {
+            // Karin is always the climber - ignore attempts to select others
+            if (id !== 'karin') {
+                return;
+            }
+            gameState.currentClimber = 'karin';
+            updatePartyDisplay();
+            if (document.getElementById('attempt-phase').classList.contains('active')) {
+                updateAttemptUI();
+            }
+        }
+
+        // Cycle a support member at the given party index with next available climber
+        function cycleSupport(partyIndex) {
+            // Don't allow cycling the leader (index 0 is always Karin)
+            if (partyIndex === 0) return;
+
+            const currentId = gameState.activeParty[partyIndex];
+            const allSupport = CLIMBERS.filter(c => c.id !== 'karin').map(c => c.id);
+
+            // Find current member's position and get the next one in rotation
+            const currentIndex = allSupport.indexOf(currentId);
+            let nextIndex = (currentIndex + 1) % allSupport.length;
+            let newMemberId = allSupport[nextIndex];
+
+            // Skip any that are already in the party
+            let attempts = 0;
+            while (gameState.activeParty.includes(newMemberId) && attempts < allSupport.length) {
+                nextIndex = (nextIndex + 1) % allSupport.length;
+                newMemberId = allSupport[nextIndex];
+                attempts++;
+            }
+
+            if (!gameState.activeParty.includes(newMemberId)) {
+                gameState.activeParty[partyIndex] = newMemberId;
+                const benchCount = allSupport.length - 3; // Total non-Karin minus 3 active support
+                log(`${CLIMBERS.find(c => c.id === currentId).name} → bench. ${CLIMBERS.find(c => c.id === newMemberId).name} joins! (${benchCount - 1} more on bench)`, 'info');
+                updatePartyDisplay();
+            } else {
+                log('No other climbers on the bench to swap in.', 'info');
+            }
+        }
+
+        function showPartySelect() {
+            // Only rotate support members (positions 1-3), never Karin (position 0)
+            // Get ALL non-Karin climbers in rotation order
+            const allSupport = CLIMBERS.filter(c => c.id !== 'karin').map(c => c.id);
+
+            // Find the current last support member's position in the full roster
+            const currentLast = gameState.activeParty[3]; // Last support slot
+            const currentIndex = allSupport.indexOf(currentLast);
+
+            // Get the next climber in rotation (wrap around)
+            const nextIndex = (currentIndex + 1) % allSupport.length;
+            const nextClimber = allSupport[nextIndex];
+
+            // If next climber is already in party, skip to one that isn't
+            let newMemberId = nextClimber;
+            let searchIndex = nextIndex;
+            while (gameState.activeParty.includes(newMemberId)) {
+                searchIndex = (searchIndex + 1) % allSupport.length;
+                newMemberId = allSupport[searchIndex];
+                // Safety: if we've gone full circle, break
+                if (searchIndex === nextIndex) break;
+            }
+
+            // Remove first support member, add new one at the end
+            const removed = gameState.activeParty[1];
+            gameState.activeParty = ['karin', gameState.activeParty[2], gameState.activeParty[3], newMemberId];
+
+            const removedClimber = CLIMBERS.find(c => c.id === removed);
+            const newClimber = CLIMBERS.find(c => c.id === newMemberId);
+            log(`${removedClimber.name} → bench. ${newClimber.name} joins!`, 'info');
+            updatePartyDisplay();
+        }
+
+        // ========== CRAG VIEW ==========
+        function enterCrag(rock) {
+            gameState.currentRock = rock;
+
+            // Start pixel dissolve transition, then show crag view
+            startPixelDissolve(() => {
+                showScreen('crag-view');
+
+                document.getElementById('rock-name').textContent = rock.name;
+
+                // Load rock image if not already loaded
+                if (rock.image && !rockImages[rock.id]) {
+                    const img = new Image();
+                    img.onload = () => {
+                        rockImages[rock.id] = img;
+                        drawRock(); // Redraw with loaded image
+                    };
+                    img.onerror = () => {
+                        console.log('Failed to load rock image:', rock.image);
+                    };
+                    img.src = rock.image;
+                }
+
+                drawRock();
+                renderProblems();
+                updateRockProgress();
+
+                log(`Approaching ${rock.name}. ${rock.description}`, 'info');
+            });
+        }
+
+        function returnToMap() {
+            gameState.currentRock = null;
+            gameState.currentProblem = null;
+            gameState.movingDirection = null;
+            keysPressed = {};
+
+            // Reset position history so followers gather at leader
+            gameState.positionHistory = [];
+
+            showScreen('world-map');
+            checkNearbyRocks();
+            drawWorldMap();
+        }
+
+        function drawRock() {
+            const canvas = document.getElementById('rock-canvas');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            const rock = gameState.currentRock;
+            if (!rock) return;
+
+            // Clear
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Check if rock has a loaded image
+            const rockImg = rockImages[rock.id];
+            let rockBounds;
+
+            if (rockImg) {
+                // Draw the actual rock image (fill the canvas)
+                ctx.drawImage(rockImg, 0, 0, canvas.width, canvas.height);
+
+                // Rock bounds cover the whole canvas for route mapping
+                rockBounds = { x: 0, y: 0, width: canvas.width, height: canvas.height };
+            } else {
+                // Fallback: Sky gradient background
+                const skyGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+                skyGrad.addColorStop(0, '#87ceeb');
+                skyGrad.addColorStop(1, '#e0c097');
+                ctx.fillStyle = skyGrad;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                // Ground
+                ctx.fillStyle = '#c9a86c';
+                ctx.fillRect(0, canvas.height - 50, canvas.width, 50);
+
+                // Fallback: Rock (placeholder - large boulder shape)
+                const rockGrad = ctx.createLinearGradient(100, 50, 400, 350);
+                rockGrad.addColorStop(0, '#8d8d8d');
+                rockGrad.addColorStop(0.5, '#6d6d6d');
+                rockGrad.addColorStop(1, '#4d4d4d');
+
+                ctx.fillStyle = rockGrad;
+                ctx.beginPath();
+                ctx.moveTo(80, 350);
+                ctx.lineTo(100, 150);
+                ctx.lineTo(150, 80);
+                ctx.lineTo(250, 50);
+                ctx.lineTo(350, 70);
+                ctx.lineTo(400, 120);
+                ctx.lineTo(420, 250);
+                ctx.lineTo(400, 350);
+                ctx.closePath();
+                ctx.fill();
+
+                ctx.strokeStyle = '#3d3d3d';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+
+                // Rock bounds for route mapping (approximate area where routes are drawn)
+                rockBounds = { x: 80, y: 50, width: 340, height: 300 };
+            }
+
+            // Draw route for selected problem (highlighted)
+            if (gameState.currentProblem && gameState.currentProblem.route) {
+                const route = gameState.currentProblem.route;
+                const sent = gameState.rockProgress[rock.id].problems[gameState.currentProblem.id];
+
+                // Draw route line
+                ctx.beginPath();
+                ctx.strokeStyle = sent ? '#4caf50' : '#ffb74d';
+                ctx.lineWidth = 4;
+                ctx.setLineDash([8, 4]);
+
+                route.forEach((point, i) => {
+                    const px = rockBounds.x + point.x * rockBounds.width;
+                    const py = rockBounds.y + point.y * rockBounds.height;
+                    if (i === 0) {
+                        ctx.moveTo(px, py);
+                    } else {
+                        ctx.lineTo(px, py);
+                    }
+                });
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                // Draw route points (holds)
+                route.forEach((point, i) => {
+                    const px = rockBounds.x + point.x * rockBounds.width;
+                    const py = rockBounds.y + point.y * rockBounds.height;
+
+                    ctx.beginPath();
+                    ctx.arc(px, py, i === 0 ? 10 : 6, 0, Math.PI * 2);
+                    ctx.fillStyle = i === 0 ? '#4caf50' : (i === route.length - 1 ? '#f44336' : '#ffb74d');
+                    ctx.fill();
+                    ctx.strokeStyle = '#fff';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                });
+            }
+
+            // Draw all routes faintly (unselected)
+            rock.problems.forEach((problem) => {
+                if (problem.id === gameState.currentProblem?.id) return; // Skip selected
+                if (!problem.route) return;
+
+                const sent = gameState.rockProgress[rock.id].problems[problem.id];
+
+                ctx.beginPath();
+                ctx.strokeStyle = sent ? 'rgba(76, 175, 80, 0.3)' : 'rgba(255, 255, 255, 0.2)';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([4, 4]);
+
+                problem.route.forEach((point, i) => {
+                    const px = rockBounds.x + point.x * rockBounds.width;
+                    const py = rockBounds.y + point.y * rockBounds.height;
+                    if (i === 0) {
+                        ctx.moveTo(px, py);
+                    } else {
+                        ctx.lineTo(px, py);
+                    }
+                });
+                ctx.stroke();
+                ctx.setLineDash([]);
+            });
+
+            // Draw problem markers
+            rock.problems.forEach((problem, i) => {
+                let cx, cy;
+
+                // Use first node of route if available
+                if (problem.route && problem.route.length > 0) {
+                    const firstNode = problem.route[0];
+                    cx = rockBounds.x + firstNode.x * rockBounds.width;
+                    cy = rockBounds.y + firstNode.y * rockBounds.height;
+                } else {
+                    // Fallback to circular positioning
+                    const angle = (i / rock.problems.length) * Math.PI - Math.PI / 2;
+                    const radius = 80 + (i % 2) * 40;
+                    cx = 250 + Math.cos(angle) * radius;
+                    cy = 200 + Math.sin(angle) * radius * 0.6;
+                }
+
+                const sent = gameState.rockProgress[rock.id].problems[problem.id];
+                const selected = gameState.currentProblem?.id === problem.id;
+
+                // Problem circle
+                ctx.beginPath();
+                ctx.arc(cx, cy, 15, 0, Math.PI * 2);
+                ctx.fillStyle = sent ? '#4caf50' : (selected ? '#ffb74d' : '#fff');
+                ctx.fill();
+                ctx.strokeStyle = '#333';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // Grade label
+                ctx.fillStyle = sent ? '#fff' : '#333';
+                ctx.font = 'bold 10px Courier New';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(problem.grade, cx, cy);
+            });
+
+            // Draw party at base
+            gameState.activeParty.forEach((id, i) => {
+                const climber = CLIMBERS.find(c => c.id === id);
+                const px = 120 + i * 40;
+                const py = 370;
+
+                ctx.fillStyle = climber.color;
+                ctx.beginPath();
+                ctx.arc(px, py, 12, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 10px Courier New';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(climber.emoji, px, py);
+            });
+        }
+
+        function renderProblems() {
+            const container = document.getElementById('problems-list');
+            container.innerHTML = '';
+
+            const rock = gameState.currentRock;
+            rock.problems.forEach(problem => {
+                const sent = gameState.rockProgress[rock.id].problems[problem.id];
+                const selected = gameState.currentProblem?.id === problem.id;
+
+                const div = document.createElement('div');
+                div.className = 'problem-card' + (sent ? ' sent' : '') + (selected ? ' selected' : '');
+                div.onclick = () => selectProblem(problem);
+
+                const riskColors = { low: '#4caf50', medium: '#ff9800', high: '#f44336' };
+
+                div.innerHTML = `
+                    <div class="problem-name">${problem.name} ${sent ? '✓' : ''}</div>
+                    <span class="problem-grade">${problem.grade}</span>
+                    <span style="color: ${riskColors[problem.risk]}">● ${problem.risk} risk</span>
+                    <div class="problem-tags">
+                        ${problem.style.map(s => `<span class="tag">${s}</span>`).join('')}
+                    </div>
+                    <div style="margin-top: 8px; font-size: 0.8rem; color: #90a4ae;">
+                        Base success: ${problem.baseChance}%
+                    </div>
+                `;
+
+                container.appendChild(div);
+            });
+        }
+
+        function selectProblem(problem) {
+            const sent = gameState.rockProgress[gameState.currentRock.id].problems[problem.id];
+            if (sent) {
+                log(`${problem.name} already sent!`, 'info');
+                return;
+            }
+
+            gameState.currentProblem = problem;
+            renderProblems();
+            drawRock();
+
+            const btn = document.getElementById('attempt-btn');
+            btn.disabled = false;
+            btn.textContent = `Attempt ${problem.name}`;
+        }
+
+        function updateRockProgress() {
+            const rock = gameState.currentRock;
+            const progress = gameState.rockProgress[rock.id];
+            const sent = Object.values(progress.problems).filter(Boolean).length;
+            const total = rock.problems.length;
+
+            document.getElementById('rock-progress').innerHTML = `
+                <span style="color: ${progress.cleared ? '#4caf50' : '#90a4ae'}">
+                    ${sent}/${total} Problems Sent
+                    ${progress.cleared ? '✓ CLEARED' : ''}
+                </span>
+            `;
+
+            // Show cleared overlay
+            const overlay = document.getElementById('rock-cleared-overlay');
+            if (progress.cleared && sent === total) {
+                overlay.style.display = 'block';
+                document.getElementById('completion-badge').textContent = '★ 100% COMPLETE ★';
+            } else if (progress.cleared) {
+                overlay.style.display = 'block';
+                document.getElementById('completion-badge').textContent = `${sent}/${total} problems`;
+            } else {
+                overlay.style.display = 'none';
+            }
+        }
+
+        // ========== ATTEMPT PHASE ==========
+        function startAttempt() {
+            if (!gameState.currentProblem || !gameState.currentClimber) return;
+
+            gameState.selectedEffort = null;
+            gameState.selectedSupport = null;
+
+            // Reset animation state
+            resetAttemptAnimation();
+
+            showScreen('attempt-phase');
+            document.getElementById('attempt-problem-name').textContent =
+                `${gameState.currentProblem.name} (${gameState.currentProblem.grade})`;
+
+            // Initialize the attempt canvas with rock image
+            initAttemptCanvas();
+
+            updateAttemptUI();
+            renderSupportActions();
+
+            log(`${CLIMBERS.find(c => c.id === gameState.currentClimber).name} approaches ${gameState.currentProblem.name}.`, 'action');
+        }
+
+        function cancelAttempt() {
+            resetAttemptAnimation();
+            showScreen('crag-view');
+        }
+
+        function updateAttemptUI() {
+            const climber = CLIMBERS.find(c => c.id === gameState.currentClimber);
+            const state = gameState.climberState[climber.id];
+            const problem = gameState.currentProblem;
+
+            // Climber display
+            document.getElementById('current-climber-avatar').style.background = climber.color;
+            document.getElementById('current-climber-avatar').textContent = climber.emoji;
+            document.getElementById('current-climber-name').textContent = climber.name;
+
+            document.getElementById('climber-stats-display').innerHTML = `
+                <div style="display: flex; gap: 15px; justify-content: center; margin-top: 10px;">
+                    <span>PWR: ${climber.power}</span>
+                    <span>TECH: ${climber.technique}</span>
+                    <span>END: ${climber.endurance}</span>
+                </div>
+                <div style="margin-top: 10px;">
+                    <span style="color: #90a4ae;">Psyche: ${state.psyche}%</span> |
+                    <span style="color: #90a4ae;">Fatigue: ${state.fatigue}%</span>
+                </div>
+            `;
+
+            // Update effort buttons
+            document.querySelectorAll('.effort-btn').forEach(btn => {
+                btn.classList.remove('selected');
+            });
+            if (gameState.selectedEffort) {
+                document.querySelector(`.effort-btn.${gameState.selectedEffort}`).classList.add('selected');
+            }
+
+            // Calculate and display odds
+            updateOddsDisplay();
+
+            // Update commit button
+            const commitBtn = document.getElementById('commit-btn');
+            if (gameState.selectedEffort) {
+                commitBtn.disabled = false;
+                commitBtn.textContent = `Commit (${gameState.selectedEffort.toUpperCase()})`;
+            } else {
+                commitBtn.disabled = true;
+                commitBtn.textContent = 'Select Effort Level';
+            }
+        }
+
+        function selectEffort(effort) {
+            gameState.selectedEffort = effort;
+            updateAttemptUI();
+        }
+
+        function updateOddsDisplay() {
+            const climber = CLIMBERS.find(c => c.id === gameState.currentClimber);
+            const state = gameState.climberState[climber.id];
+            const problem = gameState.currentProblem;
+
+            // Base chance from problem
+            let baseChance = problem.baseChance;
+
+            // Climber stat bonus
+            let statBonus = 0;
+            if (problem.style.includes('power') || problem.style.includes('compression')) {
+                statBonus += (climber.power - 5) * 3;
+            }
+            if (problem.style.includes('tech') || problem.style.includes('slab') || problem.style.includes('balance')) {
+                statBonus += (climber.technique - 5) * 3;
+            }
+            if (problem.style.includes('endurance') || problem.style.includes('traverse')) {
+                statBonus += (climber.endurance - 5) * 3;
+            }
+
+            // Effort modifier
+            let effortMod = 0;
+            if (gameState.selectedEffort === 'casual') effortMod = -10;
+            if (gameState.selectedEffort === 'send') effortMod = 0;
+            if (gameState.selectedEffort === 'limit') effortMod = 15;
+
+            // Beta bonus
+            const betaLevel = state.beta[problem.id] || 0;
+            const betaBonus = betaLevel * 8;
+
+            // Support bonus
+            let supportBonus = 0;
+            if (gameState.selectedSupport) {
+                const action = SUPPORT_ACTIONS.find(a => a.id === gameState.selectedSupport);
+                if (action.effect === 'success') supportBonus = action.value;
+                if (action.effect === 'psyche') supportBonus = action.value;
+            }
+
+            // Fatigue penalty
+            const fatiguePenalty = Math.floor(state.fatigue * 0.3);
+
+            // Final calculation
+            const finalOdds = Math.min(95, Math.max(5,
+                baseChance + statBonus + effortMod + betaBonus + supportBonus - fatiguePenalty
+            ));
+
+            // Update display
+            document.getElementById('base-success').textContent = `${baseChance + statBonus}%`;
+            document.getElementById('base-success').className = 'stat-value ' +
+                (baseChance + statBonus >= 50 ? 'good' : baseChance + statBonus >= 30 ? 'medium' : 'bad');
+
+            document.getElementById('beta-bonus').textContent = `+${betaBonus}%`;
+            document.getElementById('support-bonus').textContent = `+${supportBonus}%`;
+            document.getElementById('fatigue-penalty').textContent = `-${fatiguePenalty}%`;
+
+            document.getElementById('final-odds').textContent = `${finalOdds}%`;
+            document.getElementById('final-odds').className = 'stat-value ' +
+                (finalOdds >= 50 ? 'good' : finalOdds >= 30 ? 'medium' : 'bad');
+
+            return finalOdds;
+        }
+
+        function renderSupportActions() {
+            const container = document.getElementById('support-actions');
+            container.innerHTML = '';
+
+            // Get supporting party members (not the current climber)
+            const supporters = gameState.activeParty.filter(id => id !== gameState.currentClimber);
+
+            SUPPORT_ACTIONS.forEach((action, i) => {
+                const supporter = CLIMBERS.find(c => c.id === supporters[i % supporters.length]);
+                const selected = gameState.selectedSupport === action.id;
+
+                const div = document.createElement('div');
+                div.className = 'support-action' + (selected ? ' selected' : '');
+                div.onclick = () => selectSupport(action.id);
+
+                div.innerHTML = `
+                    <div class="support-name">${action.name}</div>
+                    <div class="support-desc">${action.desc}</div>
+                    <div class="support-by">by ${supporter.name}</div>
+                `;
+
+                container.appendChild(div);
+            });
+        }
+
+        function selectSupport(actionId) {
+            if (gameState.selectedSupport === actionId) {
+                gameState.selectedSupport = null;
+            } else {
+                gameState.selectedSupport = actionId;
+            }
+            renderSupportActions();
+            updateOddsDisplay();
+        }
+
+        function commitAttempt() {
+            if (!gameState.selectedEffort) return;
+
+            const climber = CLIMBERS.find(c => c.id === gameState.currentClimber);
+            const state = gameState.climberState[climber.id];
+            const problem = gameState.currentProblem;
+            const rock = gameState.currentRock;
+
+            const finalOdds = updateOddsDisplay();
+            const roll = Math.random() * 100;
+            const success = roll < finalOdds;
+
+            gameState.totalAttempts++;
+
+            // Calculate outcomes
+            let results = {
+                success: success,
+                betaGained: false,
+                psycheChange: 0,
+                fatigueGain: 0,
+                skinDamage: 0,
+                injury: false,
+                roll: roll,
+                finalOdds: finalOdds
+            };
+
+            // Effort affects fatigue and risk
+            if (gameState.selectedEffort === 'casual') {
+                results.fatigueGain = 5;
+                results.betaGained = !success && Math.random() < 0.7; // High chance to learn
+            } else if (gameState.selectedEffort === 'send') {
+                results.fatigueGain = 15;
+                results.betaGained = !success && Math.random() < 0.4;
+            } else if (gameState.selectedEffort === 'limit') {
+                results.fatigueGain = 25;
+                results.skinDamage = 10;
+                if (!success && problem.risk === 'high' && Math.random() < 0.15) {
+                    results.injury = true;
+                }
+            }
+
+            // Psyche changes
+            if (success) {
+                results.psycheChange = 20;
+                gameState.totalSends++;
+            } else {
+                results.psycheChange = gameState.selectedEffort === 'limit' ? -15 : -5;
+            }
+
+            // Support action effects
+            if (gameState.selectedSupport === 'spot' && results.injury) {
+                results.injury = false; // Spot prevents injury
+            }
+            if (gameState.selectedSupport === 'hype') {
+                results.psycheChange += 10;
+            }
+
+            // Apply results to state
+            state.fatigue = Math.min(100, state.fatigue + results.fatigueGain);
+            state.psyche = Math.max(0, Math.min(100, state.psyche + results.psycheChange));
+            state.skin = Math.max(0, state.skin - results.skinDamage);
+
+            if (results.betaGained) {
+                state.beta[problem.id] = Math.min(3, (state.beta[problem.id] || 0) + 1);
+            }
+
+            if (success) {
+                gameState.rockProgress[rock.id].problems[problem.id] = true;
+
+                // Check if rock is cleared
+                const sentCount = Object.values(gameState.rockProgress[rock.id].problems).filter(Boolean).length;
+                if (sentCount >= 1 && !gameState.rockProgress[rock.id].cleared) {
+                    gameState.rockProgress[rock.id].cleared = true;
+                }
+            }
+
+            // Calculate target progress for animation
+            // On success: climb to 100%
+            // On failure: climb to somewhere between 20-80% based on how close the roll was
+            let targetProgress;
+            if (success) {
+                targetProgress = 100;
+            } else {
+                // Close rolls = higher fall position (almost sent), bad rolls = early fall
+                const rollDiff = roll - finalOdds; // How far off they were (positive = worse)
+                // Scale: rollDiff of 0 = 80%, rollDiff of 50+ = 20%
+                targetProgress = Math.max(20, Math.min(80, 80 - (rollDiff * 1.2)));
+            }
+
+            // Disable commit button during animation
+            document.getElementById('commit-btn').disabled = true;
+            document.getElementById('commit-btn').textContent = 'Climbing...';
+
+            // Start the climbing animation
+            log(`${climber.name} starts the attempt...`, 'action');
+            startClimbingAnimation(results, targetProgress);
+        }
+
+        function showResult(results, climber, problem) {
+            const modal = document.getElementById('result-modal');
+
+            if (results.success) {
+                document.getElementById('result-icon').textContent = '🎉';
+                document.getElementById('result-title').textContent = 'SENT!';
+                document.getElementById('result-title').className = 'result-title success';
+                document.getElementById('result-message').textContent =
+                    `${climber.name} sends ${problem.name}!`;
+                log(`${climber.name} SENDS ${problem.name} (${problem.grade})!`, 'success');
+            } else if (results.injury) {
+                document.getElementById('result-icon').textContent = '🤕';
+                document.getElementById('result-title').textContent = 'TWEAKED';
+                document.getElementById('result-title').className = 'result-title injury';
+                document.getElementById('result-message').textContent =
+                    `${climber.name} takes a bad fall and tweaks something.`;
+                log(`${climber.name} gets injured on ${problem.name}!`, 'fail');
+            } else {
+                document.getElementById('result-icon').textContent = '💪';
+                document.getElementById('result-title').textContent = 'FALL';
+                document.getElementById('result-title').className = 'result-title fail';
+                document.getElementById('result-message').textContent =
+                    `${climber.name} falls but is uninjured.`;
+                log(`${climber.name} falls on ${problem.name}.`, 'fail');
+            }
+
+            let details = '';
+            if (results.betaGained) {
+                details += `<div class="result-detail">📝 Learned beta! (+8% next attempt)</div>`;
+            }
+            if (results.psycheChange > 0) {
+                details += `<div class="result-detail">😊 Psyche +${results.psycheChange}</div>`;
+            } else if (results.psycheChange < 0) {
+                details += `<div class="result-detail">😓 Psyche ${results.psycheChange}</div>`;
+            }
+            details += `<div class="result-detail">😮‍💨 Fatigue +${results.fatigueGain}</div>`;
+            if (results.skinDamage > 0) {
+                details += `<div class="result-detail">🩹 Skin -${results.skinDamage}</div>`;
+            }
+
+            document.getElementById('result-details').innerHTML = details;
+
+            modal.classList.add('active');
+        }
+
+        function closeResult() {
+            document.getElementById('result-modal').classList.remove('active');
+
+            // Return to crag view
+            showScreen('crag-view');
+            renderProblems();
+            drawRock();
+            updateRockProgress();
+            updatePartyDisplay();
+            updateRocksCleared();
+        }
+
+        // ========== LOGGING ==========
+        function log(message, type = 'info') {
+            const logPanel = document.getElementById('game-log');
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.textContent = `> ${message}`;
+            logPanel.appendChild(entry);
+            logPanel.scrollTop = logPanel.scrollHeight;
+        }
+
+        // ========== ROUTE EDITOR (DEV TOOL) ==========
+        let routeEditor = {
+            active: false,
+            points: [],
+            selectedRock: null,
+            selectedProblem: null,
+            canvas: null,
+            ctx: null,
+            rockImage: null,
+            rockImageLoaded: false
+        };
+
+        // Toggle route editor visibility
+        function toggleRouteEditor() {
+            const overlay = document.getElementById('route-editor');
+            routeEditor.active = !routeEditor.active;
+
+            if (routeEditor.active) {
+                overlay.classList.add('active');
+                initRouteEditor();
+            } else {
+                overlay.classList.remove('active');
+            }
+        }
+
+        function closeRouteEditor() {
+            document.getElementById('route-editor').classList.remove('active');
+            routeEditor.active = false;
+        }
+
+        // Initialize the route editor
+        function initRouteEditor() {
+            routeEditor.canvas = document.getElementById('route-editor-canvas');
+            routeEditor.ctx = routeEditor.canvas.getContext('2d');
+
+            // Populate rock dropdown
+            const rockSelect = document.getElementById('editor-rock-select');
+            rockSelect.innerHTML = '';
+            ROCKS.forEach(rock => {
+                const option = document.createElement('option');
+                option.value = rock.id;
+                option.textContent = rock.name + (rock.image ? ' (has image)' : '');
+                rockSelect.appendChild(option);
+            });
+
+            // Set up canvas click handler
+            routeEditor.canvas.addEventListener('click', handleEditorClick);
+
+            // Select first rock
+            if (ROCKS.length > 0) {
+                onEditorRockChange();
+            }
+
+            // Resize canvas
+            resizeEditorCanvas();
+            window.addEventListener('resize', resizeEditorCanvas);
+        }
+
+        function resizeEditorCanvas() {
+            if (!routeEditor.canvas) return;
+            const container = routeEditor.canvas.parentElement;
+            routeEditor.canvas.width = container.clientWidth;
+            routeEditor.canvas.height = container.clientHeight;
+            drawEditorCanvas();
+        }
+
+        function onEditorRockChange() {
+            const rockId = document.getElementById('editor-rock-select').value;
+            routeEditor.selectedRock = ROCKS.find(r => r.id === rockId);
+
+            // Clear existing points
+            routeEditor.points = [];
+
+            // Populate problem dropdown
+            const problemSelect = document.getElementById('editor-problem-select');
+            problemSelect.innerHTML = '';
+            if (routeEditor.selectedRock && routeEditor.selectedRock.problems.length > 0) {
+                routeEditor.selectedRock.problems.forEach(problem => {
+                    const option = document.createElement('option');
+                    option.value = problem.id;
+                    option.textContent = `${problem.name} (${problem.grade})`;
+                    problemSelect.appendChild(option);
+                });
+                // Explicitly select the first problem
+                problemSelect.value = routeEditor.selectedRock.problems[0].id;
+
+                // Load rock image if available
+                if (routeEditor.selectedRock.image) {
+                    routeEditor.rockImage = new Image();
+                    routeEditor.rockImage.onload = () => {
+                        routeEditor.rockImageLoaded = true;
+                        drawEditorCanvas();
+                    };
+                    routeEditor.rockImage.onerror = () => {
+                        routeEditor.rockImageLoaded = false;
+                        drawEditorCanvas();
+                    };
+                    routeEditor.rockImage.src = routeEditor.selectedRock.image;
+                } else {
+                    routeEditor.rockImageLoaded = false;
+                }
+            }
+
+            onEditorProblemChange();
+        }
+
+        function onEditorProblemChange() {
+            const problemId = document.getElementById('editor-problem-select').value;
+            if (routeEditor.selectedRock) {
+                routeEditor.selectedProblem = routeEditor.selectedRock.problems.find(p => p.id === problemId);
+
+                // Load existing route points if available
+                if (routeEditor.selectedProblem && routeEditor.selectedProblem.route) {
+                    routeEditor.points = [...routeEditor.selectedProblem.route];
+                } else {
+                    routeEditor.points = [];
+                }
+
+                // Load problem details into UI
+                loadProblemDetails();
+            }
+            drawEditorCanvas();
+            updateEditorOutput();
+            updatePointList();
+        }
+
+        function loadProblemDetails() {
+            const problem = routeEditor.selectedProblem;
+            if (!problem) return;
+
+            document.getElementById('editor-problem-name').value = problem.name || '';
+            document.getElementById('editor-problem-grade').value = problem.grade || 'V0';
+            document.getElementById('editor-problem-chance').value = problem.baseChance || 50;
+            document.getElementById('editor-problem-risk').value = problem.risk || 'medium';
+        }
+
+        function updateProblemDetails() {
+            // This just updates the local selectedProblem object
+            // Use saveProblemToData() to persist changes
+            if (!routeEditor.selectedProblem) return;
+
+            routeEditor.selectedProblem.name = document.getElementById('editor-problem-name').value;
+            routeEditor.selectedProblem.grade = document.getElementById('editor-problem-grade').value;
+            routeEditor.selectedProblem.baseChance = parseInt(document.getElementById('editor-problem-chance').value) || 50;
+            routeEditor.selectedProblem.risk = document.getElementById('editor-problem-risk').value;
+
+            // Update the dropdown text
+            const problemSelect = document.getElementById('editor-problem-select');
+            const selectedOption = problemSelect.options[problemSelect.selectedIndex];
+            if (selectedOption) {
+                selectedOption.textContent = `${routeEditor.selectedProblem.name} (${routeEditor.selectedProblem.grade})`;
+            }
+
+            updateEditorOutput();
+        }
+
+        function saveProblemToData() {
+            if (!routeEditor.selectedProblem || !routeEditor.selectedRock) return;
+
+            // Update the route points
+            routeEditor.selectedProblem.route = [...routeEditor.points];
+
+            // Save directly to rocks.json
+            saveRocksToFile().then(success => {
+                if (success) {
+                    // Log the full updated problem for copying
+                    console.log('Updated problem:', JSON.stringify(routeEditor.selectedProblem, null, 2));
+
+                    // Show confirmation
+                    const output = document.getElementById('route-editor-output');
+                    output.textContent = `// Problem "${routeEditor.selectedProblem.name}" saved to rocks.json!\n\n` +
+                        JSON.stringify(routeEditor.selectedProblem, null, 2);
+
+                    alert(`Problem "${routeEditor.selectedProblem.name}" saved to rocks.json!`);
+                } else {
+                    alert('Save cancelled or failed. Changes are only in memory.');
+                }
+            });
+        }
+
+        function addNewProblem() {
+            if (!routeEditor.selectedRock) {
+                alert('Please select a rock first');
+                return;
+            }
+
+            const name = prompt('Enter problem name:', 'New Problem');
+            if (!name) return;
+
+            const grade = prompt('Enter grade (e.g., V3):', 'V3');
+            if (!grade) return;
+
+            // Generate unique ID
+            const newId = 'p' + Date.now();
+
+            const newProblem = {
+                id: newId,
+                name: name,
+                grade: grade,
+                style: ['crimp'],
+                risk: 'medium',
+                baseChance: 50,
+                route: []
+            };
+
+            // Add to rock's problems array
+            routeEditor.selectedRock.problems.push(newProblem);
+
+            // Refresh the problem dropdown and select the new problem
+            const problemSelect = document.getElementById('editor-problem-select');
+            const option = document.createElement('option');
+            option.value = newId;
+            option.textContent = `${name} (${grade})`;
+            problemSelect.appendChild(option);
+            problemSelect.value = newId;
+
+            onEditorProblemChange();
+
+            console.log('Added new problem:', newProblem);
+            alert(`Problem "${name}" added!\nClick on the rock to define the route, then click "Save Changes" to save to file.`);
+        }
+
+        function deleteProblem() {
+            if (!routeEditor.selectedProblem || !routeEditor.selectedRock) {
+                alert('No problem selected');
+                return;
+            }
+
+            if (routeEditor.selectedRock.problems.length <= 1) {
+                alert('Cannot delete the last problem on a rock');
+                return;
+            }
+
+            const confirmDelete = confirm(`Delete problem "${routeEditor.selectedProblem.name}"?`);
+            if (!confirmDelete) return;
+
+            // Remove from rock's problems array
+            const index = routeEditor.selectedRock.problems.findIndex(p => p.id === routeEditor.selectedProblem.id);
+            if (index > -1) {
+                routeEditor.selectedRock.problems.splice(index, 1);
+            }
+
+            // Save directly to file
+            saveRocksToFile().then(success => {
+                // Refresh the UI
+                onEditorRockChange();
+
+                if (success) {
+                    console.log('Deleted problem and saved to file');
+                    alert('Problem deleted and saved to rocks.json!');
+                } else {
+                    console.log('Deleted problem (not saved to file)');
+                    alert('Problem deleted from memory.\nClick "Save Changes" to persist to file.');
+                }
+            });
+        }
+
+        function handleEditorClick(e) {
+            if (!routeEditor.canvas) return;
+
+            const rect = routeEditor.canvas.getBoundingClientRect();
+            const canvasX = (e.clientX - rect.left) / rect.width;
+            const canvasY = (e.clientY - rect.top) / rect.height;
+
+            // Convert canvas coordinates to image coordinates using stored transform
+            let x, y;
+            if (routeEditor.imageTransform) {
+                const t = routeEditor.imageTransform;
+                // Convert from canvas coords to image coords
+                x = (canvasX * routeEditor.canvas.width - t.offsetX) / t.scaledW;
+                y = (canvasY * routeEditor.canvas.height - t.offsetY) / t.scaledH;
+            } else {
+                x = canvasX;
+                y = canvasY;
+            }
+
+            // Clamp to 0-1 range
+            x = Math.max(0, Math.min(1, x));
+            y = Math.max(0, Math.min(1, y));
+
+            // Add point (as percentage coordinates relative to image)
+            routeEditor.points.push({
+                x: Math.round(x * 100) / 100,
+                y: Math.round(y * 100) / 100
+            });
+
+            drawEditorCanvas();
+            updateEditorOutput();
+            updatePointList();
+        }
+
+        function drawEditorCanvas() {
+            if (!routeEditor.ctx || !routeEditor.canvas) return;
+
+            const ctx = routeEditor.ctx;
+            const w = routeEditor.canvas.width;
+            const h = routeEditor.canvas.height;
+
+            // Clear
+            ctx.clearRect(0, 0, w, h);
+
+            // Draw background (sky)
+            const skyGrad = ctx.createLinearGradient(0, 0, 0, h);
+            skyGrad.addColorStop(0, '#87ceeb');
+            skyGrad.addColorStop(1, '#e0c097');
+            ctx.fillStyle = skyGrad;
+            ctx.fillRect(0, 0, w, h);
+
+            // Draw rock image or procedural rock
+            if (routeEditor.rockImageLoaded && routeEditor.rockImage) {
+                const imgW = routeEditor.rockImage.width;
+                const imgH = routeEditor.rockImage.height;
+                const scale = Math.max(w / imgW, h / imgH);
+                const scaledW = imgW * scale;
+                const scaledH = imgH * scale;
+                const offsetX = (w - scaledW) / 2;
+                const offsetY = (h - scaledH) / 2;
+                ctx.drawImage(routeEditor.rockImage, offsetX, offsetY, scaledW, scaledH);
+
+                // Store transform for coordinate conversion
+                routeEditor.imageTransform = { scaledW, scaledH, offsetX, offsetY };
+            } else {
+                // Procedural rock - no offset needed
+                routeEditor.imageTransform = { scaledW: w, scaledH: h, offsetX: 0, offsetY: 0 };
+                drawProceduralRock(ctx, w, h);
+            }
+
+            // Helper to convert image coords to canvas coords
+            function imageToCanvas(ix, iy) {
+                const t = routeEditor.imageTransform || { scaledW: w, scaledH: h, offsetX: 0, offsetY: 0 };
+                return {
+                    x: ix * t.scaledW + t.offsetX,
+                    y: iy * t.scaledH + t.offsetY
+                };
+            }
+
+            // Draw route points and lines
+            const points = routeEditor.points;
+            if (points.length > 0) {
+                const grade = routeEditor.selectedProblem ? routeEditor.selectedProblem.grade : 'V3';
+                const color = getRouteColor(grade);
+
+                // Draw lines
+                if (points.length > 1) {
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = 3;
+                    ctx.setLineDash([8, 4]);
+                    ctx.globalAlpha = 0.7;
+                    ctx.beginPath();
+                    const start = imageToCanvas(points[0].x, points[0].y);
+                    ctx.moveTo(start.x, start.y);
+                    for (let i = 1; i < points.length; i++) {
+                        const pt = imageToCanvas(points[i].x, points[i].y);
+                        ctx.lineTo(pt.x, pt.y);
+                    }
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                    ctx.globalAlpha = 1.0;
+                }
+
+                // Draw points with numbers
+                points.forEach((point, i) => {
+                    const canvasPt = imageToCanvas(point.x, point.y);
+                    const px = canvasPt.x;
+                    const py = canvasPt.y;
+
+                    // Outer ring
+                    ctx.beginPath();
+                    ctx.arc(px, py, 12, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                    ctx.fill();
+
+                    // Inner dot
+                    ctx.beginPath();
+                    ctx.arc(px, py, 8, 0, Math.PI * 2);
+                    ctx.fillStyle = i === 0 ? '#4caf50' : (i === points.length - 1 ? '#ffb74d' : color);
+                    ctx.fill();
+
+                    // Number
+                    ctx.fillStyle = '#fff';
+                    ctx.font = 'bold 10px Courier New';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(String(i + 1), px, py);
+                });
+            }
+
+            // Draw instructions
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            ctx.fillRect(10, 10, 200, 25);
+            ctx.fillStyle = '#fff';
+            ctx.font = '12px Courier New';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('Click to add route points', 20, 22);
+        }
+
+        function updatePointList() {
+            const list = document.getElementById('route-point-list');
+            if (routeEditor.points.length === 0) {
+                list.innerHTML = '<em style="color: #90a4ae;">Click on rock to add points</em>';
+                return;
+            }
+
+            list.innerHTML = routeEditor.points.map((p, i) => `
+                <div class="route-point-item">
+                    <span>${i + 1}. (${p.x.toFixed(2)}, ${p.y.toFixed(2)})</span>
+                    <span>${i === 0 ? 'Start' : (i === routeEditor.points.length - 1 ? 'Top' : '')}</span>
+                </div>
+            `).join('');
+        }
+
+        function updateEditorOutput() {
+            const output = document.getElementById('route-editor-output');
+            if (routeEditor.points.length === 0) {
+                output.textContent = '// Click on rock to define route points\n// Copy this into ROCKS data';
+                return;
+            }
+
+            const routeJSON = routeEditor.points.map(p =>
+                `    { x: ${p.x.toFixed(2)}, y: ${p.y.toFixed(2)} }`
+            ).join(',\n');
+
+            output.textContent = `route: [\n${routeJSON}\n]`;
+        }
+
+        function undoRoutePoint() {
+            if (routeEditor.points.length > 0) {
+                routeEditor.points.pop();
+                drawEditorCanvas();
+                updateEditorOutput();
+                updatePointList();
+            }
+        }
+
+        function clearRoutePoints() {
+            routeEditor.points = [];
+            drawEditorCanvas();
+            updateEditorOutput();
+            updatePointList();
+        }
+
+        function copyRouteJSON() {
+            const output = document.getElementById('route-editor-output');
+            navigator.clipboard.writeText(output.textContent).then(() => {
+                log('Route JSON copied to clipboard!', 'info');
+                // Flash the output
+                output.style.background = '#2e7d32';
+                setTimeout(() => {
+                    output.style.background = '';
+                }, 300);
+            }).catch(() => {
+                log('Failed to copy to clipboard', 'fail');
+            });
+        }
+
+        // ========== INITIALIZATION ==========
+        document.addEventListener('DOMContentLoaded', async () => {
+            // Load rocks from JSON file
+            await loadRocksFromFile();
+
+            // Initialize rock progress (must happen after ROCKS is loaded)
+            ROCKS.forEach(r => {
+                gameState.rockProgress[r.id] = {
+                    cleared: false,
+                    problems: {}
+                };
+                r.problems.forEach(p => {
+                    gameState.rockProgress[r.id].problems[p.id] = false;
+                });
+            });
+
+            // Ensure Karin is always the leader (position 0) and current climber
+            if (gameState.activeParty[0] !== 'karin') {
+                // Move Karin to front if somehow not there
+                const karinIndex = gameState.activeParty.indexOf('karin');
+                if (karinIndex > 0) {
+                    gameState.activeParty.splice(karinIndex, 1);
+                    gameState.activeParty.unshift('karin');
+                } else if (karinIndex === -1) {
+                    gameState.activeParty.unshift('karin');
+                    if (gameState.activeParty.length > 4) {
+                        gameState.activeParty.pop();
+                    }
+                }
+            }
+            gameState.currentClimber = 'karin';
+
+            // Check for dev mode via URL param
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('dev') === '1') {
+                // Add dev mode indicator
+                const devIndicator = document.createElement('div');
+                devIndicator.style.cssText = 'position: fixed; top: 5px; right: 5px; background: #ff9800; color: #000; padding: 5px 10px; border-radius: 4px; font-size: 12px; z-index: 9999; cursor: pointer;';
+                devIndicator.textContent = '🛠️ DEV';
+                devIndicator.onclick = toggleRouteEditor;
+                document.body.appendChild(devIndicator);
+            }
+
+            // Keyboard shortcut: Ctrl+Shift+E to toggle route editor
+            window.addEventListener('keydown', (e) => {
+                if (e.ctrlKey && e.shiftKey && e.key === 'E') {
+                    e.preventDefault();
+                    toggleRouteEditor();
+                }
+            });
+        });
+    </script>
+</body>
+
+</html>
