@@ -536,27 +536,30 @@
 
         .effort-selection-mobile {
             display: flex;
-            gap: 10px;
+            gap: 8px;
             justify-content: center;
+            align-items: center;
             margin-top: 15px;
+            flex-wrap: wrap;
         }
 
         .effort-selection-mobile .effort-btn {
             flex: 1;
-            max-width: 150px;
+            max-width: 120px;
         }
 
-        /* Climber badge positioning */
-        .climber-badge {
-            position: absolute;
-            bottom: 12px;
-            left: 12px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
+        .effort-selection-mobile .climber-badge {
+            position: static;
             background: rgba(0, 0, 0, 0.7);
             padding: 6px 12px;
             border-radius: 20px;
+        }
+
+        /* Climber badge base styles */
+        .climber-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
 
         /* Route Editor (Dev Tool) */
@@ -1294,17 +1297,16 @@
             <div class="attempt-main">
                 <div class="attempt-canvas-container" id="attempt-canvas-container">
                     <canvas id="attempt-canvas" width="600" height="500"></canvas>
-                    <div class="climber-badge" id="climber-badge">
-                        <div class="climber-avatar-large" id="current-climber-avatar"></div>
-                        <span id="current-climber-name"></span>
-                        <span id="climber-stats-display" class="climber-stats-inline"></span>
-                    </div>
                 </div>
                 <div class="climb-progress-bar">
                     <div class="climb-progress-fill" id="climb-progress-fill"></div>
                 </div>
                 <div class="climb-progress-text" id="climb-progress-text">Select effort to climb</div>
                 <div class="effort-selection-mobile">
+                    <div class="climber-badge" id="climber-badge">
+                        <div class="climber-avatar-large" id="current-climber-avatar"></div>
+                        <span id="current-climber-name"></span>
+                    </div>
                     <button class="effort-btn casual" onclick="selectEffort('casual')">🧘 Casual</button>
                     <button class="effort-btn send" onclick="selectEffort('send')">🔥 Send</button>
                     <button class="effort-btn limit" onclick="selectEffort('limit')">⚡ Limit</button>
