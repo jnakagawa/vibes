@@ -534,6 +534,31 @@
             color: #90a4ae;
         }
 
+        .effort-selection-mobile {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 15px;
+        }
+
+        .effort-selection-mobile .effort-btn {
+            flex: 1;
+            max-width: 150px;
+        }
+
+        /* Climber badge positioning */
+        .climber-badge {
+            position: absolute;
+            bottom: 12px;
+            left: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 6px 12px;
+            border-radius: 20px;
+        }
+
         /* Route Editor (Dev Tool) */
         .route-editor-overlay {
             display: none;
@@ -1049,19 +1074,18 @@
                 min-height: 44px;
             }
 
-            /* Effort buttons - compact row at bottom of canvas */
-            .effort-overlay {
-                flex-direction: row;
-                gap: 6px;
-                bottom: 8px;
-                left: 8px;
-                right: 8px;
-                align-items: center;
-                justify-content: space-between;
+            /* Effort buttons below canvas on mobile */
+            .effort-selection-mobile {
+                margin-top: 10px;
+            }
+
+            .effort-selection-mobile .effort-btn {
+                padding: 12px 16px;
+                font-size: 0.9rem;
+                min-height: 44px;
             }
 
             .climber-badge {
-                flex: none;
                 padding: 4px 8px;
             }
 
@@ -1071,25 +1095,6 @@
                 font-size: 0.7rem;
             }
 
-            .climber-badge #current-climber-name {
-                font-size: 0.8rem;
-            }
-
-            .climber-stats-inline {
-                display: none;
-            }
-
-            .effort-selection {
-                flex: none;
-                gap: 4px;
-            }
-
-            .effort-btn {
-                padding: 6px 10px;
-                font-size: 0.7rem;
-                min-height: 32px;
-            }
-
             /* Attempt header */
             .attempt-header {
                 padding: 10px 15px;
@@ -1097,12 +1102,6 @@
 
             #attempt-problem-name {
                 font-size: 1.1rem !important;
-            }
-
-            /* Commit button */
-            #commit-btn {
-                min-height: 48px;
-                font-size: 1rem;
             }
 
             /* Log panel - minimal on mobile */
@@ -1295,26 +1294,21 @@
             <div class="attempt-main">
                 <div class="attempt-canvas-container" id="attempt-canvas-container">
                     <canvas id="attempt-canvas" width="600" height="500"></canvas>
-                    <div class="effort-overlay">
-                        <div class="climber-badge" id="climber-badge">
-                            <div class="climber-avatar-large" id="current-climber-avatar"></div>
-                            <span id="current-climber-name"></span>
-                            <span id="climber-stats-display" class="climber-stats-inline"></span>
-                        </div>
-                        <div class="effort-selection">
-                            <button class="effort-btn casual" onclick="selectEffort('casual')">🧘 Casual</button>
-                            <button class="effort-btn send" onclick="selectEffort('send')">🔥 Send</button>
-                            <button class="effort-btn limit" onclick="selectEffort('limit')">⚡ Limit</button>
-                        </div>
+                    <div class="climber-badge" id="climber-badge">
+                        <div class="climber-avatar-large" id="current-climber-avatar"></div>
+                        <span id="current-climber-name"></span>
+                        <span id="climber-stats-display" class="climber-stats-inline"></span>
                     </div>
                 </div>
                 <div class="climb-progress-bar">
                     <div class="climb-progress-fill" id="climb-progress-fill"></div>
                 </div>
-                <div class="climb-progress-text" id="climb-progress-text">Select effort and commit to climb</div>
-                <button class="btn" id="commit-btn" onclick="commitAttempt()" disabled style="margin-top: 10px;">
-                    Select Effort Level
-                </button>
+                <div class="climb-progress-text" id="climb-progress-text">Select effort to climb</div>
+                <div class="effort-selection-mobile">
+                    <button class="effort-btn casual" onclick="selectEffort('casual')">🧘 Casual</button>
+                    <button class="effort-btn send" onclick="selectEffort('send')">🔥 Send</button>
+                    <button class="effort-btn limit" onclick="selectEffort('limit')">⚡ Limit</button>
+                </div>
             </div>
 
             <div class="right-panel">
@@ -3292,19 +3286,13 @@
             updateOddsDisplay();
 
             // Update commit button
-            const commitBtn = document.getElementById('commit-btn');
-            if (gameState.selectedEffort) {
-                commitBtn.disabled = false;
-                commitBtn.textContent = `Commit (${gameState.selectedEffort.toUpperCase()})`;
-            } else {
-                commitBtn.disabled = true;
-                commitBtn.textContent = 'Select Effort Level';
-            }
         }
 
         function selectEffort(effort) {
             gameState.selectedEffort = effort;
             updateAttemptUI();
+            // Auto-start the attempt
+            commitAttempt();
         }
 
         function updateOddsDisplay() {
@@ -3492,10 +3480,6 @@
                 // Scale: rollDiff of 0 = 80%, rollDiff of 50+ = 20%
                 targetProgress = Math.max(20, Math.min(80, 80 - (rollDiff * 1.2)));
             }
-
-            // Disable commit button during animation
-            document.getElementById('commit-btn').disabled = true;
-            document.getElementById('commit-btn').textContent = 'Climbing...';
 
             // Start the climbing animation
             log(`${climber.name} starts the attempt...`, 'action');
