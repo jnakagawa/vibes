@@ -902,14 +902,13 @@
         /* ========== MOBILE RESPONSIVE STYLES ========== */
 
         /* Prevent browser gestures on game screens */
-        body {
-            touch-action: pan-x pan-y;
+        #world-map {
+            touch-action: none;
         }
 
-        #world-map,
         #crag-view,
         #attempt-phase {
-            touch-action: none;
+            touch-action: pan-y;
         }
 
         /* Mobile breakpoint: < 768px */
