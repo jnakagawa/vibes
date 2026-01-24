@@ -534,6 +534,34 @@
             color: #90a4ae;
         }
 
+        .effort-selection-mobile {
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+            align-items: center;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+
+        .effort-selection-mobile .effort-btn {
+            flex: 1;
+            max-width: 120px;
+        }
+
+        .effort-selection-mobile .climber-badge {
+            position: static;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 6px 12px;
+            border-radius: 20px;
+        }
+
+        /* Climber badge base styles */
+        .climber-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
         /* Route Editor (Dev Tool) */
         .route-editor-overlay {
             display: none;
@@ -898,6 +926,293 @@
         #pixel-transition.active {
             display: block;
         }
+
+        /* ========== MOBILE RESPONSIVE STYLES ========== */
+
+        /* Prevent browser gestures on game screens */
+        #world-map {
+            touch-action: none;
+        }
+
+        #crag-view,
+        #attempt-phase {
+            touch-action: auto;
+        }
+
+        /* Mobile breakpoint: < 768px */
+        @media screen and (max-width: 767px) {
+            /* Title screen adjustments */
+            .title {
+                font-size: 2rem;
+                padding: 0 20px;
+            }
+
+            .subtitle {
+                font-size: 1rem;
+                padding: 0 20px;
+            }
+
+            /* World map - hide party sidebar, use modal instead */
+            .party-sidebar {
+                display: none;
+            }
+
+            .map-header {
+                padding: 10px 15px;
+                flex-wrap: wrap;
+                gap: 10px;
+            }
+
+            .map-header h2 {
+                font-size: 1.1rem;
+            }
+
+            /* Movement hint update for touch */
+            .movement-hint {
+                font-size: 0.75rem;
+                padding: 6px 10px;
+            }
+
+            /* Nearby indicator - move above log panel */
+            .nearby-indicator {
+                bottom: 140px;
+                left: 10px;
+                right: 10px;
+                text-align: center;
+            }
+
+            /* Crag view - stack vertically and scroll */
+            .crag-container {
+                flex-direction: column;
+                padding: 10px;
+                gap: 10px;
+                overflow-y: scroll !important;
+                -webkit-overflow-scrolling: touch;
+                touch-action: pan-y;
+                overscroll-behavior: contain;
+            }
+
+            .rock-display {
+                flex: none;
+                max-height: 30vh;
+                min-height: 150px;
+            }
+
+            #rock-canvas {
+                max-height: 100%;
+                width: auto;
+            }
+
+            .problems-panel {
+                width: 100%;
+                flex: none;
+                overflow: visible;
+                padding-bottom: 60px;
+            }
+
+            .problem-card {
+                padding: 12px;
+                margin-bottom: 10px;
+                /* Ensure 44px minimum touch target */
+                min-height: 44px;
+            }
+
+            #attempt-btn {
+                margin-bottom: 10px;
+            }
+
+            .crag-header {
+                padding: 10px 15px;
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+
+            #rock-name {
+                font-size: 1.1rem !important;
+            }
+
+            /* Attempt phase - stack vertically */
+            .attempt-container {
+                flex-direction: column;
+                padding: 10px;
+                gap: 10px;
+            }
+
+            .attempt-main {
+                flex: none;
+            }
+
+            .attempt-canvas-container {
+                max-height: 40vh;
+            }
+
+            #attempt-canvas {
+                max-height: 100%;
+            }
+
+            .right-panel {
+                width: 100%;
+                flex-direction: row;
+                flex-wrap: wrap;
+            }
+
+            .attempt-stats {
+                flex: 1;
+                min-width: 150px;
+            }
+
+            .support-panel {
+                flex: 1;
+                min-width: 150px;
+                max-height: 200px;
+            }
+
+            .support-title {
+                font-size: 1rem;
+                margin-bottom: 10px;
+            }
+
+            .support-action {
+                padding: 10px;
+                min-height: 44px;
+            }
+
+            /* Effort buttons below canvas on mobile */
+            .effort-selection-mobile {
+                margin-top: 10px;
+            }
+
+            .effort-selection-mobile .effort-btn {
+                padding: 12px 16px;
+                font-size: 0.9rem;
+                min-height: 44px;
+            }
+
+            .climber-badge {
+                padding: 4px 8px;
+            }
+
+            .climber-badge .climber-avatar-large {
+                width: 24px;
+                height: 24px;
+                font-size: 0.7rem;
+            }
+
+            /* Attempt header */
+            .attempt-header {
+                padding: 10px 15px;
+            }
+
+            #attempt-problem-name {
+                font-size: 1.1rem !important;
+            }
+
+            /* Log panel - minimal on mobile */
+            .log-panel {
+                height: 40px;
+                font-size: 0.7rem;
+                padding: 5px 10px;
+                overflow: hidden;
+            }
+
+            /* Adjust screen padding for smaller log */
+            .screen {
+                padding-bottom: 50px;
+            }
+
+            /* Modal adjustments */
+            .modal {
+                margin: 20px;
+                padding: 25px;
+                max-width: calc(100vw - 40px);
+            }
+
+            .result-icon {
+                font-size: 3rem;
+            }
+
+            .result-title {
+                font-size: 1.5rem;
+            }
+
+            /* Buttons - ensure touch targets */
+            .btn {
+                min-height: 44px;
+                padding: 12px 24px;
+            }
+
+            /* Rock cleared overlay */
+            .rock-cleared {
+                padding: 20px 30px;
+                font-size: 1.5rem;
+            }
+        }
+
+        /* Small mobile: < 480px */
+        @media screen and (max-width: 479px) {
+            .title {
+                font-size: 1.75rem;
+            }
+
+            .attempt-canvas-container {
+                max-height: 35vh;
+            }
+
+            .right-panel {
+                flex-direction: column;
+            }
+
+            .attempt-stats,
+            .support-panel {
+                min-width: 100%;
+            }
+
+            .support-panel {
+                max-height: 150px;
+            }
+
+            .effort-btn {
+                padding: 5px 8px;
+                font-size: 0.65rem;
+            }
+
+            .stat-row {
+                font-size: 0.85rem;
+            }
+        }
+
+        /* Landscape phone - reduce heights */
+        @media screen and (max-height: 500px) and (orientation: landscape) {
+            .log-panel {
+                height: 50px;
+                font-size: 0.7rem;
+            }
+
+            .screen {
+                padding-bottom: 60px;
+            }
+
+            .rock-display {
+                max-height: 50vh;
+            }
+
+            .attempt-canvas-container {
+                max-height: 50vh;
+            }
+
+            .modal {
+                padding: 15px;
+            }
+
+            .result-icon {
+                font-size: 2rem;
+                margin-bottom: 10px;
+            }
+
+            .result-title {
+                font-size: 1.2rem;
+            }
+        }
     </style>
 </head>
 
@@ -930,14 +1245,14 @@
             <div class="party-sidebar" id="party-display"></div>
 
             <!-- Movement hint -->
-            <div class="movement-hint">
-                Click to move • Click on rock to climb
+            <div class="movement-hint" id="movement-hint">
+                Tap to move • Tap rock to climb
             </div>
 
             <!-- Nearby rock indicator -->
             <div class="nearby-indicator" id="nearby-indicator">
                 <div class="nearby-rock-name" id="nearby-rock-name"></div>
-                <div class="nearby-hint">Press ENTER or click rock to approach</div>
+                <div class="nearby-hint" id="nearby-hint">Tap rock to approach</div>
             </div>
 
                     </div>
@@ -982,26 +1297,20 @@
             <div class="attempt-main">
                 <div class="attempt-canvas-container" id="attempt-canvas-container">
                     <canvas id="attempt-canvas" width="600" height="500"></canvas>
-                    <div class="effort-overlay">
-                        <div class="climber-badge" id="climber-badge">
-                            <div class="climber-avatar-large" id="current-climber-avatar"></div>
-                            <span id="current-climber-name"></span>
-                            <span id="climber-stats-display" class="climber-stats-inline"></span>
-                        </div>
-                        <div class="effort-selection">
-                            <button class="effort-btn casual" onclick="selectEffort('casual')">🧘 Casual</button>
-                            <button class="effort-btn send" onclick="selectEffort('send')">🔥 Send</button>
-                            <button class="effort-btn limit" onclick="selectEffort('limit')">⚡ Limit</button>
-                        </div>
-                    </div>
                 </div>
                 <div class="climb-progress-bar">
                     <div class="climb-progress-fill" id="climb-progress-fill"></div>
                 </div>
-                <div class="climb-progress-text" id="climb-progress-text">Select effort and commit to climb</div>
-                <button class="btn" id="commit-btn" onclick="commitAttempt()" disabled style="margin-top: 10px;">
-                    Select Effort Level
-                </button>
+                <div class="climb-progress-text" id="climb-progress-text">Select effort to climb</div>
+                <div class="effort-selection-mobile">
+                    <div class="climber-badge" id="climber-badge">
+                        <div class="climber-avatar-large" id="current-climber-avatar"></div>
+                        <span id="current-climber-name"></span>
+                    </div>
+                    <button class="effort-btn casual" onclick="selectEffort('casual')">🧘 Casual</button>
+                    <button class="effort-btn send" onclick="selectEffort('send')">🔥 Send</button>
+                    <button class="effort-btn limit" onclick="selectEffort('limit')">⚡ Limit</button>
+                </div>
             </div>
 
             <div class="right-panel">
@@ -1928,6 +2237,10 @@
             window.addEventListener('resize', resizeWorldCanvas);
             worldCanvas.addEventListener('click', handleMapClick);
 
+            // Touch support for mobile
+            worldCanvas.addEventListener('touchstart', handleMapTouch, { passive: false });
+            worldCanvas.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+
             // Keyboard controls
             window.addEventListener('keydown', handleKeyDown);
             window.addEventListener('keyup', handleKeyUp);
@@ -2449,7 +2762,7 @@
                 const rockPos = getRockPosition(rock);
                 const dx = x - rockPos.x;
                 const dy = y - rockPos.y;
-                if (Math.sqrt(dx * dx + dy * dy) < 40) {
+                if (Math.sqrt(dx * dx + dy * dy) < 50) { // Larger hitbox for touch
                     // Set target to walk to rock, store rock to enter on arrival
                     gameState.targetPosition = {
                         x: rockPos.x - 50,
@@ -2462,6 +2775,34 @@
 
             // Otherwise, walk to clicked location
             gameState.targetPosition = { x: x, y: y };
+        }
+
+        function handleMapTouch(e) {
+            e.preventDefault();
+            if (e.touches.length > 0) {
+                const touch = e.touches[0];
+                const rect = worldCanvas.getBoundingClientRect();
+                const x = (touch.clientX - rect.left) * (worldCanvas.width / rect.width);
+                const y = (touch.clientY - rect.top) * (worldCanvas.height / rect.height);
+
+                // Check if tapped on a rock - walk to it then enter
+                for (const rock of ROCKS) {
+                    const rockPos = getRockPosition(rock);
+                    const dx = x - rockPos.x;
+                    const dy = y - rockPos.y;
+                    if (Math.sqrt(dx * dx + dy * dy) < 50) { // Larger hitbox for touch
+                        gameState.targetPosition = {
+                            x: rockPos.x - 50,
+                            y: rockPos.y + 20,
+                            rock: rock
+                        };
+                        return;
+                    }
+                }
+
+                // Otherwise, walk to tapped location
+                gameState.targetPosition = { x: x, y: y };
+            }
         }
 
         function updateRocksCleared() {
@@ -2947,19 +3288,13 @@
             updateOddsDisplay();
 
             // Update commit button
-            const commitBtn = document.getElementById('commit-btn');
-            if (gameState.selectedEffort) {
-                commitBtn.disabled = false;
-                commitBtn.textContent = `Commit (${gameState.selectedEffort.toUpperCase()})`;
-            } else {
-                commitBtn.disabled = true;
-                commitBtn.textContent = 'Select Effort Level';
-            }
         }
 
         function selectEffort(effort) {
             gameState.selectedEffort = effort;
             updateAttemptUI();
+            // Auto-start the attempt
+            commitAttempt();
         }
 
         function updateOddsDisplay() {
@@ -3147,10 +3482,6 @@
                 // Scale: rollDiff of 0 = 80%, rollDiff of 50+ = 20%
                 targetProgress = Math.max(20, Math.min(80, 80 - (rollDiff * 1.2)));
             }
-
-            // Disable commit button during animation
-            document.getElementById('commit-btn').disabled = true;
-            document.getElementById('commit-btn').textContent = 'Climbing...';
 
             // Start the climbing animation
             log(`${climber.name} starts the attempt...`, 'action');
