@@ -954,16 +954,27 @@
                 text-align: center;
             }
 
-            /* Crag view - stack vertically */
+            /* Crag view - stack vertically and allow scroll */
+            #crag-view {
+                overflow-y: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+
             .crag-container {
+                flex: none;
                 flex-direction: column;
                 padding: 10px;
+                padding-bottom: 20px;
                 gap: 10px;
+                overflow: visible;
+                min-height: auto;
+                height: auto;
             }
 
             .rock-display {
                 flex: none;
-                max-height: 35vh;
+                max-height: 30vh;
+                min-height: 150px;
             }
 
             #rock-canvas {
@@ -974,8 +985,8 @@
             .problems-panel {
                 width: 100%;
                 max-height: none;
-                flex: 1;
-                min-height: 200px;
+                flex: none;
+                overflow: visible;
             }
 
             .problem-card {
@@ -983,6 +994,10 @@
                 margin-bottom: 10px;
                 /* Ensure 44px minimum touch target */
                 min-height: 44px;
+            }
+
+            #attempt-btn {
+                margin-bottom: 10px;
             }
 
             .crag-header {
