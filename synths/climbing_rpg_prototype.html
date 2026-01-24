@@ -1056,30 +1056,45 @@
                 min-height: 44px;
             }
 
-            /* Effort buttons - larger touch targets */
+            /* Effort buttons - compact row at bottom of canvas */
             .effort-overlay {
-                flex-direction: column;
-                gap: 8px;
+                flex-direction: row;
+                gap: 6px;
                 bottom: 8px;
                 left: 8px;
                 right: 8px;
-            }
-
-            .effort-selection {
-                width: 100%;
+                align-items: center;
                 justify-content: space-between;
             }
 
-            .effort-btn {
-                flex: 1;
-                padding: 12px 8px;
-                font-size: 0.8rem;
-                min-height: 44px;
+            .climber-badge {
+                flex: none;
+                padding: 4px 8px;
             }
 
-            .climber-badge {
-                width: 100%;
-                justify-content: center;
+            .climber-badge .climber-avatar-large {
+                width: 24px;
+                height: 24px;
+                font-size: 0.7rem;
+            }
+
+            .climber-badge #current-climber-name {
+                font-size: 0.8rem;
+            }
+
+            .climber-stats-inline {
+                display: none;
+            }
+
+            .effort-selection {
+                flex: none;
+                gap: 4px;
+            }
+
+            .effort-btn {
+                padding: 6px 10px;
+                font-size: 0.7rem;
+                min-height: 32px;
             }
 
             /* Attempt header */
@@ -1161,8 +1176,8 @@
             }
 
             .effort-btn {
-                padding: 10px 6px;
-                font-size: 0.75rem;
+                padding: 5px 8px;
+                font-size: 0.65rem;
             }
 
             .stat-row {
