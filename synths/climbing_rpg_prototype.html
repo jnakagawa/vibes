@@ -3264,18 +3264,6 @@
             document.getElementById('current-climber-avatar').textContent = climber.emoji;
             document.getElementById('current-climber-name').textContent = climber.name;
 
-            document.getElementById('climber-stats-display').innerHTML = `
-                <div style="display: flex; gap: 15px; justify-content: center; margin-top: 10px;">
-                    <span>PWR: ${climber.power}</span>
-                    <span>TECH: ${climber.technique}</span>
-                    <span>END: ${climber.endurance}</span>
-                </div>
-                <div style="margin-top: 10px;">
-                    <span style="color: #90a4ae;">Psyche: ${state.psyche}%</span> |
-                    <span style="color: #90a4ae;">Fatigue: ${state.fatigue}%</span>
-                </div>
-            `;
-
             // Update effort buttons
             document.querySelectorAll('.effort-btn').forEach(btn => {
                 btn.classList.remove('selected');
