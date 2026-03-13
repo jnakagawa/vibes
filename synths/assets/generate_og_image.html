@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Generate OG Image</title>
+  <style>
+    body { margin: 0; background: #111; display: flex; align-items: center; justify-content: center; min-height: 100vh; flex-direction: column; color: white; font-family: sans-serif; }
+    canvas { border: 1px solid #333; }
+    a { color: #d4af37; margin-top: 20px; font-size: 1.2em; }
+    p { margin-top: 10px; opacity: 0.6; }
+  </style>
+</head>
+<body>
+  <canvas id="canvas" width="1200" height="630"></canvas>
+  <a id="download" download="hausu_envelope_og.png">Download PNG</a>
+  <p>Right-click canvas → Save As, or click download link above.<br>Save to synths/assets/hausu_envelope_og.png</p>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const W = 1200, H = 630;
+
+    const catImg = new Image();
+    catImg.crossOrigin = 'anonymous';
+    catImg.src = 'hausu_cat.png';
+
+    catImg.onload = draw;
+    catImg.onerror = () => { console.warn('Cat image not found, drawing without it'); draw(); };
+
+    function draw() {
+      // === BACKGROUND ===
+      const bgGrad = ctx.createRadialGradient(W/2, H/2, 100, W/2, H/2, 600);
+      bgGrad.addColorStop(0, '#1a0a12');
+      bgGrad.addColorStop(1, '#0a0008');
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, W, H);
+
+      // Subtle psychedelic accents
+      ctx.globalAlpha = 0.12;
+      const accent1 = ctx.createRadialGradient(200, 350, 50, 200, 350, 300);
+      accent1.addColorStop(0, '#8b1a2b');
+      accent1.addColorStop(1, 'transparent');
+      ctx.fillStyle = accent1;
+      ctx.fillRect(0, 0, W, H);
+
+      const accent2 = ctx.createRadialGradient(1000, 200, 50, 1000, 200, 250);
+      accent2.addColorStop(0, '#640078');
+      accent2.addColorStop(1, 'transparent');
+      ctx.fillStyle = accent2;
+      ctx.fillRect(0, 0, W, H);
+      ctx.globalAlpha = 1;
+
+      // === LETTER / PARCHMENT ===
+      const lx = 300, ly = 80, lw = 600, lh = 470;
+
+      // Shadow
+      ctx.shadowColor = 'rgba(0,0,0,0.6)';
+      ctx.shadowBlur = 50;
+      ctx.shadowOffsetY = 12;
+
+      // Parchment body — slight rotation
+      ctx.save();
+      ctx.translate(lx + lw/2, ly + lh/2);
+      ctx.rotate(-0.02);
+      ctx.translate(-(lx + lw/2), -(ly + lh/2));
+
+      // Parchment fill
+      const parchGrad = ctx.createLinearGradient(lx, ly, lx + lw, ly + lh);
+      parchGrad.addColorStop(0, '#f5e6d3');
+      parchGrad.addColorStop(0.5, '#efe0cc');
+      parchGrad.addColorStop(1, '#e8d5bc');
+      ctx.fillStyle = parchGrad;
+
+      // Rounded rect
+      const r = 6;
+      ctx.beginPath();
+      ctx.moveTo(lx + r, ly);
+      ctx.lineTo(lx + lw - r, ly);
+      ctx.quadraticCurveTo(lx + lw, ly, lx + lw, ly + r);
+      ctx.lineTo(lx + lw, ly + lh - r);
+      ctx.quadraticCurveTo(lx + lw, ly + lh, lx + lw - r, ly + lh);
+      ctx.lineTo(lx + r, ly + lh);
+      ctx.quadraticCurveTo(lx, ly + lh, lx, ly + lh - r);
+      ctx.lineTo(lx, ly + r);
+      ctx.quadraticCurveTo(lx, ly, lx + r, ly);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.shadowColor = 'transparent';
+      ctx.shadowBlur = 0;
+
+      // Inner border
+      ctx.strokeStyle = 'rgba(139, 26, 43, 0.15)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(lx + 12, ly + 12, lw - 24, lh - 24);
+
+      // === TEXT ON LETTER ===
+      ctx.fillStyle = '#2c1810';
+      ctx.textAlign = 'center';
+
+      // "おばちゃま invites you..."
+      ctx.font = 'italic 34px Georgia, serif';
+      ctx.fillText('おばちゃま invites you...', lx + lw/2, ly + 60);
+
+      // Thin line
+      ctx.strokeStyle = 'rgba(139, 26, 43, 0.25)';
+      ctx.lineWidth = 0.5;
+      ctx.beginPath();
+      ctx.moveTo(lx + 80, ly + 80);
+      ctx.lineTo(lx + lw - 80, ly + 80);
+      ctx.stroke();
+
+      // Date
+      ctx.font = 'bold 40px Georgia, serif';
+      ctx.fillStyle = '#1a0a08';
+      ctx.fillText('Thursday, April 2nd', lx + lw/2, ly + 130);
+
+      // Time
+      ctx.font = '24px Georgia, serif';
+      ctx.fillStyle = '#4a2a1a';
+      ctx.fillText('6PM — Film begins at 7', lx + lw/2, ly + 170);
+
+      // Venue
+      ctx.font = 'italic 22px Georgia, serif';
+      ctx.fillStyle = '#6b4a3a';
+      ctx.fillText('Videotheque, Los Angeles', lx + lw/2, ly + 215);
+
+      // === WAX SEAL with cat face ===
+      const sealX = lx + lw/2;
+      const sealY = ly + 340;
+      const sealR = 70;
+
+      // Wax drip irregular edge
+      ctx.shadowColor = 'rgba(0,0,0,0.35)';
+      ctx.shadowBlur = 12;
+      ctx.shadowOffsetY = 4;
+
+      // Outer irregular wax shape
+      ctx.fillStyle = '#8b1a1a';
+      ctx.beginPath();
+      for (let i = 0; i < 360; i += 5) {
+        const angle = (i * Math.PI) / 180;
+        const wobble = sealR + Math.sin(i * 0.15) * 6 + Math.cos(i * 0.23) * 4;
+        const x = sealX + wobble * Math.cos(angle);
+        const y = sealY + wobble * Math.sin(angle);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.shadowColor = 'transparent';
+      ctx.shadowBlur = 0;
+
+      // Inner wax gradient
+      const waxGrad = ctx.createRadialGradient(sealX - 10, sealY - 10, 10, sealX, sealY, sealR);
+      waxGrad.addColorStop(0, '#c0392b');
+      waxGrad.addColorStop(0.7, '#a02020');
+      waxGrad.addColorStop(1, '#8b1a1a');
+      ctx.fillStyle = waxGrad;
+      ctx.beginPath();
+      ctx.arc(sealX, sealY, sealR - 4, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Inner ring
+      ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(sealX, sealY, sealR - 12, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Cat face image clipped to circle
+      if (catImg.complete && catImg.naturalWidth > 0) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(sealX, sealY, sealR - 14, 0, Math.PI * 2);
+        ctx.clip();
+
+        const imgSize = (sealR - 14) * 2;
+        ctx.globalAlpha = 0.85;
+        ctx.drawImage(catImg, sealX - imgSize/2, sealY - imgSize/2, imgSize, imgSize);
+        ctx.globalAlpha = 1;
+
+        // Red tint overlay to blend with wax
+        ctx.fillStyle = 'rgba(160, 32, 32, 0.3)';
+        ctx.fillRect(sealX - imgSize/2, sealY - imgSize/2, imgSize, imgSize);
+
+        ctx.restore();
+      } else {
+        // Fallback: text seal
+        ctx.fillStyle = '#f5e6d3';
+        ctx.font = 'bold 48px serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('H', sealX, sealY + 2);
+      }
+
+      // "Auntie has been expecting you" below seal
+      ctx.fillStyle = '#5a3a2a';
+      ctx.font = 'italic 20px Georgia, serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillText('Auntie has been expecting you.', lx + lw/2, ly + 440);
+
+      ctx.restore(); // end rotation
+
+      // Generate download link
+      const link = document.getElementById('download');
+      link.href = canvas.toDataURL('image/png');
+    }
+  </script>
+</body>
+</html>
