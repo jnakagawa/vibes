@@ -779,6 +779,17 @@
     }
     .upload-alt-btn:hover { color: #f5e6d3; }
 
+    .head-count {
+      position: fixed;
+      bottom: 30vh;
+      right: 12px;
+      font-size: 0.85rem;
+      color: rgba(245, 230, 211, 0.8);
+      font-family: 'Special Elite', cursive;
+      z-index: 6;
+      text-shadow: 0 1px 4px rgba(0,0,0,0.6);
+    }
+
     .upload-status { margin-top: 0.5em; font-size: 0.9rem; min-height: 1.5em; }
 
     /* ===== STOMACH (floating heads container) ===== */
@@ -903,6 +914,7 @@
     <div class="stomach-lip"></div>
     <div class="stomach-bg"></div>
   </div>
+  <span class="head-count" id="head-count"></span>
 
   <!-- Main Container -->
   <div class="container">
@@ -1261,7 +1273,7 @@
     // ===== STOMACH PHYSICS =====
     const heads = []; // { el, x, y, vx, vy }
     let tiltX = 0, tiltY = 0;
-    const GRAVITY = 0.15;
+    const GRAVITY = 0.06;
     const BOUNCE = 0.5;
     const FRICTION = 0.98;
     const HEAD_SIZE = 50;
@@ -1422,6 +1434,7 @@
         vy: animate ? 3 : rand(-0.5, 0.5)
       };
       heads.push(head);
+      updateHeadCount();
 
       el.style.left = head.x + 'px';
       el.style.top = head.y + 'px';
@@ -1430,6 +1443,11 @@
         // Remove drop class after animation
         el.addEventListener('animationend', () => el.classList.remove('dropping'));
       }
+    }
+
+    function updateHeadCount() {
+      const n = heads.length;
+      document.getElementById('head-count').textContent = n > 0 ? `${n} head${n !== 1 ? 's' : ''}` : '';
     }
 
     function physicsStep() {
@@ -1449,30 +1467,47 @@
         h.x += h.vx;
         h.y += h.vy;
 
-        // Bounce off walls
+        // Gentle random drift (lava lamp effect)
+        h.vx += (Math.sin(Date.now() * 0.001 + h.x * 0.05) * 0.03);
+        h.vy += (Math.cos(Date.now() * 0.0008 + h.y * 0.05) * 0.02);
+
+        // Bounce off walls (leave 20px bottom margin for names)
         if (h.x < 0) { h.x = 0; h.vx = Math.abs(h.vx) * BOUNCE; }
         if (h.x > bounds.w - HEAD_SIZE) { h.x = bounds.w - HEAD_SIZE; h.vx = -Math.abs(h.vx) * BOUNCE; }
         if (h.y < 0) { h.y = 0; h.vy = Math.abs(h.vy) * BOUNCE; }
-        if (h.y > bounds.h - HEAD_SIZE) { h.y = bounds.h - HEAD_SIZE; h.vy = -Math.abs(h.vy) * BOUNCE; }
+        if (h.y > bounds.h - HEAD_SIZE - 20) { h.y = bounds.h - HEAD_SIZE - 20; h.vy = -Math.abs(h.vy) * BOUNCE; }
 
         h.el.style.left = h.x + 'px';
         h.el.style.top = h.y + 'px';
       });
 
-      // Simple head-to-head collision
+      // Head-to-head: hard collision + soft repulsion zone
+      const REPEL_RADIUS = HEAD_SIZE * 2.5;
+      const REPEL_STRENGTH = 0.04;
       for (let i = 0; i < heads.length; i++) {
         for (let j = i + 1; j < heads.length; j++) {
           const a = heads[i], b = heads[j];
           const dx = b.x - a.x, dy = b.y - a.y;
           const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < HEAD_SIZE && dist > 0) {
-            const nx = dx / dist, ny = dy / dist;
+          if (dist < 1) continue;
+          const nx = dx / dist, ny = dy / dist;
+
+          // Soft repulsion (lava lamp spacing)
+          if (dist < REPEL_RADIUS) {
+            const force = REPEL_STRENGTH * (1 - dist / REPEL_RADIUS);
+            a.vx -= nx * force;
+            a.vy -= ny * force;
+            b.vx += nx * force;
+            b.vy += ny * force;
+          }
+
+          // Hard collision (overlap correction)
+          if (dist < HEAD_SIZE) {
             const overlap = HEAD_SIZE - dist;
             a.x -= nx * overlap * 0.5;
             a.y -= ny * overlap * 0.5;
             b.x += nx * overlap * 0.5;
             b.y += ny * overlap * 0.5;
-            // Swap velocity components along collision axis
             const relV = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny;
             a.vx += relV * nx * 0.5;
             a.vy += relV * ny * 0.5;
