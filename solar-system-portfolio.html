@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Solar System Portfolio</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0a1a;
+    color: #e0e0e0;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+  }
+  #solar-system { width: 100%; height: 100%; }
+
+  .orbit { fill: none; stroke: rgba(255,255,255,0.07); stroke-width: 1; }
+  .planet { cursor: pointer; transition: filter 0.2s; }
+  .planet:hover { filter: brightness(1.4) drop-shadow(0 0 12px currentColor); }
+  .sun-glow { pointer-events: none; }
+  .planet-label {
+    fill: rgba(255,255,255,0.6);
+    font-size: 11px;
+    text-anchor: middle;
+    pointer-events: none;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+  }
+
+  #tooltip {
+    position: fixed;
+    pointer-events: none;
+    background: rgba(10, 10, 30, 0.92);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 12px;
+    padding: 16px 20px;
+    max-width: 300px;
+    backdrop-filter: blur(12px);
+    opacity: 0;
+    transition: opacity 0.2s;
+    z-index: 100;
+  }
+  #tooltip.visible { opacity: 1; }
+  #tooltip h3 { font-size: 16px; margin-bottom: 6px; }
+  #tooltip .tech { font-size: 11px; color: #888; margin-bottom: 8px; }
+  #tooltip .desc { font-size: 13px; line-height: 1.5; color: #bbb; }
+  #tooltip .status {
+    display: inline-block;
+    margin-top: 8px;
+    padding: 2px 10px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  #title {
+    position: fixed;
+    top: 24px;
+    left: 32px;
+    z-index: 10;
+  }
+  #title h1 { font-size: 22px; font-weight: 300; letter-spacing: 4px; text-transform: uppercase; }
+  #title p { font-size: 12px; color: #666; margin-top: 4px; letter-spacing: 1px; }
+
+  #controls {
+    position: fixed;
+    bottom: 24px;
+    right: 32px;
+    z-index: 10;
+    display: flex;
+    gap: 8px;
+  }
+  #controls button {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: #aaa;
+    padding: 6px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.2s;
+  }
+  #controls button:hover { background: rgba(255,255,255,0.12); color: #fff; }
+
+  .star {
+    position: fixed;
+    width: 1px;
+    height: 1px;
+    background: white;
+    border-radius: 50%;
+  }
+</style>
+</head>
+<body>
+
+<div id="title">
+  <h1>Project Galaxy</h1>
+  <p>Hover planets to explore &middot; Scroll to zoom</p>
+</div>
+
+<div id="controls">
+  <button onclick="toggleSpeed()">Speed: 1x</button>
+  <button onclick="resetView()">Reset View</button>
+</div>
+
+<svg id="solar-system"></svg>
+<div id="tooltip">
+  <h3 id="tip-name"></h3>
+  <div class="tech" id="tip-tech"></div>
+  <div class="desc" id="tip-desc"></div>
+  <span class="status" id="tip-status"></span>
+</div>
+
+<script>
+const projects = [
+  {
+    name: "Lumina",
+    desc: "Real-time collaborative design tool with multiplayer cursors, vector editing, and component libraries.",
+    tech: "React · WebSocket · Canvas API",
+    color: "#e8927c",
+    size: 18,
+    orbitRadius: 80,
+    speed: 0.015,
+    status: "Live",
+    statusColor: "#4ade80"
+  },
+  {
+    name: "Voxel Engine",
+    desc: "Browser-based voxel world builder with procedural terrain generation and WebGPU rendering.",
+    tech: "TypeScript · WebGPU · WASM",
+    color: "#f4c542",
+    size: 14,
+    orbitRadius: 120,
+    speed: 0.011,
+    status: "Beta",
+    statusColor: "#facc15"
+  },
+  {
+    name: "Dataflow",
+    desc: "Visual programming environment for data pipelines. Drag-and-drop nodes for ETL, ML, and analytics.",
+    tech: "Vue · D3.js · Python",
+    color: "#5b9bd5",
+    size: 22,
+    orbitRadius: 175,
+    speed: 0.008,
+    status: "Live",
+    statusColor: "#4ade80"
+  },
+  {
+    name: "Pulse",
+    desc: "Health & fitness tracker with ML-powered workout recommendations and social challenges.",
+    tech: "React Native · TensorFlow · Node.js",
+    color: "#e06c75",
+    size: 16,
+    orbitRadius: 225,
+    speed: 0.006,
+    status: "Live",
+    statusColor: "#4ade80"
+  },
+  {
+    name: "Nebula CMS",
+    desc: "Headless content management system with AI-assisted writing, version control, and multi-tenant support.",
+    tech: "Next.js · PostgreSQL · OpenAI",
+    color: "#c678dd",
+    size: 20,
+    orbitRadius: 280,
+    speed: 0.0045,
+    status: "In Development",
+    statusColor: "#60a5fa"
+  },
+  {
+    name: "Terraform",
+    desc: "Multiplayer strategy game set on Mars. Resource management, base building, and real-time diplomacy.",
+    tech: "Unity · C# · Firebase",
+    color: "#d19a66",
+    size: 25,
+    orbitRadius: 345,
+    speed: 0.003,
+    status: "Alpha",
+    statusColor: "#fb923c"
+  },
+  {
+    name: "Synth Lab",
+    desc: "Browser-based modular synthesizer with MIDI support, preset sharing, and audio visualization.",
+    tech: "Web Audio API · Svelte · WebMIDI",
+    color: "#56b6c2",
+    size: 15,
+    orbitRadius: 400,
+    speed: 0.0022,
+    status: "Live",
+    statusColor: "#4ade80"
+  },
+  {
+    name: "Archive",
+    desc: "Decentralized knowledge base with end-to-end encryption, markdown editing, and P2P sync.",
+    tech: "Rust · WASM · libp2p · CRDTs",
+    color: "#98c379",
+    size: 13,
+    orbitRadius: 450,
+    speed: 0.0016,
+    status: "Prototype",
+    statusColor: "#a78bfa"
+  }
+];
+
+const svg = d3.select("#solar-system");
+const tooltip = document.getElementById("tooltip");
+let width, height, cx, cy;
+let speedMultiplier = 1;
+let elapsed = 0;
+let paused = false;
+
+function resize() {
+  width = window.innerWidth;
+  height = window.innerHeight;
+  cx = width / 2;
+  cy = height / 2;
+  svg.attr("width", width).attr("height", height);
+}
+resize();
+window.addEventListener("resize", resize);
+
+// Stars background
+const starsG = svg.append("g").attr("class", "stars");
+for (let i = 0; i < 300; i++) {
+  const opacity = Math.random() * 0.6 + 0.1;
+  const size = Math.random() < 0.1 ? 1.5 : 0.8;
+  starsG.append("circle")
+    .attr("cx", Math.random() * width)
+    .attr("cy", Math.random() * height)
+    .attr("r", size)
+    .attr("fill", `rgba(255,255,255,${opacity})`);
+}
+
+const mainG = svg.append("g").attr("transform", `translate(${cx},${cy})`);
+
+// Zoom
+const zoom = d3.zoom()
+  .scaleExtent([0.3, 3])
+  .on("zoom", (e) => {
+    mainG.attr("transform", `translate(${cx + e.transform.x},${cy + e.transform.y}) scale(${e.transform.k})`);
+  });
+svg.call(zoom);
+
+// Sun glow
+const sunGradient = svg.append("defs").append("radialGradient").attr("id", "sun-glow");
+sunGradient.append("stop").attr("offset", "0%").attr("stop-color", "#fff8e1").attr("stop-opacity", 1);
+sunGradient.append("stop").attr("offset", "30%").attr("stop-color", "#ffcc02").attr("stop-opacity", 0.8);
+sunGradient.append("stop").attr("offset", "70%").attr("stop-color", "#ff9800").attr("stop-opacity", 0.3);
+sunGradient.append("stop").attr("offset", "100%").attr("stop-color", "#ff5722").attr("stop-opacity", 0);
+
+mainG.append("circle").attr("class", "sun-glow").attr("r", 60).attr("fill", "url(#sun-glow)");
+mainG.append("circle").attr("r", 22).attr("fill", "#ffcc02")
+  .attr("filter", "drop-shadow(0 0 20px rgba(255,200,0,0.6))");
+
+// Orbits
+projects.forEach(p => {
+  mainG.append("ellipse")
+    .attr("class", "orbit")
+    .attr("rx", p.orbitRadius)
+    .attr("ry", p.orbitRadius * 0.4);
+});
+
+// Planet gradients
+projects.forEach((p, i) => {
+  const grad = svg.select("defs").append("radialGradient")
+    .attr("id", `planet-grad-${i}`)
+    .attr("cx", "35%").attr("cy", "35%");
+  grad.append("stop").attr("offset", "0%").attr("stop-color", d3.color(p.color).brighter(1));
+  grad.append("stop").attr("offset", "100%").attr("stop-color", d3.color(p.color).darker(1));
+});
+
+// Planet groups
+const planetGroups = mainG.selectAll(".planet-group")
+  .data(projects)
+  .join("g")
+  .attr("class", "planet-group");
+
+planetGroups.append("circle")
+  .attr("class", "planet")
+  .attr("r", d => d.size)
+  .attr("fill", (d, i) => `url(#planet-grad-${i})`)
+  .attr("stroke", d => d.color)
+  .attr("stroke-width", 0.5)
+  .attr("stroke-opacity", 0.3)
+  .on("mouseenter", (event, d) => showTooltip(event, d))
+  .on("mousemove", (event) => moveTooltip(event))
+  .on("mouseleave", hideTooltip);
+
+planetGroups.append("text")
+  .attr("class", "planet-label")
+  .attr("dy", d => d.size + 16)
+  .text(d => d.name);
+
+// Moons for larger planets
+projects.forEach((p, i) => {
+  if (p.size >= 20) {
+    const moonG = planetGroups.filter((d, j) => j === i);
+    moonG.append("circle")
+      .attr("class", "moon")
+      .attr("r", 3)
+      .attr("fill", "#aaa")
+      .attr("opacity", 0.7);
+  }
+});
+
+function showTooltip(event, d) {
+  document.getElementById("tip-name").textContent = d.name;
+  document.getElementById("tip-tech").textContent = d.tech;
+  document.getElementById("tip-desc").textContent = d.desc;
+  const statusEl = document.getElementById("tip-status");
+  statusEl.textContent = d.status;
+  statusEl.style.background = d.statusColor + "22";
+  statusEl.style.color = d.statusColor;
+  tooltip.classList.add("visible");
+  moveTooltip(event);
+}
+
+function moveTooltip(event) {
+  let x = event.clientX + 16;
+  let y = event.clientY - 10;
+  if (x + 310 > width) x = event.clientX - 320;
+  if (y + 180 > height) y = height - 180;
+  tooltip.style.left = x + "px";
+  tooltip.style.top = y + "px";
+}
+
+function hideTooltip() {
+  tooltip.classList.remove("visible");
+}
+
+// Animation
+let lastTime = performance.now();
+
+function animate(now) {
+  const dt = (now - lastTime) / 1000;
+  lastTime = now;
+  if (!paused) elapsed += dt * speedMultiplier;
+
+  planetGroups.each(function(d, i) {
+    const angle = elapsed * d.speed * 60 + (i * Math.PI * 2 / projects.length);
+    const x = Math.cos(angle) * d.orbitRadius;
+    const y = Math.sin(angle) * d.orbitRadius * 0.4;
+    const scale = 0.7 + 0.3 * ((y / (d.orbitRadius * 0.4) + 1) / 2);
+
+    const g = d3.select(this);
+    g.attr("transform", `translate(${x},${y}) scale(${scale})`);
+
+    // z-ordering: planets in front rendered last
+    g.raise();
+
+    // Moon orbit
+    if (d.size >= 20) {
+      const moonAngle = elapsed * 0.08 * 60 + i;
+      const moonX = Math.cos(moonAngle) * (d.size + 10);
+      const moonY = Math.sin(moonAngle) * (d.size + 10) * 0.5;
+      g.select(".moon").attr("cx", moonX).attr("cy", moonY);
+    }
+  });
+
+  // Sort by y for depth
+  planetGroups.sort((a, b) => {
+    const angleA = elapsed * a.speed * 60 + (projects.indexOf(a) * Math.PI * 2 / projects.length);
+    const angleB = elapsed * b.speed * 60 + (projects.indexOf(b) * Math.PI * 2 / projects.length);
+    return Math.sin(angleA) * a.orbitRadius * 0.4 - Math.sin(angleB) * b.orbitRadius * 0.4;
+  });
+
+  requestAnimationFrame(animate);
+}
+requestAnimationFrame(animate);
+
+// Controls
+function toggleSpeed() {
+  const speeds = [0.5, 1, 2, 4];
+  const idx = speeds.indexOf(speedMultiplier);
+  speedMultiplier = speeds[(idx + 1) % speeds.length];
+  document.querySelector("#controls button").textContent = `Speed: ${speedMultiplier}x`;
+}
+
+function resetView() {
+  svg.transition().duration(750).call(zoom.transform, d3.zoomIdentity);
+}
+</script>
+</body>
+</html>
