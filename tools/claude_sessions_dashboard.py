@@ -294,6 +294,7 @@ function renderList() {
       <div class="row-summary">${esc(displayName(s))}</div>
       <div class="row-meta">
         ${s.gitBranch ? '<span class="branch-tag">' + esc(s.gitBranch) + '</span>' : ''}
+        <span>${(s.size / 1024).toFixed(0)} KB</span>
       </div>
     </div>`;
   }).join('');
