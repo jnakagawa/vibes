@@ -4,6 +4,8 @@
 
 A local web UI for browsing your Claude Code session history. Zero dependencies — just Python 3.6+.
 
+![Claude Sessions Dashboard](screenshot.png)
+
 ### Prerequisites
 
 - Python 3.6+ (pre-installed on macOS and most Linux distros)
