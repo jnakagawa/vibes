@@ -27,6 +27,12 @@
     }
     #controls button:hover { background: #00ff4120; }
     #controls button.active { background: #00ff4140; }
+    @media (max-width: 600px) {
+      #controls { bottom: 10px; right: 10px; left: 10px; min-width: 0; padding: 14px; gap: 12px; font-size: 14px; }
+      #controls input[type="range"] { width: 100%; height: 32px; flex: 1; }
+      #controls label { gap: 12px; }
+      #controls button { padding: 10px 14px; font-size: 14px; }
+    }
     #status {
       position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
       color: #00ff41; font-family: 'Courier New', monospace; font-size: 13px;
@@ -38,6 +44,15 @@
 </head>
 <body>
   <canvas id="c"></canvas>
+  <div id="debug" style="display:none;position:fixed;top:0;left:0;z-index:200;background:rgba(0,0,0,0.9);padding:10px;font-family:'Courier New',monospace;color:#0f0;font-size:11px;">
+    <div style="display:flex;gap:10px;align-items:flex-start;">
+      <div><div>RAW CAM</div><canvas id="dbg-cam" width="200" height="150" style="border:1px solid #0f03;image-rendering:pixelated;"></canvas></div>
+      <div><div>LUMINANCE</div><canvas id="dbg-lum" width="200" height="150" style="border:1px solid #0f03;image-rendering:pixelated;"></canvas></div>
+      <div><div>EDGES</div><canvas id="dbg-edge" width="200" height="150" style="border:1px solid #0f03;image-rendering:pixelated;"></canvas></div>
+      <div><div>COMBINED</div><canvas id="dbg-combined" width="200" height="150" style="border:1px solid #0f03;image-rendering:pixelated;"></canvas></div>
+    </div>
+    <pre id="dbg-stats" style="margin-top:6px;color:#0a0;"></pre>
+  </div>
   <div id="status">Click to start webcam</div>
   <div id="fps"></div>
   <div id="controls">
@@ -323,7 +338,133 @@ document.getElementById('btn-mirror').addEventListener('click', e => { mirrorMod
 document.getElementById('btn-cam').addEventListener('click', () => { if (camActive) stopCam(); else { camStarted = true; startCam(); } });
 document.getElementById('btn-hide').addEventListener('click', () => document.getElementById('controls').classList.toggle('hidden'));
 window.addEventListener('resize', resize);
-document.addEventListener('keydown', e => { if (e.key === 'h') document.getElementById('controls').classList.toggle('hidden'); });
+document.addEventListener('keydown', e => {
+  if (e.key === 'h') document.getElementById('controls').classList.toggle('hidden');
+  if (e.key === 'd') toggleDebug();
+});
+
+// ── Debug View ──────────────────────────────────────────────────────
+let debugOn = false;
+const dbgEl = document.getElementById('debug');
+const dbgCam = document.getElementById('dbg-cam');
+const dbgLum = document.getElementById('dbg-lum');
+const dbgEdge = document.getElementById('dbg-edge');
+const dbgCombined = document.getElementById('dbg-combined');
+const dbgStats = document.getElementById('dbg-stats');
+const dbgCamCtx = dbgCam.getContext('2d');
+const dbgLumCtx = dbgLum.getContext('2d', { willReadFrequently: true });
+const dbgEdgeCtx = dbgEdge.getContext('2d', { willReadFrequently: true });
+const dbgCombinedCtx = dbgCombined.getContext('2d', { willReadFrequently: true });
+
+function toggleDebug() {
+  debugOn = !debugOn;
+  dbgEl.style.display = debugOn ? 'block' : 'none';
+}
+
+function renderDebug() {
+  if (!debugOn || !camActive) return;
+
+  const W = 200, H = 150;
+
+  // 1. Raw cam feed
+  if (video.readyState >= 2) {
+    if (mirrorMode) {
+      dbgCamCtx.save(); dbgCamCtx.scale(-1, 1);
+      dbgCamCtx.drawImage(video, -W, 0, W, H);
+      dbgCamCtx.restore();
+    } else {
+      dbgCamCtx.drawImage(video, 0, 0, W, H);
+    }
+  }
+
+  if (!lumGrid) return;
+
+  // 2. Luminance grayscale
+  const lumImg = dbgLumCtx.createImageData(COLS, ROWS);
+  // 3. Edge visualization (green = edges)
+  const edgeImg = dbgEdgeCtx.createImageData(COLS, ROWS);
+  // 4. Combined: what the rain "sees" (brightness × camMix + edge glow)
+  const combImg = dbgCombinedCtx.createImageData(COLS, ROWS);
+
+  let lumMin = 1, lumMax = 0, lumSum = 0;
+  let edgeMin = 1, edgeMax = 0, edgeSum = 0, edgeAboveThresh = 0;
+
+  for (let i = 0; i < COLS * ROWS; i++) {
+    const l = lumGrid[i];
+    const e = edgeGrid ? edgeGrid[i] : 0;
+    const o = i * 4;
+
+    // Stats
+    lumMin = Math.min(lumMin, l); lumMax = Math.max(lumMax, l); lumSum += l;
+    edgeMin = Math.min(edgeMin, e); edgeMax = Math.max(edgeMax, e); edgeSum += e;
+    if (e > edgeThreshold) edgeAboveThresh++;
+
+    // Lum: grayscale
+    const lv = Math.floor(l * 255);
+    lumImg.data[o] = lv; lumImg.data[o+1] = lv; lumImg.data[o+2] = lv; lumImg.data[o+3] = 255;
+
+    // Edge: black bg, green = edge magnitude
+    const ev = Math.floor(Math.min(1, e * 3) * 255); // boost for visibility
+    edgeImg.data[o] = 0; edgeImg.data[o+1] = ev; edgeImg.data[o+2] = 0; edgeImg.data[o+3] = 255;
+
+    // Combined: what the rain formula produces
+    const camB = Math.pow(l, 0.7);
+    const baseA = 1 - camMix + camMix * camB;
+    const edgeBoost = e * edgeGlow;
+    const combined = Math.min(1, baseA + edgeBoost * 0.5);
+    const isEdge = edgeBoost > 0.15;
+    if (isEdge) {
+      const w = Math.min(1, edgeBoost * 2);
+      combImg.data[o] = Math.floor(w * 200);
+      combImg.data[o+1] = Math.floor(100 + 155 * w);
+      combImg.data[o+2] = Math.floor(w * 180);
+    } else {
+      combImg.data[o] = 0;
+      combImg.data[o+1] = Math.floor(255 * (0.3 + 0.7 * camB));
+      combImg.data[o+2] = 0;
+    }
+    combImg.data[o+3] = Math.floor(combined * 255);
+  }
+
+  // Draw scaled up
+  // Lum
+  const tmpCvs = document.createElement('canvas');
+  tmpCvs.width = COLS; tmpCvs.height = ROWS;
+  const tmpCtx = tmpCvs.getContext('2d');
+
+  tmpCtx.putImageData(lumImg, 0, 0);
+  dbgLumCtx.imageSmoothingEnabled = false;
+  dbgLumCtx.drawImage(tmpCvs, 0, 0, W, H);
+
+  tmpCtx.putImageData(edgeImg, 0, 0);
+  dbgEdgeCtx.imageSmoothingEnabled = false;
+  dbgEdgeCtx.drawImage(tmpCvs, 0, 0, W, H);
+
+  tmpCtx.putImageData(combImg, 0, 0);
+  dbgCombinedCtx.imageSmoothingEnabled = false;
+  dbgCombinedCtx.drawImage(tmpCvs, 0, 0, W, H);
+
+  const N = COLS * ROWS;
+  const edgeThresh = typeof edgeThreshold !== 'undefined' ? edgeThreshold : 0.08;
+  dbgStats.textContent =
+    `grid: ${COLS}×${ROWS} (${N} cells)  drops: ${drops.length}\n` +
+    `lum   min:${lumMin.toFixed(3)} max:${lumMax.toFixed(3)} avg:${(lumSum/N).toFixed(3)}\n` +
+    `edge  min:${edgeMin.toFixed(3)} max:${edgeMax.toFixed(3)} avg:${(edgeSum/N).toFixed(3)}\n` +
+    `edge  threshold:${edgeThresh.toFixed(3)}  above:${edgeAboveThresh} (${(edgeAboveThresh/N*100).toFixed(1)}%)\n` +
+    `params  camMix:${camMix} edgeGlow:${edgeGlow} speed:${speedMul} trail:${trailLen}`;
+}
+
+// Patch the tick to include debug render
+const _origTick = tick;
+// Can't easily patch, so just call renderDebug inside sampleCam
+const _origSampleCam = sampleCam;
+sampleCam = function() {
+  _origSampleCam();
+  renderDebug();
+};
+
+// Also expose edgeThreshold for debug stats
+let edgeThreshold = 0.08;
 </script>
 </body>
 </html>
