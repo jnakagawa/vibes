@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Matrix ASCII Cam</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="analysis:category" content="visual">
+  <meta name="analysis:tags" content="webcam,ascii,matrix,realtime">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; overflow: hidden; }
+    canvas { display: block; }
+    #controls {
+      position: fixed; bottom: 20px; right: 20px;
+      background: rgba(0,10,0,0.85); border: 1px solid #00ff4140;
+      border-radius: 8px; padding: 12px 16px;
+      color: #00ff41; font-family: 'Courier New', monospace; font-size: 12px;
+      z-index: 100; display: flex; flex-direction: column; gap: 7px;
+      min-width: 210px; transition: opacity 0.3s;
+    }
+    #controls.hidden { opacity: 0; pointer-events: none; }
+    #controls label { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    #controls input[type="range"] { width: 90px; accent-color: #00ff41; }
+    #controls button {
+      background: none; border: 1px solid #00ff41; color: #00ff41;
+      padding: 3px 8px; cursor: pointer; font-family: inherit; font-size: 11px; border-radius: 4px;
+    }
+    #controls button:hover { background: #00ff4120; }
+    #controls button.active { background: #00ff4140; }
+    #status {
+      position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+      color: #00ff41; font-family: 'Courier New', monospace; font-size: 13px;
+      z-index: 100; opacity: 0.8; pointer-events: none; transition: opacity 1s;
+    }
+    #fps { position: fixed; top: 20px; right: 20px; color: #00ff4180;
+      font-family: 'Courier New', monospace; font-size: 11px; z-index: 100; }
+  </style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <div id="status">Click to start webcam</div>
+  <div id="fps"></div>
+  <div id="controls">
+    <label>Speed <input type="range" id="speed" min="0.2" max="3" step="0.1" value="1"></label>
+    <label>Trail <input type="range" id="trail" min="5" max="50" step="1" value="22"></label>
+    <label>Cam Mix <input type="range" id="cam-mix" min="0" max="1" step="0.05" value="0.8"></label>
+    <label>Edge Glow <input type="range" id="edge-glow" min="0" max="1" step="0.05" value="0.6"></label>
+    <div style="display:flex;gap:6px;justify-content:center;margin-top:3px;flex-wrap:wrap">
+      <button id="btn-mirror" class="active">Mirror</button>
+      <button id="btn-cam">Cam Off</button>
+      <button id="btn-hide">Hide UI</button>
+    </div>
+  </div>
+  <video id="cam" autoplay playsinline style="display:none"></video>
+
+<script>
+const KATA = 'ｦｧｨｩｪｫｬｭｮｯｰｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜﾝ';
+const CHARS = (KATA + '0123456789').split('');
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let COLS, ROWS, CW, CH, FS = 11;
+
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  CW = FS * 0.6;
+  CH = FS + 1;
+  COLS = Math.floor(canvas.width / CW);
+  ROWS = Math.floor(canvas.height / CH);
+  initDrops();
+}
+
+// ── Rain — every column has a drop, always ──────────────────────────
+let drops = [], speedMul = 1, trailLen = 22, mirrorMode = true;
+let camMix = 0.8, edgeGlow = 0.6;
+
+function makeDrop(x, rand) {
+  const tl = trailLen + ((Math.random() * 12 - 6) | 0);
+  return {
+    x,
+    y: rand ? Math.random() * (ROWS + tl) : -(Math.random() * tl),
+    speed: 0.15 + Math.random() * 0.6,
+    trail: tl,
+    chars: Array.from({ length: tl + 5 }, () => CHARS[(Math.random() * CHARS.length) | 0]),
+    mt: Math.random() * 80,
+  };
+}
+
+function initDrops() {
+  drops = [];
+  // Every column gets a drop — dense coverage for silhouette visibility
+  for (let x = 0; x < COLS; x++) {
+    drops.push(makeDrop(x, true));
+    // Some columns get a second staggered drop for extra density
+    if (Math.random() < 0.4) {
+      const d = makeDrop(x, true);
+      d.y -= ROWS * 0.5; // offset
+      drops.push(d);
+    }
+  }
+}
+
+// ── Webcam ──────────────────────────────────────────────────────────
+const video = document.getElementById('cam');
+const sCvs = document.createElement('canvas');
+const sCtx = sCvs.getContext('2d', { willReadFrequently: true });
+let camActive = false;
+let lumGrid = null;      // brightness per cell, smoothed
+let edgeGrid = null;     // edge magnitude per cell, smoothed
+
+async function startCam() {
+  try {
+    document.getElementById('status').textContent = 'Requesting camera...';
+    document.getElementById('status').style.opacity = '1';
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 320 }, height: { ideal: 240 } }
+    });
+    video.srcObject = stream;
+    await new Promise(r => { video.onloadedmetadata = () => { video.play(); r(); }; });
+    await new Promise(r => setTimeout(r, 300));
+    camActive = true;
+    document.getElementById('btn-cam').textContent = 'Cam On';
+    document.getElementById('btn-cam').classList.add('active');
+    document.getElementById('status').textContent = 'Camera active';
+    setTimeout(() => document.getElementById('status').style.opacity = '0', 1500);
+  } catch (e) {
+    document.getElementById('status').textContent = 'Camera error: ' + e.message;
+    setTimeout(() => document.getElementById('status').style.opacity = '0', 3000);
+  }
+}
+
+function stopCam() {
+  if (video.srcObject) { video.srcObject.getTracks().forEach(t => t.stop()); video.srcObject = null; }
+  camActive = false; lumGrid = edgeGrid = null;
+  document.getElementById('btn-cam').textContent = 'Cam Off';
+  document.getElementById('btn-cam').classList.remove('active');
+}
+
+function sampleCam() {
+  if (!camActive || video.readyState < 2) return;
+  sCvs.width = COLS; sCvs.height = ROWS;
+  if (mirrorMode) {
+    sCtx.save(); sCtx.scale(-1, 1);
+    sCtx.drawImage(video, -COLS, 0, COLS, ROWS);
+    sCtx.restore();
+  } else {
+    sCtx.drawImage(video, 0, 0, COLS, ROWS);
+  }
+  const px = sCtx.getImageData(0, 0, COLS, ROWS).data;
+  const N = COLS * ROWS;
+  const rawLum = new Float32Array(N);
+
+  if (!lumGrid || lumGrid.length !== N) {
+    lumGrid = new Float32Array(N);
+    edgeGrid = new Float32Array(N);
+  }
+
+  // Raw luminance
+  for (let i = 0; i < N; i++) {
+    const o = i * 4;
+    rawLum[i] = (0.299 * px[o] + 0.587 * px[o+1] + 0.114 * px[o+2]) / 255;
+  }
+
+  // Temporal smooth luminance (reduces flicker)
+  const lumBlend = 0.4;
+  for (let i = 0; i < N; i++) {
+    lumGrid[i] = lumGrid[i] * (1 - lumBlend) + rawLum[i] * lumBlend;
+  }
+
+  // Sobel edges with temporal smoothing
+  const edgeBlend = 0.3;
+  for (let r = 1; r < ROWS - 1; r++) {
+    for (let c = 1; c < COLS - 1; c++) {
+      const i = r * COLS + c;
+      const tl=rawLum[i-COLS-1], tc=rawLum[i-COLS], tr=rawLum[i-COLS+1];
+      const ml=rawLum[i-1], mr=rawLum[i+1];
+      const bl=rawLum[i+COLS-1], bc=rawLum[i+COLS], br=rawLum[i+COLS+1];
+      const gx = -tl + tr - 2*ml + 2*mr - bl + br;
+      const gy = -tl - 2*tc - tr + bl + 2*bc + br;
+      const raw = Math.min(1, Math.sqrt(gx*gx + gy*gy) / 0.5);
+      edgeGrid[i] = edgeGrid[i] * (1 - edgeBlend) + raw * edgeBlend;
+    }
+  }
+}
+
+// ── Render ──────────────────────────────────────────────────────────
+function render(dt) {
+  ctx.fillStyle = 'rgba(0,0,0,0.92)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.textBaseline = 'top';
+  ctx.font = `${FS}px Courier New, monospace`;
+
+  const hasCam = lumGrid !== null;
+
+  for (const d of drops) {
+    const headY = Math.floor(d.y);
+
+    // Mutate a random char periodically
+    d.mt += dt;
+    if (d.mt > 70) {
+      d.mt = 0;
+      d.chars[(Math.random() * d.chars.length) | 0] = CHARS[(Math.random() * CHARS.length) | 0];
+    }
+
+    for (let t = 0; t < d.trail; t++) {
+      const ry = headY - t;
+      if (ry < 0 || ry >= ROWS) continue;
+
+      const fade = 1 - t / d.trail; // 1 at head, 0 at tail
+      if (fade < 0.02) continue;
+
+      const ch = d.chars[t % d.chars.length];
+      const px = d.x * CW;
+      const py = ry * CH;
+      const idx = ry * COLS + d.x;
+
+      // Get cam values
+      const lum = hasCam ? lumGrid[idx] : 0;
+      const edge = hasCam ? edgeGrid[idx] : 0;
+
+      // Compute final alpha and color
+      // Without cam: normal green rain
+      // With cam: brightness strongly controls visibility
+      let r, g, b, a;
+
+      if (t === 0) {
+        // Head: always white-green flash
+        if (hasCam) {
+          const headBright = 0.3 + 0.7 * (1 - camMix + camMix * lum);
+          r = Math.floor(180 * headBright);
+          g = Math.floor(255 * headBright);
+          b = Math.floor(180 * headBright);
+          a = headBright;
+        } else {
+          r = 200; g = 255; b = 200; a = 1;
+        }
+      } else if (hasCam) {
+        // CAM MODE: brightness drives the rain visibility
+        // Dark areas → very dim. Bright areas → full green.
+        const camB = Math.pow(lum, 0.7); // slight gamma boost
+        const baseAlpha = fade * (1 - camMix + camMix * camB);
+
+        // Edge boost: edges get extra brightness and shift toward white
+        const edgeBoost = edge * edgeGlow;
+
+        a = Math.min(1, baseAlpha + edgeBoost * 0.5);
+        if (a < 0.03) continue;
+
+        if (edgeBoost > 0.15) {
+          // Edge character: shift toward white-green
+          const w = Math.min(1, edgeBoost * 2);
+          r = Math.floor(w * 200);
+          g = Math.floor(100 + 155 * Math.max(fade, w));
+          b = Math.floor(w * 180);
+        } else {
+          // Normal: green, brightness-modulated
+          g = Math.floor((60 + 195 * fade) * (0.3 + 0.7 * camB));
+          r = 0;
+          b = Math.floor(8 * fade * camB);
+        }
+      } else {
+        // NO CAM: plain green rain
+        r = 0;
+        g = Math.floor(60 + 195 * fade);
+        b = Math.floor(8 * fade);
+        a = fade * 0.85;
+      }
+
+      if (a < 0.03) continue;
+
+      ctx.fillStyle = `rgba(${r},${g},${b},${a.toFixed(2)})`;
+      ctx.fillText(ch, px, py);
+    }
+  }
+}
+
+// ── Loop ────────────────────────────────────────────────────────────
+let lastTime = 0, fpsFrames = 0, fpsTime = 0, frameCount = 0;
+const fpsEl = document.getElementById('fps');
+
+function tick(now) {
+  requestAnimationFrame(tick);
+  const dt = Math.min(100, now - (lastTime || now));
+  lastTime = now; frameCount++;
+
+  fpsFrames++; fpsTime += dt;
+  if (fpsTime >= 1000) {
+    fpsEl.textContent = Math.round(fpsFrames * 1000 / fpsTime) + ' fps';
+    fpsFrames = 0; fpsTime = 0;
+  }
+
+  if (frameCount % 2 === 0) sampleCam();
+
+  // Advance drops
+  for (const d of drops) {
+    d.y += d.speed * speedMul * (dt / 33);
+    // Wrap around when off screen
+    if (d.y - d.trail > ROWS) {
+      d.y = -(Math.random() * d.trail);
+      d.speed = 0.15 + Math.random() * 0.6;
+      d.trail = trailLen + ((Math.random() * 12 - 6) | 0);
+    }
+  }
+
+  render(dt);
+}
+
+resize();
+requestAnimationFrame(tick);
+
+let camStarted = false;
+canvas.addEventListener('click', () => { if (!camStarted) { camStarted = true; startCam(); } });
+
+document.getElementById('speed').addEventListener('input', e => speedMul = +e.target.value);
+document.getElementById('trail').addEventListener('input', e => {
+  trailLen = +e.target.value;
+  drops.forEach(d => d.trail = trailLen + ((Math.random() * 12 - 6) | 0));
+});
+document.getElementById('cam-mix').addEventListener('input', e => camMix = +e.target.value);
+document.getElementById('edge-glow').addEventListener('input', e => edgeGlow = +e.target.value);
+document.getElementById('btn-mirror').addEventListener('click', e => { mirrorMode = !mirrorMode; e.target.classList.toggle('active'); });
+document.getElementById('btn-cam').addEventListener('click', () => { if (camActive) stopCam(); else { camStarted = true; startCam(); } });
+document.getElementById('btn-hide').addEventListener('click', () => document.getElementById('controls').classList.toggle('hidden'));
+window.addEventListener('resize', resize);
+document.addEventListener('keydown', e => { if (e.key === 'h') document.getElementById('controls').classList.toggle('hidden'); });
+</script>
+</body>
+</html>
