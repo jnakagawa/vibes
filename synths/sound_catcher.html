@@ -356,7 +356,11 @@
             pointer-events: none;
             z-index: 100;
             opacity: 0;
-            transition: opacity 0.3s, transform 0.1s ease-out;
+            /* No easing on transform. Sensor updates are already 60Hz and the
+               100ms ease was causing a visible two-state swing whenever beta or
+               gamma oscillated between two quantized sensor values: each update
+               kept restarting the ease, animating the circle back and forth. */
+            transition: opacity 0.3s;
         }
 
         #playback-indicator.active {
