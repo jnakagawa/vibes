@@ -1293,8 +1293,12 @@
         }
 
         function updateSelectionUI(layer, overlay) {
-            const dimLeft = overlay.querySelector('.selection-dim:first-child');
-            const dimRight = overlay.querySelector('.selection-dim:last-child');
+            // ':first-child' works, but ':last-child' used to fail here: the
+            // handles are appended after the dims, so the last .selection-dim
+            // is never the last child. Index by position instead.
+            const dims = overlay.querySelectorAll('.selection-dim');
+            const dimLeft  = dims[0];
+            const dimRight = dims[1];
             const handleStart = overlay.querySelector('[data-handle="start"]');
             const handleEnd = overlay.querySelector('[data-handle="end"]');
 
@@ -1521,9 +1525,10 @@
                 layer.spectrogramSourceId = layer.audioBuffer;
             }
 
-            draw3DSpectrogram(ctx, spectrogramData, width, height);
+            drawSpectrogramField(ctx, spectrogramData, width, height, layer.colorIndex);
 
-            ctx.fillStyle = 'rgba(10, 10, 10, 0.7)';
+            // Push the field back so the waveform reads cleanly on top.
+            ctx.fillStyle = 'rgba(10, 8, 6, 0.55)';
             ctx.fillRect(0, 0, width, height);
 
             drawAmplitudeWaveform(ctx, layer.audioBuffer, width, height, layer.colorIndex);
@@ -1531,106 +1536,60 @@
             debugLog('debug-spectrogram', `Spectro: ✓ ${spectrogramData.length}×64`);
         }
 
-        function draw3DSpectrogram(ctx, data, width, height) {
-            if (!data || data.length === 0) return;
-
+        // Grain-field spectrogram: each time × frequency bin becomes a tiny
+        // dot whose radius and opacity track its amplitude. Layer-hue tinted,
+        // near-silence skipped, stable pseudo-random jitter so the field feels
+        // organic rather than gridded.
+        //
+        // X/Y mapping matches the 5%–95% mesh bounds used by the waveform
+        // and selection handles, so time-0 of the sample aligns across all
+        // three visualizations.
+        function drawSpectrogramField(ctx, data, width, height, colorIndex = 0) {
+            if (!data || !data.length) return;
             const timeSteps = data.length;
-            const freqBins = data[0].length;
+            const freqBins  = data[0].length;
 
-            // 3D perspective parameters
-            const perspective = 600; // Perspective strength
-            const angleX = -30; // Tilt away from viewer (negative = top recedes)
-            const scale = 0.85; // Scaled down to fit with tilt
-            const amplitudeScale = 50; // How far amplitude extends in Z
+            const hue = LAYER_HUES[colorIndex % LAYER_HUES.length];
+            const sat = (colorIndex === 0 || colorIndex === 1) ? 88 : 78;
 
-            // Calculate center point (centered to fit within bounds)
-            const centerX = width / 2;
-            const centerY = height * 0.5; // Centered vertically
+            // Horizontal: align with the waveform / selection-handle bounds.
+            const meshStartX  = width  * 0.05;
+            const meshWidthPx = width  * 0.90;
+            const timeStep    = meshWidthPx / timeSteps;
 
-            // Pre-calculate rotation (X-axis tilt away from viewer)
-            const radX = (angleX * Math.PI) / 180;
-            const cosX = Math.cos(radX);
-            const sinX = Math.sin(radX);
+            // Vertical: leave small margins so the field doesn't crowd
+            // the waveform stroke that draws on top.
+            const topMargin    = height * 0.08;
+            const bottomMargin = height * 0.08;
+            const activeH      = height - topMargin - bottomMargin;
 
-            // Project 3D point to 2D with perspective
-            // x = time (horizontal), y = frequency (vertical), z = amplitude (depth)
-            function project3D(x, y, z) {
-                // Apply X-axis rotation (tilt back - top away, bottom closer)
-                const rotatedY = y * cosX - z * sinX;
-                const rotatedZ = y * sinX + z * cosX;
-
-                // Apply perspective
-                const factor = perspective / (perspective + rotatedZ);
-                const screenX = centerX + x * factor * scale;
-                const screenY = centerY + rotatedY * factor * scale;
-
-                return { x: screenX, y: screenY, z: rotatedZ };
+            // Stable integer hash → [0,1). Same jitter every redraw.
+            function noise(a, b) {
+                let h = (a * 374761393 + b * 668265263) | 0;
+                h = (h ^ (h >>> 13)) * 1274126177;
+                return ((h ^ (h >>> 16)) >>> 0) / 0xffffffff;
             }
 
-            // Mesh dimensions (5% to 95% = 90% width)
-            const meshWidth = width * 0.9;
-            const meshHeight = height * 0.7; // Taller mesh for better visualization
+            for (let t = 0; t < timeSteps; t++) {
+                const baseX = meshStartX + t * timeStep;
+                for (let f = 0; f < freqBins; f++) {
+                    const amp = data[t][f];
+                    if (amp < 0.04) continue;      // sparse: skip near-silence
 
-            // Draw mesh from back to front for proper occlusion
-            for (let f = freqBins - 1; f >= 0; f--) {
-                for (let t = 0; t < timeSteps - 1; t++) {
-                    // Get magnitude values at 4 corners of quad
-                    const mag00 = data[t][f] || 0;
-                    const mag10 = data[t + 1][f] || 0;
-                    const mag01 = f > 0 ? (data[t][f - 1] || 0) : 0;
-                    const mag11 = f > 0 ? (data[t + 1][f - 1] || 0) : 0;
+                    // Low freq → bottom, high freq → top.
+                    const baseY = topMargin + activeH * (1 - f / freqBins);
 
-                    // Calculate 3D positions
-                    // X = time (left to right)
-                    const x0 = (t / timeSteps) * meshWidth - meshWidth / 2;
-                    const x1 = ((t + 1) / timeSteps) * meshWidth - meshWidth / 2;
+                    // Tiny organic jitter so the field isn't obviously gridded.
+                    const jx = (noise(t, f)     - 0.5) * 2.2;
+                    const jy = (noise(f + 17, t) - 0.5) * 1.8;
 
-                    // Y = frequency (bottom to top)
-                    const y0 = (f / freqBins) * meshHeight - meshHeight / 2;
-                    const y1 = ((f - 1) / freqBins) * meshHeight - meshHeight / 2;
+                    const r = Math.min(2.8, 0.5 + amp * 3.0);
+                    const a = Math.min(0.58, 0.08 + amp * 0.85);
 
-                    // Z = amplitude (depth toward viewer)
-                    const z00 = mag00 * amplitudeScale;
-                    const z10 = mag10 * amplitudeScale;
-                    const z01 = mag01 * amplitudeScale;
-                    const z11 = mag11 * amplitudeScale;
-
-                    // Project to 2D
-                    const p00 = project3D(x0, y0, z00);
-                    const p10 = project3D(x1, y0, z10);
-                    const p01 = project3D(x0, y1, z01);
-                    const p11 = project3D(x1, y1, z11);
-
-                    // Color based on average magnitude
-                    const avgMag = (mag00 + mag10 + mag01 + mag11) / 4;
-                    const color = getHeatmapColor(avgMag);
-
-                    // Depth-based brightness
-                    const avgZ = (p00.z + p10.z + p01.z + p11.z) / 4;
-                    const brightness = 0.4 + (avgZ / (perspective * 0.5)) * 0.6;
-
-                    ctx.fillStyle = `rgb(${color.r * brightness}, ${color.g * brightness}, ${color.b * brightness})`;
-                    ctx.strokeStyle = 'rgba(0, 0, 0, 0.2)';
-                    ctx.lineWidth = 0.5;
-
-                    // Draw quad as two triangles
+                    ctx.fillStyle = `hsla(${hue}, ${sat}%, 60%, ${a})`;
                     ctx.beginPath();
-                    ctx.moveTo(p00.x, p00.y);
-                    ctx.lineTo(p10.x, p10.y);
-                    ctx.lineTo(p11.x, p11.y);
-                    ctx.closePath();
+                    ctx.arc(baseX + jx, baseY + jy, r, 0, Math.PI * 2);
                     ctx.fill();
-                    ctx.stroke();
-
-                    if (f > 0) {
-                        ctx.beginPath();
-                        ctx.moveTo(p00.x, p00.y);
-                        ctx.lineTo(p11.x, p11.y);
-                        ctx.lineTo(p01.x, p01.y);
-                        ctx.closePath();
-                        ctx.fill();
-                        ctx.stroke();
-                    }
                 }
             }
         }
@@ -1730,29 +1689,6 @@
             // Normalize
             const max = Math.max(...magnitudes);
             return magnitudes.map(m => m / (max || 1));
-        }
-
-        function getHeatmapColor(value) {
-            // Blue -> Yellow -> Red
-            // 0.0 = Blue (0, 0, 255)
-            // 0.5 = Yellow (255, 255, 0)
-            // 1.0 = Red (255, 0, 0)
-
-            if (value < 0.5) {
-                const t = value * 2;
-                return {
-                    r: Math.floor(t * 255),
-                    g: Math.floor(t * 255),
-                    b: Math.floor((1 - t) * 255)
-                };
-            } else {
-                const t = (value - 0.5) * 2;
-                return {
-                    r: 255,
-                    g: Math.floor((1 - t) * 255),
-                    b: 0
-                };
-            }
         }
 
         // ============================================================================
