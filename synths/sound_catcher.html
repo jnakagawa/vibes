@@ -4,7 +4,38 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Sound Catcher</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
+        :root {
+            /* TE-style palette */
+            --te-body:    #1a1816;      /* warm off-black */
+            --te-panel:   #23201c;      /* raised panel */
+            --te-edge:    #35302a;      /* panel edge */
+            --te-ink:     #e8e1d3;      /* bone — chrome + labels */
+            --te-ink-dim: rgba(232, 225, 211, 0.55);
+            --te-orange:  #ff6b35;      /* reserved: record/armed */
+            --te-green:   #43c66a;      /* play */
+            --te-red:     #ef3e3e;      /* destructive (clear) */
+
+            /* Layer hues: coral, amber, mint, sky, magenta */
+            --layer-0:    hsl(5,  85%, 62%);
+            --layer-1:    hsl(40, 92%, 58%);
+            --layer-2:    hsl(160,70%, 55%);
+            --layer-3:    hsl(205,82%, 62%);
+            --layer-4:    hsl(320,78%, 66%);
+
+            /* FX palette — distinct from layer hues so tilt effects have
+               their own visual identity on the scope. */
+            --fx-speed:   rgba(232, 225, 211, 0.85); /* bone — neutral */
+            --fx-filter:  #f58e33;                    /* warm orange (hue ~28) */
+            --fx-reverb:  #7d87ff;                    /* indigo-violet (hue ~237) */
+
+            --font-display: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            --font-mono:    'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -13,9 +44,9 @@
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: #0a0a0a;
-            color: #e0e0e0;
+            font-family: var(--font-display);
+            background: var(--te-body);
+            color: var(--te-ink);
             overflow: hidden;
             touch-action: none;
             width: 100vw;
@@ -39,13 +70,90 @@
         .layer {
             width: 100%;
             position: relative;
-            border-bottom: 1px solid #222;
+            border-bottom: 1px solid var(--te-edge);
             display: flex;
         }
+
+        /* Serialized number doubles as a vertical gain fader.
+           Dark panel, colored fill grows up from bottom to current gain level.
+           Drag vertically to adjust. Layer number sits centered on top. */
+        .layer-number {
+            position: relative;
+            width: 38px;
+            background: var(--te-panel);
+            color: var(--te-ink);
+            font-family: var(--font-mono);
+            font-weight: 700;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            letter-spacing: 0.05em;
+            box-shadow:
+                inset -1px 0 0 var(--te-edge),
+                inset 0 1px 0 rgba(255, 255, 255, 0.04);
+            flex-shrink: 0;
+            -webkit-user-select: none;
+            user-select: none;
+            touch-action: none;
+            overflow: hidden;
+            cursor: ns-resize;
+        }
+
+        /* Gain fill — layer accent, grows from bottom to --gain%.
+           No height transition: we want the fill to track the finger 1:1. */
+        .layer-number::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            height: var(--gain, 70%);
+            background: var(--layer-fill, var(--te-ink));
+            opacity: 0.78;
+            transition: opacity 0.12s;
+            z-index: 0;
+            will-change: height;
+        }
+        .layer-number.dragging::before { opacity: 1; }
+
+        /* Keep the numeral crisp above the fill. */
+        .layer-number .num-text {
+            position: relative;
+            z-index: 1;
+            text-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+            color: var(--te-ink);
+            mix-blend-mode: normal;
+        }
+
+        /* Transient dB chip during a gain drag. */
+        .layer-number .gain-chip {
+            position: absolute;
+            left: 100%;
+            top: 50%;
+            transform: translateY(-50%);
+            margin-left: 8px;
+            padding: 3px 7px;
+            background: rgba(35, 32, 28, 0.95);
+            border: 1px solid var(--te-edge);
+            border-radius: 4px;
+            font-family: var(--font-mono);
+            font-size: 10px;
+            letter-spacing: 0.08em;
+            color: var(--te-ink);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.15s;
+            z-index: 5;
+            white-space: nowrap;
+        }
+        .layer-number.dragging .gain-chip { opacity: 1; }
 
         .layer-canvas-container {
             flex: 1;
             position: relative;
+            min-width: 0;
+            overflow: hidden;
         }
 
         .layer canvas {
@@ -54,50 +162,43 @@
             display: block;
         }
 
-        .layer-controls {
-            width: 60px;
-            background: #111;
+        /* Corner action chip — floats in canvas top-right, glassy backdrop. */
+        .corner-btn {
+            position: absolute;
+            top: 8px;
+            right: 10px;
+            width: 26px;
+            height: 26px;
+            background: rgba(35, 32, 28, 0.65);
+            -webkit-backdrop-filter: blur(6px);
+            backdrop-filter: blur(6px);
+            border: 1px solid rgba(232, 225, 211, 0.18);
+            color: var(--te-ink);
+            border-radius: 4px;
             display: flex;
-            flex-direction: column;
             align-items: center;
             justify-content: center;
-            padding: 10px 5px;
-            gap: 8px;
-        }
-
-        .volume-label {
-            font-size: 10px;
-            color: #888;
-            text-align: center;
-            writing-mode: vertical-rl;
-            text-orientation: mixed;
-            letter-spacing: 2px;
-        }
-
-        .volume-slider {
-            writing-mode: bt-lr;
-            -webkit-appearance: slider-vertical;
-            width: 30px;
-            flex-shrink: 0;
-        }
-
-        .layer-button {
-            width: 44px;
-            height: 44px;
-            border: 1px solid #444;
-            background: #1a1a1a;
-            color: #e0e0e0;
-            border-radius: 6px;
-            font-size: 11px;
+            font-size: 16px;
+            line-height: 1;
+            padding: 0;
+            font-family: var(--font-display);
+            font-weight: 500;
             cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
+            z-index: 11;
+            -webkit-tap-highlight-color: transparent;
         }
-
-        .layer-button:active {
-            background: #2a2a2a;
+        .corner-btn:active {
+            background: rgba(232, 225, 211, 0.1);
+            border-color: var(--te-ink);
+        }
+        .corner-btn.delete {
+            color: rgba(239, 62, 62, 0.85);
+            border-color: rgba(239, 62, 62, 0.28);
+        }
+        .corner-btn.delete:active {
+            color: var(--te-red);
+            background: rgba(239, 62, 62, 0.15);
+            border-color: var(--te-red);
         }
 
         .selection-overlay {
@@ -109,49 +210,83 @@
             pointer-events: none;
         }
 
+        /* Loop markers — layer-colored spine (matches the waveform) with solid
+           black triangle caps. Caret direction distinguishes start from end. */
         .selection-handle {
             position: absolute;
-            top: 20%;
-            bottom: 20%;
-            width: 4px;
-            background: #00ffff;
+            top: 8%;
+            bottom: 8%;
+            width: 3px;
+            background: var(--handle-color, var(--te-ink));
             cursor: ew-resize;
             pointer-events: auto;
             z-index: 10;
-            box-shadow: 0 0 6px rgba(0, 255, 255, 0.8);
+            box-shadow:
+                0 0 0 1px rgba(0, 0, 0, 0.55),
+                0 0 8px rgba(0, 0, 0, 0.55);
         }
 
+        /* Oversized invisible touch target (48×96). */
         .selection-handle::before {
             content: '';
             position: absolute;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            width: 44px;
-            height: 60px;
+            width: 48px;
+            height: 96px;
             background: transparent;
             pointer-events: auto;
+            z-index: 1;
         }
 
+        /* Triangle caps — solid black, direction set by clip-path below. */
+        .selection-handle .cap {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            background: #000;
+            pointer-events: none;
+        }
+
+        /* Center black grip dot, ringed in the layer color. Bigger so it's an
+           obvious handle target; touch OUTSIDE the dot (but on the spine) pans
+           the whole selection — see setupSelectionHandles. */
         .selection-handle::after {
             content: '';
             position: absolute;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            width: 16px;
-            height: 16px;
+            width: 22px;
+            height: 22px;
             background: #000;
-            border: 2px solid #00ffff;
+            border: 2px solid var(--handle-color, var(--te-ink));
             border-radius: 50%;
-            box-shadow: 0 0 8px rgba(0, 255, 255, 0.6);
+            box-shadow: 0 0 6px rgba(0, 0, 0, 0.55);
+            pointer-events: none;
+            z-index: 2;
+        }
+        .selection-handle .cap.top { top: -9px; }
+        .selection-handle .cap.bot { bottom: -9px; }
+
+        /* Start handle — right-pointing triangles (into the selection). */
+        .selection-handle[data-handle="start"] .cap {
+            clip-path: polygon(0 0, 100% 50%, 0 100%);
+            left: 0;
+        }
+        /* End handle — left-pointing triangles. */
+        .selection-handle[data-handle="end"] .cap {
+            clip-path: polygon(100% 0, 0 50%, 100% 100%);
+            right: 0;
         }
 
+        /* Outside-selection dim — darker than before so the active region pops. */
         .selection-dim {
             position: absolute;
             top: 0;
             bottom: 0;
-            background: rgba(10, 10, 10, 0.7);
+            background: rgba(10, 8, 6, 0.72);
             pointer-events: none;
         }
 
@@ -221,7 +356,11 @@
             pointer-events: none;
             z-index: 100;
             opacity: 0;
-            transition: opacity 0.3s, transform 0.1s ease-out;
+            /* No easing on transform. Sensor updates are already 60Hz and the
+               100ms ease was causing a visible two-state swing whenever beta or
+               gamma oscillated between two quantized sensor values: each update
+               kept restarting the ease, animating the circle back and forth. */
+            transition: opacity 0.3s;
         }
 
         #playback-indicator.active {
@@ -233,57 +372,118 @@
             bottom: 0;
             left: 0;
             right: 0;
-            height: 80px;
-            background: #111;
-            border-top: 1px solid #333;
+            height: 84px;
+            background: var(--te-body);
+            border-top: 1px solid var(--te-edge);
             display: flex;
             align-items: center;
             justify-content: space-around;
-            padding: 10px;
+            padding: 12px;
             z-index: 50;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
         }
 
+        /* Chunky hardware panels — faux aluminum via top highlight + bottom shadow. */
         .toolbar-button {
-            width: 60px;
+            position: relative;
+            width: 68px;
             height: 60px;
-            border: 2px solid #444;
-            background: #1a1a1a;
-            color: #e0e0e0;
-            border-radius: 50%;
+            border: 1px solid var(--te-edge);
+            background: var(--te-panel);
+            color: var(--te-ink);
+            border-radius: 7px;
             font-size: 12px;
             cursor: pointer;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            gap: 3px;
+            gap: 2px;
+            box-shadow:
+                inset 0 1px 0 rgba(255, 255, 255, 0.08),
+                0 1px 2px rgba(0, 0, 0, 0.55);
+            overflow: hidden;
         }
 
         .toolbar-button:active {
-            background: #2a2a2a;
+            background: #1d1a16;
+            box-shadow:
+                inset 0 1px 3px rgba(0, 0, 0, 0.5),
+                0 0 0 rgba(0, 0, 0, 0);
         }
 
-        .toolbar-button.recording {
-            border-color: #ff3333;
-            background: #331111;
+        /* REC — physical orange square. One reserved accent. */
+        .toolbar-button.rec {
+            background: var(--te-orange);
+            border-color: #c54a1f;
+            color: #1a0d06;
+            box-shadow:
+                inset 0 1px 0 rgba(255, 220, 190, 0.45),
+                0 1px 2px rgba(0, 0, 0, 0.55);
         }
+        .toolbar-button.rec .button-icon,
+        .toolbar-button.rec .button-label { color: #1a0d06; }
 
+        /* PLY — green triangle glyph on the default panel. */
+        .toolbar-button.play .button-icon { color: var(--te-green); }
+        .toolbar-button.playing .button-icon { color: var(--te-green); }
         .toolbar-button.playing {
-            border-color: #33ff33;
-            background: #113311;
+            background: #0f2416;
+            border-color: #1e4a2a;
+        }
+
+        /* CLR — red intent, radial fill on long-press. */
+        .toolbar-button.clr .button-icon { color: var(--te-red); }
+        .toolbar-button.clr::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: var(--te-red);
+            transform-origin: left center;
+            transform: scaleX(0);
+            transition: transform 60ms linear;
+            z-index: 0;
+            opacity: 0.85;
+        }
+        .toolbar-button.clr.arming::before {
+            transform: scaleX(1);
+            transition: transform 900ms linear;
+        }
+        .toolbar-button.clr .button-icon,
+        .toolbar-button.clr .button-label {
+            position: relative;
+            z-index: 1;
+        }
+        .toolbar-button.clr.arming .button-icon,
+        .toolbar-button.clr.arming .button-label {
+            color: var(--te-ink);
+        }
+
+        /* Recording state flashes orange — reserved accent only. */
+        .toolbar-button.recording {
+            animation: recPulse 1.1s ease-in-out infinite;
+        }
+        @keyframes recPulse {
+            0%,100% { box-shadow: inset 0 1px 0 rgba(255,220,190,0.45), 0 0 0 0 rgba(255,107,53,0); }
+            50%     { box-shadow: inset 0 1px 0 rgba(255,220,190,0.45), 0 0 0 6px rgba(255,107,53,0.28); }
         }
 
         .toolbar-button:disabled {
-            opacity: 0.3;
+            opacity: 0.35;
             cursor: not-allowed;
         }
 
         .button-icon {
-            font-size: 24px;
+            font-size: 22px;
+            line-height: 1;
         }
 
         .button-label {
+            font-family: var(--font-mono);
             font-size: 9px;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+            opacity: 0.85;
         }
 
         #debug-overlay {
@@ -390,13 +590,40 @@
         }
 
         .modal-button.primary {
-            background: #ff3333;
-            border-color: #ff3333;
+            background: #ff6b35;
+            border-color: #ff6b35;
         }
 
         .modal-button:active {
             opacity: 0.8;
         }
+
+        /* Persistent tilt-FX legend, bottom-left. Each row takes its FX color. */
+        #fx-legend {
+            position: fixed;
+            left: 10px;
+            bottom: 92px;
+            font-family: var(--font-mono);
+            font-size: 10px;
+            letter-spacing: 0.08em;
+            pointer-events: none;
+            z-index: 40;
+            line-height: 1.6;
+            user-select: none;
+        }
+        #fx-legend .row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        #fx-legend .sym {
+            font-size: 13px;
+            width: 14px;
+            text-align: center;
+        }
+        #fx-legend .fx-speed  { color: var(--fx-speed); }
+        #fx-legend .fx-filter { color: var(--fx-filter); }
+        #fx-legend .fx-reverb { color: var(--fx-reverb); }
     </style>
 </head>
 <body>
@@ -423,30 +650,37 @@
 
         <svg id="playback-indicator" width="300" height="300" viewBox="0 0 300 300" overflow="visible">
             <g id="reverb-circles"></g>
-            <circle cx="150" cy="150" r="140" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="2"/>
+            <circle cx="150" cy="150" r="140" fill="none"
+                    stroke="rgba(232, 225, 211, 0.35)" stroke-width="2"/>
             <g id="yaw-indicator"></g>
             <g id="filter-label"></g>
             <g id="speed-label"></g>
-            <circle id="playback-dot" cx="150" cy="10" r="8" fill="#00ffff"/>
+            <g id="layer-dots"></g>
         </svg>
 
         <div id="toolbar">
-            <button class="toolbar-button" id="record-btn">
+            <button class="toolbar-button rec" id="record-btn">
                 <div class="button-icon">●</div>
-                <div class="button-label">Record</div>
+                <div class="button-label">REC</div>
             </button>
-            <button class="toolbar-button" id="play-btn" disabled>
+            <button class="toolbar-button play" id="play-btn" disabled>
                 <div class="button-icon">▶</div>
-                <div class="button-label">Play</div>
+                <div class="button-label">PLY</div>
             </button>
             <button class="toolbar-button" id="reset-orientation-btn">
                 <div class="button-icon">⊙</div>
-                <div class="button-label">Reset Tilt</div>
+                <div class="button-label">TLT</div>
             </button>
-            <button class="toolbar-button" id="nuke-btn" disabled>
+            <button class="toolbar-button clr" id="nuke-btn" disabled>
                 <div class="button-icon">✕</div>
-                <div class="button-label">Clear All</div>
+                <div class="button-label">CLR</div>
             </button>
+        </div>
+
+        <div id="fx-legend">
+            <div class="row fx-speed"><span class="sym">↕</span> SPD</div>
+            <div class="row fx-filter"><span class="sym">⟲</span> FLT</div>
+            <div class="row fx-reverb"><span class="sym">↔</span> RVB</div>
         </div>
     </div>
 
@@ -511,10 +745,22 @@
 
         let convolver;
         let masterGain;
+        let recorderMime = '';
 
         // Granular synthesis for pitch-preserving time stretch
         const GRAIN_SIZE = 0.05; // 50ms grains
         const GRAIN_OVERLAP = 0.75; // 75% overlap
+
+        // TE-inspired palette — coral, amber, mint, sky, magenta.
+        // Each layer gets one signature accent; TE orange is reserved for record.
+        const LAYER_HUES = [5, 40, 160, 205, 320]; // coral, amber, mint, sky, magenta
+        function layerColor(idx, light = 62, alpha = 1) {
+            const h = LAYER_HUES[idx % LAYER_HUES.length];
+            const s = idx === 0 || idx === 1 ? 88 : 78;
+            return alpha < 1
+                ? `hsla(${h}, ${s}%, ${light}%, ${alpha})`
+                : `hsl(${h}, ${s}%, ${light}%)`;
+        }
 
         // ============================================================================
         // INITIALIZATION
@@ -544,9 +790,14 @@
                     sampleRate: SAMPLE_RATE
                 });
 
-                // Create master gain with reasonable default (0.3 = -10dB)
+                // Master gain default chosen to compensate for the iOS audio
+                // session category flip (see unlockSilentMode below). When iOS
+                // moves from "ambient" to "playback" mode, audio routes to the
+                // media speaker at the user's media volume — much louder than
+                // ambient routing. Dropping masterGain to 0.15 (~-16dB) brings
+                // the perceived loudness back near the pre-unlock baseline.
                 masterGain = audioContext.createGain();
-                masterGain.gain.value = 0.3;
+                masterGain.gain.value = 0.22;
                 masterGain.connect(audioContext.destination);
 
                 // Create convolver for reverb
@@ -558,6 +809,53 @@
                 console.error('Failed to initialize audio:', error);
                 alert('Failed to initialize audio system. Please refresh the page.');
             }
+        }
+
+        // iOS Safari mutes Web Audio when the hardware silent switch is on
+        // unless the page also plays through an HTMLMediaElement. Playing a
+        // tiny silent loop on a user gesture flips the audio session category
+        // to "playback" so we ignore the silent switch.
+        function unlockSilentMode() {
+            try {
+                let el = document.getElementById('silent-unlock');
+                if (!el) {
+                    el = document.createElement('audio');
+                    el.id = 'silent-unlock';
+                    el.setAttribute('playsinline', '');
+                    el.setAttribute('webkit-playsinline', '');
+                    el.loop = true;
+                    el.muted = false;
+                    el.volume = 0.001;
+                    el.src = 'data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA//tQwAAAAAAAAAAAAAAAAAAAAAAASW5mbwAAAA8AAAAEAAABIADAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMD/////////////////////////////////////////////////////////////////8AAAAATGF2YzU4LjEzAAAAAAAAAAAAAAAAJAAAAAAAAAAAASDs90hvAAAAAAAAAAAAAAAAAAAA//tQxAADwAABpAAAACAAADSAAAAETEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//tSxCmDwAABpAAAACAAADSAAAAEVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//tSxFWDwAABpAAAACAAADSAAAAEVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//tSxIGDwAABpAAAACAAADSAAAAEVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//tSxK2DwAABpAAAACAAADSAAAAEVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//tSxNmDwAABpAAAACAAADSAAAAEVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV';
+                    el.style.display = 'none';
+                    document.body.appendChild(el);
+                }
+                const p = el.play();
+                if (p && typeof p.catch === 'function') p.catch(() => {});
+            } catch (e) {
+                console.warn('Silent unlock failed:', e);
+            }
+        }
+
+        // Pick the first MIME the browser actually supports. iOS Safari only
+        // records audio/mp4; Chrome/Firefox prefer webm/opus. The default
+        // (no MIME) chooses webm on iOS, which then fails to record.
+        function pickRecorderMime() {
+            const candidates = [
+                'audio/mp4;codecs=mp4a.40.2',
+                'audio/mp4',
+                'audio/webm;codecs=opus',
+                'audio/webm',
+                'audio/ogg;codecs=opus'
+            ];
+            for (const m of candidates) {
+                if (typeof MediaRecorder !== 'undefined' &&
+                    MediaRecorder.isTypeSupported &&
+                    MediaRecorder.isTypeSupported(m)) {
+                    return m;
+                }
+            }
+            return '';
         }
 
         async function requestPermissions() {
@@ -646,7 +944,10 @@
                 selection: { start: 0, end: 1 }, // Normalized 0-1
                 sourceNode: null,
                 gainNode: null,
-                spectrogramData: null
+                spectrogramData: null,
+                colorIndex: layerIndex,
+                color: layerColor(layerIndex),
+                colorDim: layerColor(layerIndex, 50, 0.85)
             };
 
             layers.push(layer);
@@ -682,12 +983,33 @@
             layerDiv.className = 'layer';
             layerDiv.id = `layer-${layer.id}`;
 
-            // Canvas container
+            // Number panel doubles as vertical gain fader.
+            //  - Fill grows from the bottom to the current gain (--gain)
+            //  - Numeral sits on top
+            //  - Drag vertically to adjust; transient chip shows value
+            if (layer.volumeSlider === undefined) layer.volumeSlider = 80;
+            const numberEl = document.createElement('div');
+            numberEl.className = 'layer-number';
+            numberEl.style.setProperty('--layer-fill', layer.color);
+            numberEl.style.setProperty('--gain', layer.volumeSlider + '%');
+            const numText = document.createElement('span');
+            numText.className = 'num-text';
+            numText.textContent = String(index + 1).padStart(2, '0');
+            const gainChip = document.createElement('span');
+            gainChip.className = 'gain-chip';
+            gainChip.textContent = String(layer.volumeSlider);
+            numberEl.appendChild(numText);
+            numberEl.appendChild(gainChip);
+            layer.numberEl = numberEl;
+            layer.gainChipEl = gainChip;
+            layerDiv.appendChild(numberEl);
+
+            // Canvas container — full-width, no right gutter anymore
             const canvasContainer = document.createElement('div');
             canvasContainer.className = 'layer-canvas-container';
 
             const canvas = document.createElement('canvas');
-            canvas.width = window.innerWidth - 60;
+            canvas.width = window.innerWidth - 38;  // left number gutter only
             canvas.height = 150;
             canvasContainer.appendChild(canvas);
 
@@ -714,72 +1036,115 @@
                 handleStart.className = 'selection-handle';
                 handleStart.style.left = `${meshStart}%`;
                 handleStart.dataset.handle = 'start';
+                handleStart.style.setProperty('--handle-color', layer.color);
+                handleStart.innerHTML = '<span class="cap top"></span><span class="cap bot"></span>';
 
                 const handleEnd = document.createElement('div');
                 handleEnd.className = 'selection-handle';
                 handleEnd.style.left = `${meshEnd}%`;
                 handleEnd.dataset.handle = 'end';
+                handleEnd.style.setProperty('--handle-color', layer.color);
+                handleEnd.innerHTML = '<span class="cap top"></span><span class="cap bot"></span>';
 
                 selectionOverlay.appendChild(dimLeft);
                 selectionOverlay.appendChild(dimRight);
                 selectionOverlay.appendChild(handleStart);
                 selectionOverlay.appendChild(handleEnd);
+            }
 
+            // Attach overlay to its parent BEFORE wiring gestures —
+            // setupSelectionHandles reads overlay.parentElement.
+            canvasContainer.appendChild(selectionOverlay);
+
+            if (layer.audioBuffer) {
                 setupSelectionHandles(layer, selectionOverlay);
-
-                // Initialize selection UI to match current selection values
                 updateSelectionUI(layer, selectionOverlay);
             }
 
-            canvasContainer.appendChild(selectionOverlay);
-
-            // Layer controls
-            const controls = document.createElement('div');
-            controls.className = 'layer-controls';
-
-            const volumeLabel = document.createElement('div');
-            volumeLabel.className = 'volume-label';
-            volumeLabel.textContent = 'GAIN';
-
-            const volumeSlider = document.createElement('input');
-            volumeSlider.type = 'range';
-            volumeSlider.min = '0';
-            volumeSlider.max = '100';
-            volumeSlider.value = '80'; // Default to 80% (roughly -6dB)
-            volumeSlider.className = 'volume-slider';
-            volumeSlider.addEventListener('input', (e) => {
-                const sliderValue = parseInt(e.target.value);
-                const gain = sliderToGain(sliderValue);
-                layer.volume = gain;
-                if (layer.gainNode) {
-                    layer.gainNode.gain.setValueAtTime(gain, audioContext.currentTime);
-                }
+            // Per-layer delete chip (top-right). Minimal, destructive — tap
+            // removes this layer only. CLR still wipes everything via long-press.
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'corner-btn delete';
+            deleteBtn.textContent = '×';
+            deleteBtn.title = 'Delete this layer';
+            deleteBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                deleteLayer(layer);
             });
-
-            const reRecordBtn = document.createElement('button');
-            reRecordBtn.className = 'layer-button';
-            reRecordBtn.textContent = '↻';
-            reRecordBtn.title = 'Re-record this layer';
-            reRecordBtn.addEventListener('click', () => reRecordLayer(layer));
-
-            if (layer.audioBuffer) {
-                controls.appendChild(volumeLabel);
-                controls.appendChild(volumeSlider);
-                controls.appendChild(reRecordBtn);
-            }
+            canvasContainer.appendChild(deleteBtn);
 
             layerDiv.appendChild(canvasContainer);
-            layerDiv.appendChild(controls);
             container.appendChild(layerDiv);
 
-            // Draw spectrogram if we have audio
-            if (layer.audioBuffer) {
-                drawSpectrogram(layer, canvas);
-            }
+            // Wire the left number-gutter as a vertical gain fader.
+            attachNumberGainGesture(layer, numberEl);
 
-            // Adjust layer heights
+            // Draw spectrogram (waveform scales with layer.volumeSlider)
+            drawSpectrogram(layer, canvas);
+
             adjustLayerHeights();
         }
+
+        // Vertical drag on the layer-number acts as a fader.
+        // Updates gain node smoothly, repaints the amplitude waveform so its
+        // visible height tracks the level, and shows a transient dB chip.
+        // Multitouch safe: track the SPECIFIC touch that started this gesture
+        // by its identifier. Without this, `e.touches[0]` would point at
+        // whichever finger touched the screen first globally — so scrubbing
+        // on layer A would warp the gain fader on layer B while you adjust it.
+        function attachNumberGainGesture(layer, el) {
+            let pointerId = null;
+
+            function commit(nextVal) {
+                layer.volumeSlider = nextVal;
+                const gain = sliderToGain(nextVal);
+                layer.volume = gain;
+                if (layer.gainNode) {
+                    layer.gainNode.gain.setTargetAtTime(gain, audioContext.currentTime, 0.003);
+                }
+                el.style.setProperty('--gain', nextVal + '%');
+                if (layer.gainChipEl) layer.gainChipEl.textContent = String(nextVal);
+            }
+
+            function valueFromTouch(clientY) {
+                const rect = el.getBoundingClientRect();
+                const t = 1 - (clientY - rect.top) / rect.height;
+                return Math.max(0, Math.min(100, Math.round(t * 100)));
+            }
+
+            function findOurTouch(touchList) {
+                for (let i = 0; i < touchList.length; i++) {
+                    if (touchList[i].identifier === pointerId) return touchList[i];
+                }
+                return null;
+            }
+
+            el.addEventListener('touchstart', (e) => {
+                if (pointerId !== null) return;       // already tracking a touch
+                const touch = e.changedTouches[0];
+                if (!touch) return;
+                e.preventDefault();
+                pointerId = touch.identifier;
+                el.classList.add('dragging');
+                commit(valueFromTouch(touch.clientY));
+            }, { passive: false });
+
+            el.addEventListener('touchmove', (e) => {
+                const touch = findOurTouch(e.changedTouches);
+                if (!touch) return;                    // a different finger moved; ignore
+                e.preventDefault();
+                commit(valueFromTouch(touch.clientY));
+            }, { passive: false });
+
+            function end(e) {
+                if (!findOurTouch(e.changedTouches)) return;
+                pointerId = null;
+                el.classList.remove('dragging');
+            }
+            el.addEventListener('touchend', end);
+            el.addEventListener('touchcancel', end);
+        }
+
 
         function updateContainerHeight() {
             // Get the actual visible viewport dimensions
@@ -796,105 +1161,148 @@
         function adjustLayerHeights() {
             const container = document.getElementById('layers-container');
             const viewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-            const containerHeight = viewportHeight - 80; // Minus toolbar
+            const containerHeight = viewportHeight - 84; // Minus toolbar height
             const layerDivs = container.querySelectorAll('.layer');
 
-            // Update container height to match viewport
             updateContainerHeight();
 
-            // Calculate height per layer (only count layers with audio)
             const numLayersWithAudio = layers.filter(l => l.audioBuffer).length;
             if (numLayersWithAudio === 0) return;
 
-            // Minimum height reduced to 30px to fit 5 layers
-            const layerHeight = Math.max(30, Math.floor(containerHeight / numLayersWithAudio));
+            // Share viewport across all layers. Floors at 44px so small layers
+            // are still touchable; browser handles the overflow cleanly.
+            const layerHeight = Math.max(44, Math.floor(containerHeight / numLayersWithAudio));
+
+            // Also tighten the number panel font when we're squeezed.
+            const numFont = numLayersWithAudio >= 4 ? 11 : 13;
 
             layerDivs.forEach((div, idx) => {
                 const canvasContainer = div.querySelector('.layer-canvas-container');
                 canvasContainer.style.height = `${layerHeight}px`;
+                div.style.height = `${layerHeight}px`;
 
                 const canvas = div.querySelector('canvas');
-                // Update canvas dimensions to match container
-                canvas.width = window.innerWidth - 60;
+                canvas.width = window.innerWidth - 38; // left number gutter only
                 canvas.height = layerHeight;
 
-                // Update volume slider height to 50% of layer height
-                const volumeSlider = div.querySelector('.volume-slider');
-                if (volumeSlider) {
-                    const sliderHeight = Math.floor(layerHeight * 0.5);
-                    volumeSlider.style.height = `${sliderHeight}px`;
-                }
+                const numEl = div.querySelector('.layer-number');
+                if (numEl) numEl.style.fontSize = numFont + 'px';
 
-                // Redraw if layer has data
                 if (layers[idx] && layers[idx].audioBuffer) {
                     drawSpectrogram(layers[idx], canvas);
                 }
             });
         }
 
+        // Unified selection gesture, attached to the whole canvas container.
+        // We decide between "drag one edge" and "scrub the whole selection"
+        // by spatial proximity to a grip dot, not by which element got hit —
+        // that way the grip targets can stay precise while scrub is allowed
+        // anywhere else in the layer's canvas area.
+        //
+        // Multitouch safe: each gesture tracks its own touch identifier, so
+        // dragging gain with one finger and scrubbing with another on the
+        // same layer don't fight each other.
         function setupSelectionHandles(layer, overlay) {
-            const handles = overlay.querySelectorAll('.selection-handle');
+            const canvasContainer = overlay.parentElement;
+            const handleStart = overlay.querySelector('[data-handle="start"]');
+            const handleEnd   = overlay.querySelector('[data-handle="end"]');
+            if (!handleStart || !handleEnd) return;
+
+            let pointerId = null;
+            let mode = null;
             let activeHandle = null;
-            let startX = 0;
-            let startValue = 0;
+            let startRelX = 0;
+            let startSelStart = 0, startSelEnd = 0;
+            const DOT_RADIUS = 26;   // generous — the visible dot is 22, plus buffer
 
-            handles.forEach(handle => {
-                handle.addEventListener('touchstart', (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    activeHandle = handle;
-                    startX = e.touches[0].clientX;
-                    startValue = handle.dataset.handle === 'start' ? layer.selection.start : layer.selection.end;
-                    debugLog('debug-spectrogram', `Drag: ${handle.dataset.handle}`);
-                    console.log(`Touch start on ${handle.dataset.handle} handle`);
-                }, { passive: false });
-            });
+            function findOurTouch(touchList) {
+                for (let i = 0; i < touchList.length; i++) {
+                    if (touchList[i].identifier === pointerId) return touchList[i];
+                }
+                return null;
+            }
 
-            let lastUpdateTime = 0;
-            const UPDATE_THROTTLE = 100; // ms - throttle playback restarts
+            function hitDot(clientX, clientY) {
+                for (const h of [handleStart, handleEnd]) {
+                    const r = h.getBoundingClientRect();
+                    const cx = r.left + r.width  / 2;
+                    const cy = r.top  + r.height / 2;
+                    if (Math.hypot(clientX - cx, clientY - cy) <= DOT_RADIUS) return h;
+                }
+                return null;
+            }
 
-            overlay.addEventListener('touchmove', (e) => {
-                if (!activeHandle) return;
+            canvasContainer.addEventListener('touchstart', (e) => {
+                if (pointerId !== null) return;
+                // Let the corner re-record chip handle its own taps.
+                if (e.target.closest('.corner-btn')) return;
+
+                const touch = e.changedTouches[0];
+                if (!touch) return;
                 e.preventDefault();
-                e.stopPropagation();
 
-                const rect = overlay.getBoundingClientRect();
-                const currentX = e.touches[0].clientX;
+                const hit = hitDot(touch.clientX, touch.clientY);
+                pointerId = touch.identifier;
+                mode = hit ? 'handle' : 'pan';
+                activeHandle = hit;
 
-                // Calculate position relative to mesh area (5% to 95%)
+                const oRect = overlay.getBoundingClientRect();
+                startRelX = (touch.clientX - oRect.left) / oRect.width;
+                startSelStart = layer.selection.start;
+                startSelEnd   = layer.selection.end;
+            }, { passive: false });
+
+            canvasContainer.addEventListener('touchmove', (e) => {
+                const touch = findOurTouch(e.changedTouches);
+                if (!touch) return;
+                e.preventDefault();
+
+                const oRect = overlay.getBoundingClientRect();
+                const currentRelX = (touch.clientX - oRect.left) / oRect.width;
                 const meshStart = 0.05;
-                const meshWidth = 0.9;
-                const relativeX = (currentX - rect.left) / rect.width;
-                const meshRelativeX = (relativeX - meshStart) / meshWidth;
-                const clampedValue = Math.max(0, Math.min(1, meshRelativeX));
+                const meshSpan  = 0.9;
+                const toMesh = (rx) =>
+                    Math.max(0, Math.min(1, (rx - meshStart) / meshSpan));
 
-                if (activeHandle.dataset.handle === 'start') {
-                    layer.selection.start = Math.min(clampedValue, layer.selection.end - 0.01);
-                    debugLog('debug-spectrogram', `Start: ${layer.selection.start.toFixed(2)}`);
+                if (mode === 'pan') {
+                    const deltaMesh = (currentRelX - startRelX) / meshSpan;
+                    const width = startSelEnd - startSelStart;
+                    let newStart = startSelStart + deltaMesh;
+                    let newEnd   = startSelEnd   + deltaMesh;
+                    if (newStart < 0) { newStart = 0; newEnd = width; }
+                    if (newEnd   > 1) { newEnd   = 1; newStart = 1 - width; }
+                    layer.selection.start = newStart;
+                    layer.selection.end   = newEnd;
                 } else {
-                    layer.selection.end = Math.max(clampedValue, layer.selection.start + 0.01);
-                    debugLog('debug-spectrogram', `End: ${layer.selection.end.toFixed(2)}`);
+                    const clamped = toMesh(currentRelX);
+                    if (activeHandle.dataset.handle === 'start') {
+                        layer.selection.start = Math.min(clamped, layer.selection.end - 0.01);
+                    } else {
+                        layer.selection.end = Math.max(clamped, layer.selection.start + 0.01);
+                    }
                 }
 
                 updateSelectionUI(layer, overlay);
-
-                // Note: Selection changes are automatically picked up by the granular scheduler
-                // which reads layer.selection on each grain, so no manual restart needed
             }, { passive: false });
 
-            overlay.addEventListener('touchend', (e) => {
-                if (activeHandle) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    activeHandle = null;
-                    // Selection changes are picked up automatically by granular scheduler
-                }
-            }, { passive: false });
+            function endHandler(e) {
+                if (!findOurTouch(e.changedTouches)) return;
+                pointerId = null;
+                mode = null;
+                activeHandle = null;
+            }
+            canvasContainer.addEventListener('touchend',    endHandler);
+            canvasContainer.addEventListener('touchcancel', endHandler);
         }
 
         function updateSelectionUI(layer, overlay) {
-            const dimLeft = overlay.querySelector('.selection-dim:first-child');
-            const dimRight = overlay.querySelector('.selection-dim:last-child');
+            // ':first-child' works, but ':last-child' used to fail here: the
+            // handles are appended after the dims, so the last .selection-dim
+            // is never the last child. Index by position instead.
+            const dims = overlay.querySelectorAll('.selection-dim');
+            const dimLeft  = dims[0];
+            const dimRight = dims[1];
             const handleStart = overlay.querySelector('[data-handle="start"]');
             const handleEnd = overlay.querySelector('[data-handle="end"]');
 
@@ -927,6 +1335,51 @@
             console.log(`Updated handles: start=${startPercent.toFixed(1)}%, end=${endPercent.toFixed(1)}%`);
         }
 
+        // Remove a single layer: tear down its audio nodes, drop its dot from
+        // the tilt scope, strip its DOM, renumber the remaining layers so the
+        // serialized gutters stay sequential (01..0N).
+        function deleteLayer(layer) {
+            const idx = layers.indexOf(layer);
+            if (idx === -1) return;
+
+            if (layer.grainScheduleId) {
+                clearTimeout(layer.grainScheduleId);
+                layer.grainScheduleId = null;
+            }
+            ['gainNode', 'filterNode', 'dryGain', 'wetGain'].forEach(k => {
+                if (layer[k]) {
+                    try { layer[k].disconnect(); } catch (_) {}
+                    layer[k] = null;
+                }
+            });
+
+            const layerDiv = document.getElementById(`layer-${layer.id}`);
+            if (layerDiv) layerDiv.remove();
+
+            const dotsGroup = document.getElementById('layer-dots');
+            if (dotsGroup) {
+                const dot = dotsGroup.querySelector(`[data-layer-id="${layer.id}"]`);
+                if (dot) dot.remove();
+            }
+
+            layers.splice(idx, 1);
+
+            // Renumber so gutters stay sequential after a middle-layer delete.
+            document.querySelectorAll('.layer').forEach((div, i) => {
+                const numText = div.querySelector('.layer-number .num-text');
+                if (numText) numText.textContent = String(i + 1).padStart(2, '0');
+            });
+            layers.forEach((l, i) => { l.colorIndex = i; });
+
+            if (layers.filter(l => l.audioBuffer).length === 0 && isPlaying) {
+                stopPlayback();
+            }
+
+            adjustLayerHeights();
+            updateToolbarState();
+            updateDebugLayerInfo();
+        }
+
         function reRecordLayer(layer) {
             if (isPlaying) {
                 stopPlayback();
@@ -936,9 +1389,9 @@
             startRecording();
         }
 
-        function nukeAllLayers() {
-            document.getElementById('modal-overlay').classList.add('active');
-        }
+        // Deprecated — replaced by the long-press CLR handler. Left for safety
+        // in case some path still references it.
+        function nukeAllLayers() {}
 
         // ============================================================================
         // RECORDING
@@ -953,7 +1406,7 @@
 
                 const recordBtn = document.getElementById('record-btn');
                 recordBtn.classList.add('recording');
-                recordBtn.querySelector('.button-label').textContent = 'Recording...';
+                recordBtn.querySelector('.button-label').textContent = 'REC ●';
 
                 // Auto-stop after 30 seconds
                 recordingTimeout = setTimeout(() => {
@@ -975,7 +1428,7 @@
 
                 const recordBtn = document.getElementById('record-btn');
                 recordBtn.classList.remove('recording');
-                recordBtn.querySelector('.button-label').textContent = 'Record';
+                recordBtn.querySelector('.button-label').textContent = 'REC';
 
                 console.log('Recording stopped');
             }
@@ -987,7 +1440,11 @@
                     throw new Error('Audio context not initialized');
                 }
 
-                const blob = new Blob(recordingChunks, { type: 'audio/webm' });
+                if (!recordingChunks.length) {
+                    throw new Error('Recording was empty');
+                }
+                const blobType = (mediaRecorder && mediaRecorder.mimeType) || recorderMime || 'audio/webm';
+                const blob = new Blob(recordingChunks, { type: blobType });
                 const arrayBuffer = await blob.arrayBuffer();
                 const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
 
@@ -1047,155 +1504,101 @@
             debugLog('debug-spectrogram', `Spectro: drawing ${width}x${height}`);
             console.log(`Drawing spectrogram: ${width}x${height}, duration: ${layer.audioBuffer.duration}s`);
 
-            // Calculate frequency range bins
-            const nyquist = layer.audioBuffer.sampleRate / 2;
-            const bufferLength = FFT_SIZE / 2;
-            const minBin = Math.floor((MIN_FREQ / nyquist) * bufferLength);
-            const maxBin = Math.ceil((MAX_FREQ / nyquist) * bufferLength);
-            const freqBins = 64; // Fixed vertical resolution for 3D mesh
-
-            // Time resolution
-            const duration = layer.audioBuffer.duration;
-            const timeSteps = 128; // Fixed horizontal resolution
-            const stepSize = duration / timeSteps;
-
-            // Store spectrogram data
-            const spectrogramData = [];
-
-            // Analyze audio in chunks
-            const channelData = layer.audioBuffer.getChannelData(0);
-
-            for (let t = 0; t < timeSteps; t++) {
-                const sampleOffset = Math.floor((t * stepSize) * layer.audioBuffer.sampleRate);
-                const chunk = channelData.slice(sampleOffset, sampleOffset + FFT_SIZE);
-
-                if (chunk.length < FFT_SIZE) break;
-
-                // Simple FFT simulation (in production, use actual FFT library)
-                const freqData = performSimpleFFT(chunk, freqBins, minBin, maxBin, bufferLength);
-                spectrogramData.push(freqData);
+            // Reuse cached FFT data if already computed for this buffer.
+            // Gain drags repaint frequently — we want to skip the analysis pass.
+            let spectrogramData = layer.spectrogramData;
+            if (!spectrogramData || layer.spectrogramSourceId !== layer.audioBuffer) {
+                const nyquist = layer.audioBuffer.sampleRate / 2;
+                const bufferLength = FFT_SIZE / 2;
+                const minBin = Math.floor((MIN_FREQ / nyquist) * bufferLength);
+                const maxBin = Math.ceil((MAX_FREQ / nyquist) * bufferLength);
+                const freqBins = 64;
+                const duration = layer.audioBuffer.duration;
+                const timeSteps = 128;
+                const stepSize = duration / timeSteps;
+                spectrogramData = [];
+                const channelData = layer.audioBuffer.getChannelData(0);
+                for (let t = 0; t < timeSteps; t++) {
+                    const sampleOffset = Math.floor((t * stepSize) * layer.audioBuffer.sampleRate);
+                    const chunk = channelData.slice(sampleOffset, sampleOffset + FFT_SIZE);
+                    if (chunk.length < FFT_SIZE) break;
+                    const freqData = performSimpleFFT(chunk, freqBins, minBin, maxBin, bufferLength);
+                    spectrogramData.push(freqData);
+                }
+                layer.spectrogramData = spectrogramData;
+                layer.spectrogramSourceId = layer.audioBuffer;
             }
 
-            layer.spectrogramData = spectrogramData;
+            drawSpectrogramField(ctx, spectrogramData, width, height, layer.colorIndex);
 
-            // Draw 3D mesh
-            draw3DSpectrogram(ctx, spectrogramData, width, height);
-
-            // Apply darkening overlay to push spectrogram into background
-            ctx.fillStyle = 'rgba(10, 10, 10, 0.7)'; // Dark semi-transparent overlay
+            // Push the field back so the waveform reads cleanly on top.
+            ctx.fillStyle = 'rgba(10, 8, 6, 0.55)';
             ctx.fillRect(0, 0, width, height);
 
-            // Draw amplitude waveform on top
-            drawAmplitudeWaveform(ctx, layer.audioBuffer, width, height);
+            drawAmplitudeWaveform(ctx, layer.audioBuffer, width, height, layer.colorIndex);
 
-            debugLog('debug-spectrogram', `Spectro: ✓ ${timeSteps}x${freqBins}`);
+            debugLog('debug-spectrogram', `Spectro: ✓ ${spectrogramData.length}×64`);
         }
 
-        function draw3DSpectrogram(ctx, data, width, height) {
-            if (!data || data.length === 0) return;
-
+        // Grain-field spectrogram: each time × frequency bin becomes a tiny
+        // dot whose radius and opacity track its amplitude. Layer-hue tinted,
+        // near-silence skipped, stable pseudo-random jitter so the field feels
+        // organic rather than gridded.
+        //
+        // X/Y mapping matches the 5%–95% mesh bounds used by the waveform
+        // and selection handles, so time-0 of the sample aligns across all
+        // three visualizations.
+        function drawSpectrogramField(ctx, data, width, height, colorIndex = 0) {
+            if (!data || !data.length) return;
             const timeSteps = data.length;
-            const freqBins = data[0].length;
+            const freqBins  = data[0].length;
 
-            // 3D perspective parameters
-            const perspective = 600; // Perspective strength
-            const angleX = -30; // Tilt away from viewer (negative = top recedes)
-            const scale = 0.85; // Scaled down to fit with tilt
-            const amplitudeScale = 50; // How far amplitude extends in Z
+            const hue = LAYER_HUES[colorIndex % LAYER_HUES.length];
+            const sat = (colorIndex === 0 || colorIndex === 1) ? 88 : 78;
 
-            // Calculate center point (centered to fit within bounds)
-            const centerX = width / 2;
-            const centerY = height * 0.5; // Centered vertically
+            // Horizontal: align with the waveform / selection-handle bounds.
+            const meshStartX  = width  * 0.05;
+            const meshWidthPx = width  * 0.90;
+            const timeStep    = meshWidthPx / timeSteps;
 
-            // Pre-calculate rotation (X-axis tilt away from viewer)
-            const radX = (angleX * Math.PI) / 180;
-            const cosX = Math.cos(radX);
-            const sinX = Math.sin(radX);
+            // Vertical: leave small margins so the field doesn't crowd
+            // the waveform stroke that draws on top.
+            const topMargin    = height * 0.08;
+            const bottomMargin = height * 0.08;
+            const activeH      = height - topMargin - bottomMargin;
 
-            // Project 3D point to 2D with perspective
-            // x = time (horizontal), y = frequency (vertical), z = amplitude (depth)
-            function project3D(x, y, z) {
-                // Apply X-axis rotation (tilt back - top away, bottom closer)
-                const rotatedY = y * cosX - z * sinX;
-                const rotatedZ = y * sinX + z * cosX;
-
-                // Apply perspective
-                const factor = perspective / (perspective + rotatedZ);
-                const screenX = centerX + x * factor * scale;
-                const screenY = centerY + rotatedY * factor * scale;
-
-                return { x: screenX, y: screenY, z: rotatedZ };
+            // Stable integer hash → [0,1). Same jitter every redraw.
+            function noise(a, b) {
+                let h = (a * 374761393 + b * 668265263) | 0;
+                h = (h ^ (h >>> 13)) * 1274126177;
+                return ((h ^ (h >>> 16)) >>> 0) / 0xffffffff;
             }
 
-            // Mesh dimensions (5% to 95% = 90% width)
-            const meshWidth = width * 0.9;
-            const meshHeight = height * 0.7; // Taller mesh for better visualization
+            for (let t = 0; t < timeSteps; t++) {
+                const baseX = meshStartX + t * timeStep;
+                for (let f = 0; f < freqBins; f++) {
+                    const amp = data[t][f];
+                    if (amp < 0.04) continue;      // sparse: skip near-silence
 
-            // Draw mesh from back to front for proper occlusion
-            for (let f = freqBins - 1; f >= 0; f--) {
-                for (let t = 0; t < timeSteps - 1; t++) {
-                    // Get magnitude values at 4 corners of quad
-                    const mag00 = data[t][f] || 0;
-                    const mag10 = data[t + 1][f] || 0;
-                    const mag01 = f > 0 ? (data[t][f - 1] || 0) : 0;
-                    const mag11 = f > 0 ? (data[t + 1][f - 1] || 0) : 0;
+                    // Low freq → bottom, high freq → top.
+                    const baseY = topMargin + activeH * (1 - f / freqBins);
 
-                    // Calculate 3D positions
-                    // X = time (left to right)
-                    const x0 = (t / timeSteps) * meshWidth - meshWidth / 2;
-                    const x1 = ((t + 1) / timeSteps) * meshWidth - meshWidth / 2;
+                    // Tiny organic jitter so the field isn't obviously gridded.
+                    const jx = (noise(t, f)     - 0.5) * 2.2;
+                    const jy = (noise(f + 17, t) - 0.5) * 1.8;
 
-                    // Y = frequency (bottom to top)
-                    const y0 = (f / freqBins) * meshHeight - meshHeight / 2;
-                    const y1 = ((f - 1) / freqBins) * meshHeight - meshHeight / 2;
+                    const r = Math.min(2.8, 0.5 + amp * 3.0);
+                    const a = Math.min(0.58, 0.08 + amp * 0.85);
 
-                    // Z = amplitude (depth toward viewer)
-                    const z00 = mag00 * amplitudeScale;
-                    const z10 = mag10 * amplitudeScale;
-                    const z01 = mag01 * amplitudeScale;
-                    const z11 = mag11 * amplitudeScale;
-
-                    // Project to 2D
-                    const p00 = project3D(x0, y0, z00);
-                    const p10 = project3D(x1, y0, z10);
-                    const p01 = project3D(x0, y1, z01);
-                    const p11 = project3D(x1, y1, z11);
-
-                    // Color based on average magnitude
-                    const avgMag = (mag00 + mag10 + mag01 + mag11) / 4;
-                    const color = getHeatmapColor(avgMag);
-
-                    // Depth-based brightness
-                    const avgZ = (p00.z + p10.z + p01.z + p11.z) / 4;
-                    const brightness = 0.4 + (avgZ / (perspective * 0.5)) * 0.6;
-
-                    ctx.fillStyle = `rgb(${color.r * brightness}, ${color.g * brightness}, ${color.b * brightness})`;
-                    ctx.strokeStyle = 'rgba(0, 0, 0, 0.2)';
-                    ctx.lineWidth = 0.5;
-
-                    // Draw quad as two triangles
+                    ctx.fillStyle = `hsla(${hue}, ${sat}%, 60%, ${a})`;
                     ctx.beginPath();
-                    ctx.moveTo(p00.x, p00.y);
-                    ctx.lineTo(p10.x, p10.y);
-                    ctx.lineTo(p11.x, p11.y);
-                    ctx.closePath();
+                    ctx.arc(baseX + jx, baseY + jy, r, 0, Math.PI * 2);
                     ctx.fill();
-                    ctx.stroke();
-
-                    if (f > 0) {
-                        ctx.beginPath();
-                        ctx.moveTo(p00.x, p00.y);
-                        ctx.lineTo(p11.x, p11.y);
-                        ctx.lineTo(p01.x, p01.y);
-                        ctx.closePath();
-                        ctx.fill();
-                        ctx.stroke();
-                    }
                 }
             }
         }
 
-        function drawAmplitudeWaveform(ctx, audioBuffer, width, height) {
+        function drawAmplitudeWaveform(ctx, audioBuffer, width, height, colorIndex = 0) {
             if (!audioBuffer) return;
 
             // Match spectrogram mesh bounds (5% to 95% of width)
@@ -1225,9 +1628,13 @@
 
             // Draw waveform
             const centerY = height / 2;
-            const amplitudeScale = height * 0.35; // Use 35% of height for amplitude range
+            const amplitudeScale = height * 0.35;
 
-            ctx.strokeStyle = 'rgba(0, 255, 255, 0.9)'; // Cyan with high opacity
+            const hue = LAYER_HUES[colorIndex % LAYER_HUES.length];
+            const strokeColor = `hsla(${hue}, 95%, 60%, 0.9)`;
+            const fillColor   = `hsla(${hue}, 95%, 60%, 0.15)`;
+            const centerColor = `hsla(${hue}, 95%, 60%, 0.30)`;
+            ctx.strokeStyle = strokeColor;
             ctx.lineWidth = 1.5;
             ctx.beginPath();
 
@@ -1250,12 +1657,12 @@
             }
 
             ctx.closePath();
-            ctx.fillStyle = 'rgba(0, 255, 255, 0.15)'; // Light cyan fill
+            ctx.fillStyle = fillColor;
             ctx.fill();
             ctx.stroke();
 
             // Draw center line (only in mesh area)
-            ctx.strokeStyle = 'rgba(0, 255, 255, 0.3)';
+            ctx.strokeStyle = centerColor;
             ctx.lineWidth = 1;
             ctx.beginPath();
             ctx.moveTo(meshStartX, centerY);
@@ -1286,29 +1693,6 @@
             // Normalize
             const max = Math.max(...magnitudes);
             return magnitudes.map(m => m / (max || 1));
-        }
-
-        function getHeatmapColor(value) {
-            // Blue -> Yellow -> Red
-            // 0.0 = Blue (0, 0, 255)
-            // 0.5 = Yellow (255, 255, 0)
-            // 1.0 = Red (255, 0, 0)
-
-            if (value < 0.5) {
-                const t = value * 2;
-                return {
-                    r: Math.floor(t * 255),
-                    g: Math.floor(t * 255),
-                    b: Math.floor((1 - t) * 255)
-                };
-            } else {
-                const t = (value - 0.5) * 2;
-                return {
-                    r: 255,
-                    g: Math.floor((1 - t) * 255),
-                    b: 0
-                };
-            }
         }
 
         // ============================================================================
@@ -1347,7 +1731,7 @@
             const playBtn = document.getElementById('play-btn');
             playBtn.classList.add('playing');
             playBtn.querySelector('.button-icon').textContent = '⏸';
-            playBtn.querySelector('.button-label').textContent = 'Pause';
+            playBtn.querySelector('.button-label').textContent = 'PAU';
 
             document.getElementById('playback-indicator').classList.add('active');
 
@@ -1386,13 +1770,20 @@
                     layer.wetGain.disconnect();
                     layer.wetGain = null;
                 }
+                // Reset orbit phase so next play starts from current audio pos
+                layer.orbitLastTime = undefined;
+                layer.orbitPhase = undefined;
             });
+
+            // Clear orbiting balls
+            const dotsGroup = document.getElementById('layer-dots');
+            if (dotsGroup) dotsGroup.innerHTML = '';
 
             // Update UI
             const playBtn = document.getElementById('play-btn');
             playBtn.classList.remove('playing');
             playBtn.querySelector('.button-icon').textContent = '▶';
-            playBtn.querySelector('.button-label').textContent = 'Play';
+            playBtn.querySelector('.button-label').textContent = 'PLY';
 
             document.getElementById('playback-indicator').classList.remove('active');
 
@@ -1566,25 +1957,73 @@
 
             lastPositionUpdateTime = now;
 
-            updatePlaybackIndicator(lastVisualPosition);
+            updatePlaybackIndicator();
 
             animationFrameId = requestAnimationFrame(animatePlayback);
         }
 
-        function updatePlaybackIndicator(progress) {
-            const angle = progress * 360 - 90; // Start at top (0 = top of circle)
-            const radians = (angle * Math.PI) / 180;
-            const x = 150 + 140 * Math.cos(radians);
-            const y = 150 + 140 * Math.sin(radians);
+        // One orbiting dot per layer. Each dot rides its own loop phase so
+        // layers with different selection lengths circle the dial at different
+        // rates (a 2s loop laps a 4s loop). Phase is advanced on the wall clock
+        // for smoothness; corrected on wraparound to stay aligned with audio.
+        function updatePlaybackIndicator() {
+            const dotsGroup = document.getElementById('layer-dots');
+            if (!dotsGroup) return;
 
-            const dot = document.getElementById('playback-dot');
-            dot.setAttribute('cx', x);
-            dot.setAttribute('cy', y);
+            // Make sure there's exactly one <circle> per active layer.
+            const active = layers.filter(l => l.audioBuffer);
+            // Remove stale dots
+            Array.from(dotsGroup.children).forEach(child => {
+                const id = child.dataset.layerId;
+                if (!active.find(l => String(l.id) === id)) child.remove();
+            });
+            // Add missing dots
+            active.forEach(layer => {
+                let dot = dotsGroup.querySelector(`[data-layer-id="${layer.id}"]`);
+                if (!dot) {
+                    dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                    dot.setAttribute('r', '7');
+                    dot.dataset.layerId = String(layer.id);
+                    dot.setAttribute('fill', layer.color);
+                    dot.setAttribute('stroke', 'rgba(0,0,0,0.4)');
+                    dot.setAttribute('stroke-width', '1');
+                    dotsGroup.appendChild(dot);
+                }
+            });
 
-            // Update reverb circles
+            // Advance and place each dot on the dial.
+            const now = performance.now();
+            active.forEach(layer => {
+                const dot = dotsGroup.querySelector(`[data-layer-id="${layer.id}"]`);
+                if (!dot) return;
+
+                const selDur = (layer.selection.end - layer.selection.start) * layer.audioBuffer.duration;
+                if (selDur <= 0) return;
+
+                if (layer.orbitLastTime === undefined || layer.orbitPhase === undefined) {
+                    layer.orbitPhase = layer.playbackPosition || 0;
+                    layer.orbitLastTime = now;
+                } else {
+                    const dt = (now - layer.orbitLastTime) / 1000;
+                    layer.orbitLastTime = now;
+                    layer.orbitPhase += (dt * orientationData.speed) / selDur;
+                    if (layer.orbitPhase >= 1) {
+                        // Snap to actual audio position at wrap (corrects drift)
+                        layer.orbitPhase = layer.playbackPosition || 0;
+                    } else if (layer.orbitPhase < 0) {
+                        layer.orbitPhase = 0;
+                    }
+                }
+
+                const angle = layer.orbitPhase * 360 - 90;
+                const rad = (angle * Math.PI) / 180;
+                dot.setAttribute('cx', 150 + 140 * Math.cos(rad));
+                dot.setAttribute('cy', 150 + 140 * Math.sin(rad));
+            });
+
+            // Reverb rings — indigo-violet (FX signature for reverb).
             const reverbCircles = document.getElementById('reverb-circles');
             reverbCircles.innerHTML = '';
-
             const numCircles = Math.floor(orientationData.reverb * 10);
             for (let i = 0; i < numCircles; i++) {
                 const radius = 130 - (i * 10);
@@ -1593,7 +2032,7 @@
                 circle.setAttribute('cy', '150');
                 circle.setAttribute('r', radius);
                 circle.setAttribute('fill', 'none');
-                circle.setAttribute('stroke', 'rgba(0, 255, 255, 0.2)');
+                circle.setAttribute('stroke', 'rgba(125, 135, 255, 0.32)');
                 circle.setAttribute('stroke-width', '1');
                 reverbCircles.appendChild(circle);
             }
@@ -1640,7 +2079,7 @@
             const pathData = `M ${startX} ${startY} A ${radius} ${radius} 0 ${largeArcFlag} ${sweepFlag} ${endX} ${endY}`;
             arcPath.setAttribute('d', pathData);
             arcPath.setAttribute('fill', 'none');
-            arcPath.setAttribute('stroke', 'rgba(255, 51, 51, 0.6)');
+            arcPath.setAttribute('stroke', 'rgba(245, 142, 51, 0.85)'); // FX filter — yellow-gold
             arcPath.setAttribute('stroke-width', '4');
             arcPath.setAttribute('stroke-linecap', 'round');
             yawGroup.appendChild(arcPath);
@@ -1664,7 +2103,7 @@
 
             const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
             arrow.setAttribute('points', `${arrowTipX},${arrowTipY} ${baseX1},${baseY1} ${baseX2},${baseY2}`);
-            arrow.setAttribute('fill', '#ff3333');
+            arrow.setAttribute('fill', 'rgba(245, 142, 51, 0.9)'); // FX filter — yellow-gold
             yawGroup.appendChild(arrow);
 
             // Add filter frequency label if filter is active
@@ -1690,7 +2129,7 @@
                 const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
                 text.setAttribute('x', labelX);
                 text.setAttribute('y', labelY);
-                text.setAttribute('fill', '#ff3333');
+                text.setAttribute('fill', 'rgba(245, 142, 51, 0.9)'); // FX filter — yellow-gold
                 text.setAttribute('font-size', '11');
                 text.setAttribute('font-family', 'sans-serif');
                 text.setAttribute('text-anchor', 'middle');
@@ -1740,7 +2179,7 @@
             const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
             text.setAttribute('x', labelX);
             text.setAttribute('y', labelY);
-            text.setAttribute('fill', '#00ffff');
+            text.setAttribute('fill', 'rgba(232, 225, 211, 0.75)');
             text.setAttribute('font-size', '11');
             text.setAttribute('font-family', 'sans-serif');
             text.setAttribute('text-anchor', 'middle');
@@ -1757,14 +2196,14 @@
                 const arrowY = labelY - 10;
                 const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
                 arrow.setAttribute('points', `${labelX},${arrowY} ${labelX - arrowSize},${arrowY + arrowHeight} ${labelX + arrowSize},${arrowY + arrowHeight}`);
-                arrow.setAttribute('fill', '#00ffff');
+                arrow.setAttribute('fill', 'rgba(232, 225, 211, 0.75)');
                 speedLabel.appendChild(arrow);
             } else {
                 // Down arrow (slower) - below text
                 const arrowY = labelY + 10;
                 const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
                 arrow.setAttribute('points', `${labelX},${arrowY} ${labelX - arrowSize},${arrowY - arrowHeight} ${labelX + arrowSize},${arrowY - arrowHeight}`);
-                arrow.setAttribute('fill', '#00ffff');
+                arrow.setAttribute('fill', 'rgba(232, 225, 211, 0.75)');
                 speedLabel.appendChild(arrow);
             }
         }
@@ -1890,27 +2329,19 @@
         }
 
         function updatePlaybackParameters() {
-            // Update reverb dry/wet mix and filter in real-time
-            // Speed is handled automatically by grain scheduling
+            // Update reverb dry/wet mix and filter in real-time.
+            // setTargetAtTime ramps smoothly so tilt sweeps don't click.
+            const now = audioContext.currentTime;
             layers.forEach(layer => {
                 if (layer.dryGain) {
-                    layer.dryGain.gain.setValueAtTime(
-                        1 - orientationData.reverb,
-                        audioContext.currentTime
-                    );
+                    layer.dryGain.gain.setTargetAtTime(1 - orientationData.reverb, now, 0.03);
                 }
                 if (layer.wetGain) {
-                    layer.wetGain.gain.setValueAtTime(
-                        orientationData.reverb,
-                        audioContext.currentTime
-                    );
+                    layer.wetGain.gain.setTargetAtTime(orientationData.reverb, now, 0.03);
                 }
                 if (layer.filterNode) {
                     layer.filterNode.type = orientationData.filterType;
-                    layer.filterNode.frequency.setValueAtTime(
-                        orientationData.filterFreq,
-                        audioContext.currentTime
-                    );
+                    layer.filterNode.frequency.setTargetAtTime(orientationData.filterFreq, now, 0.03);
                 }
             });
         }
@@ -1954,12 +2385,24 @@
                     await init();
                 }
 
+                // Resume context (required after user gesture on iOS)
+                if (audioContext.state === 'suspended') {
+                    await audioContext.resume();
+                }
+
+                // Flip iOS audio session category so silent switch is ignored
+                unlockSilentMode();
+
                 // Request microphone
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 mediaStream = stream;
 
-                // Setup media recorder
-                mediaRecorder = new MediaRecorder(mediaStream);
+                // Setup media recorder with a MIME the browser actually supports
+                recorderMime = pickRecorderMime();
+                mediaRecorder = recorderMime
+                    ? new MediaRecorder(mediaStream, { mimeType: recorderMime })
+                    : new MediaRecorder(mediaStream);
+                console.log('MediaRecorder using MIME:', mediaRecorder.mimeType || '(default)');
                 mediaRecorder.ondataavailable = (e) => {
                     if (e.data.size > 0) {
                         recordingChunks.push(e.data);
@@ -2010,18 +2453,27 @@
         }
 
         // Event Listeners
-        document.getElementById('record-btn').addEventListener('click', () => {
+        document.getElementById('record-btn').addEventListener('click', async () => {
             if (mediaRecorder && mediaRecorder.state === 'recording') {
                 stopRecording();
-            } else {
-                // Check if initialized
-                if (!isInitialized || !mediaRecorder) {
-                    alert('Please complete the permission setup first.');
+                return;
+            }
+            // First-time setup hasn't happened yet.
+            if (!isInitialized) {
+                alert('Please complete the permission setup first.');
+                return;
+            }
+            // Mic was torn down by a background/suspend. This click IS a
+            // user gesture, so re-acquire is allowed on iOS.
+            if (!mediaRecorder || !mediaStream) {
+                const ok = await setupMicrophone();
+                if (!ok) {
+                    alert('Microphone could not be re-enabled. Reload the page.');
                     return;
                 }
-                currentRecordingLayer = null;
-                startRecording();
             }
+            currentRecordingLayer = null;
+            startRecording();
         });
 
         document.getElementById('play-btn').addEventListener('click', togglePlayback);
@@ -2042,25 +2494,56 @@
             }, 500);
         });
 
-        document.getElementById('nuke-btn').addEventListener('click', nukeAllLayers);
+        // Long-press CLR to wipe. The .arming class triggers a 900ms radial
+        // fill; only when that completes do we actually nuke the layers.
+        // Release before it fills → cancel, no side effects.
+        (function wireLongPressClear() {
+            const btn = document.getElementById('nuke-btn');
+            const HOLD_MS = 900;
+            let timer = null;
 
-        document.getElementById('modal-cancel').addEventListener('click', () => {
-            document.getElementById('modal-overlay').classList.remove('active');
-        });
+            function doNuke() {
+                stopPlayback();
+                const container = document.getElementById('layers-container');
+                container.innerHTML = '';
+                layers = [];
+                updateToolbarState();
+                updateDebugLayerInfo();
+            }
 
-        document.getElementById('modal-confirm').addEventListener('click', () => {
-            stopPlayback();
+            function cancel() {
+                btn.classList.remove('arming');
+                if (timer) { clearTimeout(timer); timer = null; }
+            }
 
-            // Clear all layers
-            const container = document.getElementById('layers-container');
-            container.innerHTML = '';
-            layers = [];
+            function start(e) {
+                if (btn.disabled) return;
+                e.preventDefault();
+                btn.classList.add('arming');
+                timer = setTimeout(() => {
+                    btn.classList.remove('arming');
+                    timer = null;
+                    doNuke();
+                }, HOLD_MS);
+            }
 
-            // Don't create empty layer - recording will create layers as needed
-            document.getElementById('modal-overlay').classList.remove('active');
-            updateToolbarState();
-            updateDebugLayerInfo();
-        });
+            btn.addEventListener('touchstart', start, { passive: false });
+            btn.addEventListener('touchend', cancel);
+            btn.addEventListener('touchcancel', cancel);
+            btn.addEventListener('mousedown', start);
+            btn.addEventListener('mouseup', cancel);
+            btn.addEventListener('mouseleave', cancel);
+            // Suppress the legacy click → modal path.
+            btn.addEventListener('click', (e) => e.preventDefault());
+        })();
+
+        // Legacy modal buttons kept as harmless no-ops (modal is unused now).
+        const modalCancel = document.getElementById('modal-cancel');
+        if (modalCancel) {
+            modalCancel.addEventListener('click', () => {
+                document.getElementById('modal-overlay').classList.remove('active');
+            });
+        }
 
         // Window resize handler
         window.addEventListener('resize', () => {
@@ -2088,61 +2571,83 @@
         // PAGE VISIBILITY - Stop microphone when app is in background
         // ============================================================================
 
-        // Helper to pause everything
+        // Pause/resume strategy:
+        //   - Stop the grain scheduler so it doesn't pile up queued grains
+        //     against a frozen currentTime (caused a loud burst on return).
+        //   - Suspend the audio context so playback stops cleanly.
+        //   - Stop any IN-PROGRESS recording (it'd be invalid mid-suspend).
+        //   - DO NOT tear down mediaStream/mediaRecorder. Recreating them
+        //     requires a user gesture on iOS, and visibilitychange isn't one,
+        //     so the rebuild silently fails and the app comes back broken.
+        //     iOS auto-mutes the mic for backgrounded pages anyway.
         async function pauseEverything() {
-            console.log('🛑 PAUSING EVERYTHING');
-            console.log('  AudioContext state:', audioContext?.state);
-            console.log('  MediaStream active:', !!mediaStream);
-            console.log('  MediaRecorder state:', mediaRecorder?.state);
-
-            // Suspend audio context immediately (pauses all playback)
-            if (audioContext) {
-                await audioContext.suspend();
-                console.log('  ✓ Audio context suspended, new state:', audioContext.state);
-            }
-
-            // Stop media stream first to release microphone
-            if (mediaStream) {
-                console.log('  Stopping media stream tracks...');
-                mediaStream.getTracks().forEach(track => {
-                    console.log(`    Stopping track: ${track.kind}, current state: ${track.readyState}`);
-                    track.stop();
-                    console.log(`    Track stopped, new state: ${track.readyState}`);
-                });
-                mediaStream = null;
-                console.log('  ✓ Media stream nulled');
-            }
-
-            // Stop any active recording after stopping stream
-            if (mediaRecorder) {
-                if (mediaRecorder.state === 'recording') {
-                    console.log('  Stopping active recording...');
-                    stopRecording();
+            console.log('🛑 PAUSING');
+            layers.forEach(layer => {
+                if (layer.grainScheduleId) {
+                    clearTimeout(layer.grainScheduleId);
+                    layer.grainScheduleId = null;
                 }
-                mediaRecorder = null;
-                console.log('  ✓ Media recorder nulled');
+            });
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                stopRecording();
+            }
+            // Fully stop the mic tracks so the OS-level indicator drops.
+            // (track.enabled = false would only mute audio; the indicator
+            // stays because capture is technically still open.) Re-acquiring
+            // needs a user gesture on iOS, so if visibility-driven resume
+            // can't re-init, the record button handler picks it up on tap.
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(t => t.stop());
+                mediaStream = null;
+            }
+            mediaRecorder = null;
+            if (audioContext && audioContext.state === 'running') {
+                try { await audioContext.suspend(); } catch (e) { console.warn(e); }
             }
         }
 
-        // Helper to resume everything
         async function resumeEverything() {
-            console.log('▶️ RESUMING EVERYTHING');
-            console.log('  AudioContext state:', audioContext?.state);
+            console.log('▶️ RESUMING (state:', audioContext?.state + ')');
+            if (!audioContext) return;
 
-            // Resume audio context (continues playback)
-            if (audioContext && audioContext.state === 'suspended') {
-                await audioContext.resume();
-                console.log('  ✓ Audio context resumed, new state:', audioContext.state);
+            // Resume the context. iOS may report 'interrupted' instead of
+            // 'suspended'; resume() works for both.
+            if (audioContext.state !== 'running') {
+                try { await audioContext.resume(); } catch (e) { console.warn(e); }
             }
 
-            // Auto-reconnect microphone if user had previously granted access
+            // Re-prime the silent-audio loop so iOS keeps the session category
+            // as "playback" (it can lapse back to "ambient" after interruption,
+            // which would let the silent switch mute us again).
+            unlockSilentMode();
+
+            // Try to re-acquire the mic silently. iOS often blocks getUserMedia
+            // without a fresh user gesture, in which case this fails quietly
+            // and the record-btn handler will pick it up on next tap.
             if (shouldAutoReconnect && !mediaStream && isInitialized) {
-                console.log('  Auto-reconnecting microphone...');
-                await setupMicrophone();
+                try {
+                    await setupMicrophone();
+                } catch (e) {
+                    console.log('Silent mic re-acquire deferred until next tap:', e);
+                }
+            }
+
+            // Restart the grain scheduler from "now" for any active layers.
+            if (isPlaying && audioContext.state === 'running') {
+                const now = audioContext.currentTime;
+                layers.forEach(layer => {
+                    if (layer.gainNode && !layer.grainScheduleId) {
+                        layer.nextGrainTime = now;
+                        scheduleGrains(layer);
+                    }
+                });
             }
         }
 
-        // Primary handler: visibilitychange
+        // visibilitychange is the only reliable cross-platform "app backgrounded"
+        // signal. blur/focus also fire for transient things like Control Center,
+        // notification trays, dev tools, even some modal dialogs — tearing down
+        // the mediaStream on each of those caused recordings to drop.
         document.addEventListener('visibilitychange', async () => {
             console.log('👁️ VISIBILITYCHANGE EVENT - document.hidden:', document.hidden);
 
@@ -2151,17 +2656,6 @@
             } else {
                 await resumeEverything();
             }
-        });
-
-        // Fallback handler: blur/focus (in case visibilitychange doesn't work)
-        window.addEventListener('blur', async () => {
-            console.log('💨 BLUR EVENT - window lost focus');
-            await pauseEverything();
-        });
-
-        window.addEventListener('focus', async () => {
-            console.log('🎯 FOCUS EVENT - window gained focus');
-            await resumeEverything();
         });
 
         // ============================================================================
