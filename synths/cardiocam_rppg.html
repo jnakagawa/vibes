@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>CardioCam — Camera Heart-Rate Monitor (rPPG)</title>
+<style>
+  :root{
+    --bg:#0b0e14; --panel:#141a26; --panel2:#1b2434; --ink:#e7ecf3; --muted:#8a96a8;
+    --accent:#ff4d6d; --accent2:#36d399; --line:#2a3650;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:radial-gradient(1200px 700px at 70% -10%, #16203a 0%, var(--bg) 55%);
+    color:var(--ink); font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased; padding:18px; min-height:100%;
+  }
+  h1{font-size:19px;margin:0 0 2px;letter-spacing:.2px}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:16px}
+  .sub b{color:var(--accent)}
+  .wrap{display:grid;grid-template-columns:minmax(320px,1fr) minmax(320px,1.05fr);gap:16px;max-width:1080px;margin:0 auto}
+  @media (max-width:840px){.wrap{grid-template-columns:1fr}}
+  .card{background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--line);border-radius:14px;padding:14px}
+  .vidwrap{position:relative;border-radius:10px;overflow:hidden;background:#000;aspect-ratio:4/3}
+  video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);display:block}
+  #roi{position:absolute;border:2px solid var(--accent2);border-radius:8px;box-shadow:0 0 0 9999px rgba(0,0,0,.28);pointer-events:none;transition:all .15s ease}
+  .roilabel{position:absolute;left:6px;top:-22px;font-size:11px;color:var(--accent2);background:rgba(0,0,0,.55);padding:1px 6px;border-radius:5px}
+  .controls{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+  button{appearance:none;border:1px solid var(--line);background:var(--panel2);color:var(--ink);
+    padding:9px 14px;border-radius:9px;font-size:14px;cursor:pointer;transition:.15s}
+  button:hover{border-color:#3b4d72}
+  button.primary{background:linear-gradient(180deg,#ff6b85,#e23b5c);border-color:#ff6b85;color:#fff;font-weight:600}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  .bigrow{display:flex;align-items:flex-end;gap:18px;margin-bottom:8px}
+  .bpm{font-size:64px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
+  .bpm small{font-size:18px;color:var(--muted);font-weight:500;margin-left:4px}
+  .heart{font-size:40px;color:var(--accent);filter:drop-shadow(0 0 8px rgba(255,77,109,.5))}
+  .stat{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #1f2940;font-size:13.5px}
+  .stat:last-child{border-bottom:0}
+  .stat b{font-variant-numeric:tabular-nums}
+  .muted{color:var(--muted)}
+  canvas.graph{width:100%;height:120px;display:block;background:#0c1119;border-radius:8px;border:1px solid #1c2740;margin-top:6px}
+  .barwrap{height:9px;background:#0c1119;border-radius:6px;overflow:hidden;border:1px solid #1c2740;margin-top:4px}
+  .bar{height:100%;width:0%;background:linear-gradient(90deg,#e23b5c,#36d399);transition:width .25s}
+  .pill{display:inline-block;padding:2px 9px;border-radius:20px;font-size:12px;font-weight:600}
+  .pill.good{background:rgba(54,211,153,.15);color:var(--accent2)}
+  .pill.warn{background:rgba(255,191,73,.15);color:#ffbf49}
+  .pill.bad{background:rgba(255,77,109,.15);color:var(--accent)}
+  .label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin:14px 0 2px}
+  .disclaimer{font-size:11.5px;color:var(--muted);margin-top:14px;line-height:1.5;border-top:1px solid #1f2940;padding-top:10px}
+  .hint{font-size:12.5px;color:var(--muted);margin-top:8px}
+  a{color:#7fb3ff}
+</style>
+</head>
+<body>
+  <h1>CardioCam <span class="muted" style="font-weight:400;font-size:14px">— heart rate from your camera</span></h1>
+  <div class="sub">Remote photoplethysmography (<b>rPPG</b>): your camera reads the faint color pulse in your skin as blood flows. Same principle as Google's passive HR monitoring — minus the neural net, using the classic <b>POS</b> algorithm + FFT.</div>
+
+  <div class="wrap">
+    <!-- LEFT: camera -->
+    <div class="card">
+      <div class="vidwrap">
+        <video id="vid" playsinline muted></video>
+        <div id="roi" style="display:none"><span class="roilabel">measuring skin ▸</span></div>
+      </div>
+      <div class="controls">
+        <button id="start" class="primary">▸ Start camera</button>
+        <button id="stop" disabled>■ Stop</button>
+        <button id="reset" disabled>↺ Reset buffer</button>
+      </div>
+      <div class="hint" id="hint">Sit still in even, bright light — you can be <b>anywhere in frame</b>, the box follows your face. First reading needs ~10–15&nbsp;s of data.</div>
+
+      <div class="label">Amplified pulse signal (live, B/W)</div>
+      <canvas id="amp" class="graph" style="height:170px"></canvas>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:8px">
+        <span class="muted" style="font-size:12px;white-space:nowrap">Amplification</span>
+        <input id="gain" type="range" min="2" max="30" value="12" style="flex:1" />
+        <span class="muted" id="gainval" style="font-size:12px;width:24px;text-align:right">12×</span>
+      </div>
+      <div class="hint">Brightening/darkening = blood volume pulsing under the skin (per-pixel deviation from its running average). Non-skin pixels are dimmed.</div>
+    </div>
+
+    <!-- RIGHT: readout -->
+    <div class="card">
+      <div class="bigrow">
+        <div class="heart" id="heart">♥</div>
+        <div><span class="bpm" id="bpm">--</span><small>bpm</small></div>
+        <div style="margin-left:auto;text-align:right">
+          <div class="muted" style="font-size:12px">Signal quality</div>
+          <span class="pill bad" id="qpill">acquiring…</span>
+        </div>
+      </div>
+      <div class="barwrap"><div class="bar" id="confbar"></div></div>
+
+      <div class="label">Pulse waveform (rPPG)</div>
+      <canvas id="wave" class="graph"></canvas>
+
+      <div class="label">Frequency spectrum</div>
+      <canvas id="spec" class="graph"></canvas>
+
+      <div style="margin-top:14px">
+        <div class="stat"><span class="muted">Instant HR</span><b id="s_inst">-- bpm</b></div>
+        <div class="stat"><span class="muted">Smoothed (Kalman)</span><b id="s_kal">-- bpm</b></div>
+        <div class="stat"><span class="muted">Resting estimate (session low)</span><b id="s_rest">-- bpm</b></div>
+        <div class="stat"><span class="muted">HRV · RMSSD</span><b id="s_rmssd">—</b></div>
+        <div class="stat"><span class="muted">HRV · SDNN</span><b id="s_sdnn">—</b></div>
+        <div class="stat"><span class="muted">Beats detected (window)</span><b id="s_beats">--</b></div>
+        <div class="stat"><span class="muted">Confidence (spectral SNR)</span><b id="s_conf">--</b></div>
+        <div class="stat"><span class="muted">Camera sample rate</span><b id="s_fps">-- fps</b></div>
+        <div class="stat"><span class="muted">Buffer filled</span><b id="s_buf">0 s</b></div>
+      </div>
+
+      <div class="disclaimer">⚠️ <b>Not a medical device.</b> A demo of the camera-PPG principle. Readings are approximate and easily disrupted by motion, lighting, or skin tone. Do not use for diagnosis. For real heart monitoring use a validated device.</div>
+    </div>
+  </div>
+
+<script>
+"use strict";
+/* ============================================================================
+   CardioCam — remote photoplethysmography (rPPG) heart-rate estimation.
+
+   Pipeline (mirrors the Google PHRM blog at a classical-signal-processing level):
+     1. Capture front-camera frames.
+     2. Locate a skin ROI (forehead/cheeks) via FaceDetector when available,
+        else a centered fallback box.
+     3. Per frame, average R,G,B over the ROI -> 3 raw color time series.
+     4. Resample onto a uniform time grid (camera fps jitters).
+     5. POS algorithm (Wang et al. 2017, "Algorithmic Principles of Remote PPG")
+        with sliding-window overlap-add -> a clean pulse signal robust to
+        lighting/motion vs. naive green-channel.
+     6. Detrend + Hann window + zero-padded FFT -> dominant freq in 0.7-4 Hz
+        (42-240 bpm) = instantaneous HR. Confidence = spectral SNR of the peak.
+     7. 1-D Kalman filter gates on confidence -> smoothed HR; running low ->
+        "resting" estimate. (Blog uses confidence + Kalman + daily aggregation.)
+   ============================================================================ */
+
+const $ = id => document.getElementById(id);
+const vid = $('vid'), roiEl = $('roi');
+
+// --- ring buffers of raw color samples ---
+const MAX_SECONDS = 20;
+let samples = [];          // {t, r, g, b}  t in seconds
+let running = false, rafId = null, lastEstT = 0;
+
+// --- canvases: detection (whole frame), analysis (ROI), amplified viz ---
+const dcan=document.createElement('canvas'), dctx=dcan.getContext('2d',{willReadFrequently:true});
+const DW=64, DH=48; dcan.width=DW; dcan.height=DH;            // skin-tracking grid
+
+const acan=document.createElement('canvas'), actx=acan.getContext('2d',{willReadFrequently:true});
+const AW=48, AH=48; acan.width=AW; acan.height=AH;            // ROI sampling grid
+const GX=3, GY=3, NT=GX*GY;                                  // ROI tiles for SNR-weighted spatial fusion (classical skin-attention)
+
+const ampCan=$('amp'), ampCtx=ampCan.getContext('2d');
+const ampBuf=document.createElement('canvas'), ampBufCtx=ampBuf.getContext('2d');
+ampBuf.width=AW; ampBuf.height=AH;
+const ampImg=ampBufCtx.createImageData(AW,AH);
+const emaG=new Float32Array(AW*AH); let emaInit=false;        // per-pixel running mean (green)
+
+// --- skin-based face tracking (works on ALL browsers incl. iOS Safari) ---
+let trackBox=null, trackMiss=0;
+function isSkin(R,G,B){
+  const Y=0.299*R+0.587*G+0.114*B;
+  const Cb=-0.169*R-0.331*G+0.5*B+128;
+  const Cr=0.5*R-0.419*G-0.081*B+128;
+  return Y>50 && Cb>80 && Cb<135 && Cr>133 && Cr<180;        // Chai-Ngan-style skin gate, widened for tone range
+}
+function trackFace(vw,vh){
+  dctx.drawImage(vid,0,0,DW,DH);
+  const d=dctx.getImageData(0,0,DW,DH).data;
+  let sx=0,sy=0,n=0; const xs=[],ys=[];
+  for(let p=0,i=0;p<DW*DH;p++,i+=4){
+    if(isSkin(d[i],d[i+1],d[i+2])){ const x=p%DW,y=(p/DW)|0; xs.push(x);ys.push(y);sx+=x;sy+=y;n++; }
+  }
+  if(n < DW*DH*0.02) return null;                            // <2% skin -> no face found
+  const mx=sx/n, my=sy/n;
+  let vx=0,vy=0; for(let k=0;k<n;k++){vx+=(xs[k]-mx)**2;vy+=(ys[k]-my)**2;}
+  const stx=Math.sqrt(vx/n)||3, sty=Math.sqrt(vy/n)||3;      // spread of the skin blob
+  return { x:(mx-1.3*stx)/DW*vw, y:(my-1.5*sty)/DH*vh,
+           w:(2.6*stx)/DW*vw,    h:(2.7*sty)/DH*vh };
+}
+
+// --- estimator state ---
+let kal = null;            // {x: bpm, p: variance}
+let restingBpm = Infinity;
+const FS = 30;             // uniform resample target (Hz)
+
+/* ---------------------------- camera control ---------------------------- */
+async function start(){
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video:{ facingMode:'user', width:{ideal:640}, height:{ideal:480}, frameRate:{ideal:30} },
+      audio:false
+    });
+    vid.srcObject = stream;
+    await vid.play();
+    running = true;
+    $('start').disabled = true; $('stop').disabled = false; $('reset').disabled = false;
+    roiEl.style.display = 'block';
+    loop();
+  }catch(err){
+    $('hint').innerHTML = '❌ Could not access camera: ' + err.message +
+      '<br>The page must be served over <b>https://</b> or <b>localhost</b>, and you must grant camera permission.';
+  }
+}
+function stop(){
+  running = false; if(rafId) cancelAnimationFrame(rafId);
+  const s = vid.srcObject; if(s) s.getTracks().forEach(t=>t.stop());
+  vid.srcObject = null; roiEl.style.display='none';
+  $('start').disabled=false; $('stop').disabled=true; $('reset').disabled=true;
+}
+function reset(){ samples=[]; kal=null; restingBpm=Infinity; trackBox=null; emaInit=false; lastBpm=0; }
+
+/* ---------------------------- main frame loop --------------------------- */
+let frameCount = 0;
+async function loop(){
+  if(!running) return;
+  rafId = requestAnimationFrame(loop);
+  if(vid.readyState < 2) return;
+  const now = performance.now()/1000;
+  frameCount++;
+  const vw=vid.videoWidth, vh=vid.videoHeight;
+
+  // Track the face via skin detection every other frame, smoothed over time.
+  if(frameCount % 2 === 0){
+    const box = trackFace(vw,vh);
+    if(box){
+      if(!trackBox) trackBox = {...box};
+      else { const a=0.28;
+        trackBox.x+=(box.x-trackBox.x)*a; trackBox.y+=(box.y-trackBox.y)*a;
+        trackBox.w+=(box.w-trackBox.w)*a; trackBox.h+=(box.h-trackBox.h)*a; }
+      trackMiss=0;
+    } else if(++trackMiss > 20){ trackBox=null; }
+  }
+
+  const roi = computeROI();
+  drawROIoverlay(roi);
+
+  // Sample skin color over ROI (per tile) + build the amplified B/W view.
+  actx.drawImage(vid, roi.x, roi.y, roi.w, roi.h, 0,0, AW, AH);
+  const data = actx.getImageData(0,0,AW,AH).data;
+  const gain = (+($('gain').value)) || 12;
+  const tw=AW/GX, th=AH/GY;
+  const TR=new Float64Array(NT), TG=new Float64Array(NT), TB=new Float64Array(NT), TN=new Int32Array(NT);
+  let mr=0,mg=0,mb=0,n=0;
+  for(let p=0,i=0;p<AW*AH;p++,i+=4){
+    const R=data[i],G=data[i+1],B=data[i+2];
+    const skin = isSkin(R,G,B);
+    if(skin){
+      mr+=R; mg+=G; mb+=B; n++;                         // global skin mean (fallback)
+      const x=p%AW, y=(p/AW)|0;
+      const ti = Math.min(GY-1,(y/th)|0)*GX + Math.min(GX-1,(x/tw)|0);
+      TR[ti]+=R; TG[ti]+=G; TB[ti]+=B; TN[ti]++;        // per-tile skin mean
+    }
+    // per-pixel running mean of green; amplify the deviation -> grayscale pulse map
+    if(!emaInit) emaG[p]=G; else emaG[p]+=(G-emaG[p])*0.08;
+    let v = 128 + (G-emaG[p])*gain;
+    v = v<0?0 : v>255?255 : v;
+    if(!skin) v*=0.35;                                   // dim background so the face stands out
+    const o=p*4; ampImg.data[o]=ampImg.data[o+1]=ampImg.data[o+2]=v; ampImg.data[o+3]=255;
+  }
+  emaInit=true;
+  renderAmp();
+  if(n>0){
+    const gr=mr/n, gg=mg/n, gb=mb/n;
+    const ar=new Array(NT), ag=new Array(NT), ab=new Array(NT);
+    for(let t=0;t<NT;t++){
+      if(TN[t]>3){ ar[t]=TR[t]/TN[t]; ag[t]=TG[t]/TN[t]; ab[t]=TB[t]/TN[t]; }
+      else { ar[t]=gr; ag[t]=gg; ab[t]=gb; }            // sparse tile -> global mean (low SNR -> low weight)
+    }
+    samples.push({t:now, r:ar, g:ag, b:ab});
+  }
+
+  // Trim buffer.
+  const cutoff = now - MAX_SECONDS;
+  while(samples.length && samples[0].t < cutoff) samples.shift();
+
+  // Run an estimate ~3x/sec once we have enough data.
+  if(now - lastEstT > 0.33 && samples.length > FS*4){
+    lastEstT = now;
+    estimate();
+  }
+}
+
+// Render the amplified ROI buffer to the visible canvas, mirrored like the video.
+function renderAmp(){
+  ampBufCtx.putImageData(ampImg,0,0);
+  const rect=ampCan.getBoundingClientRect(), dpr=devicePixelRatio||1;
+  if(ampCan.width!==Math.round(rect.width*dpr)){ ampCan.width=rect.width*dpr; ampCan.height=rect.height*dpr; }
+  ampCtx.imageSmoothingEnabled=true;
+  ampCtx.save();
+  ampCtx.translate(ampCan.width,0); ampCtx.scale(-1,1);
+  ampCtx.drawImage(ampBuf,0,0,ampCan.width,ampCan.height);
+  ampCtx.restore();
+}
+
+/* ----- ROI = tracked face box, with centered fallback if no face ----- */
+function computeROI(){
+  const vw = vid.videoWidth, vh = vid.videoHeight;
+  if(trackBox) return clampROI(trackBox.x,trackBox.y,trackBox.w,trackBox.h,vw,vh);
+  const w = vw*0.4, h = vh*0.5;                          // fallback: wide centered box
+  return clampROI((vw-w)/2, vh*0.12, w, h, vw, vh);
+}
+function clampROI(x,y,w,h,vw,vh){
+  x=Math.max(0,Math.min(x,vw-2)); y=Math.max(0,Math.min(y,vh-2));
+  w=Math.max(2,Math.min(w,vw-x)); h=Math.max(2,Math.min(h,vh-y));
+  return {x,y,w,h,vw,vh};
+}
+function drawROIoverlay(roi){
+  // Map video coords -> displayed (object-fit:cover + mirrored) element coords.
+  const rect = vid.getBoundingClientRect();
+  const wrapRect = vid.parentElement.getBoundingClientRect();
+  const scale = Math.max(rect.width/roi.vw, rect.height/roi.vh);
+  const dispW = roi.vw*scale, dispH = roi.vh*scale;
+  const offX = (rect.width-dispW)/2, offY=(rect.height-dispH)/2;
+  let left = offX + roi.x*scale, top = offY + roi.y*scale, w = roi.w*scale, h = roi.h*scale;
+  left = rect.width - left - w;                  // mirror X (video is scaleX(-1))
+  roiEl.style.left = (left)+'px'; roiEl.style.top=(top)+'px';
+  roiEl.style.width=w+'px'; roiEl.style.height=h+'px';
+}
+
+/* ----------------------- estimation core (DSP) -------------------------- */
+let lastBpm = 0;               // for spectral peak tracking
+function estimate(){
+  const N = samples.length;
+  const t0 = samples[0].t, t1 = samples[N-1].t;
+  const dur = t1 - t0;
+  const fps = (N-1)/dur;
+  $('s_fps').textContent = fps.toFixed(1)+' fps';
+  $('s_buf').textContent = dur.toFixed(1)+' s';
+  const M = Math.floor(dur*FS);
+  if(M < FS*4) return;
+
+  // Per-tile: resample -> POS -> spectrum. SNR-weighted fusion = classical skin-attention.
+  const tiles=[];
+  for(let ti=0; ti<NT; ti++){
+    const R=new Float64Array(M), G=new Float64Array(M), B=new Float64Array(M);
+    let j=0;
+    for(let i=0;i<M;i++){
+      const t = t0 + i/FS;
+      while(j<N-2 && samples[j+1].t < t) j++;
+      const a=samples[j], b=samples[Math.min(j+1,N-1)];
+      const span=(b.t-a.t)||1e-6, f=(t-a.t)/span;
+      R[i]=a.r[ti]+(b.r[ti]-a.r[ti])*f;
+      G[i]=a.g[ti]+(b.g[ti]-a.g[ti])*f;
+      B[i]=a.b[ti]+(b.b[ti]-a.b[ti])*f;
+    }
+    const pulse=pos(R,G,B,FS); detrend(pulse);
+    tiles.push({pulse, sp:specAnalyze(pulse,FS)});
+  }
+
+  // Fuse tile spectra weighted by each tile's de Haan SNR; peak-tracked vs last HR.
+  const res = fuseSpectra(tiles, lastBpm);
+  // Highest-SNR tile drives the displayed waveform + HRV (cleanest region).
+  let best=tiles[0]; for(const t of tiles) if(t.sp.snrDb>best.sp.snrDb) best=t;
+
+  const conf = res.conf;                                  // 0..1 from de Haan SNR
+  const inst = res.bpm;
+  const confPct = Math.max(0, Math.min(100, Math.round(conf*100)));
+
+  if(conf > 0.35 && inst>40 && inst<200){
+    kalmanUpdate(inst, conf);
+    if(kal.x < restingBpm && conf>0.5) restingBpm = kal.x;
+    lastBpm = kal.x;
+  }
+
+  const hrv = (conf > 0.5 && inst>40 && inst<200) ? computeHRV(best.pulse, FS, best.sp.freq) : null;
+
+  render(best.pulse, res, inst, conf, confPct, hrv);
+}
+
+// --- POS: Plane-Orthogonal-to-Skin (Wang et al. 2017), overlap-add windows ---
+function pos(R,G,B,fs){
+  const n=R.length, H=new Float64Array(n);
+  const l=Math.round(1.6*fs);          // window length
+  for(let s=0; s+l<=n; s++){
+    // temporal normalization within window
+    let mr=0,mg=0,mb=0;
+    for(let i=s;i<s+l;i++){mr+=R[i];mg+=G[i];mb+=B[i];}
+    mr/=l;mg/=l;mb/=l;
+    if(mr<1e-6||mg<1e-6||mb<1e-6) continue;
+    // S1 = Gn - Bn ; S2 = Gn + Bn - 2 Rn  (on mean-normalized channels)
+    const S1=new Float64Array(l), S2=new Float64Array(l);
+    for(let i=0;i<l;i++){
+      const rn=R[s+i]/mr, gn=G[s+i]/mg, bn=B[s+i]/mb;
+      S1[i]=gn-bn; S2[i]=gn+bn-2*rn;
+    }
+    const a1=std(S1), a2=std(S2)||1e-6, alpha=a1/a2;
+    // overlap-add h = S1 + alpha*S2, mean-removed
+    let mh=0; const h=new Float64Array(l);
+    for(let i=0;i<l;i++){ h[i]=S1[i]+alpha*S2[i]; mh+=h[i]; }
+    mh/=l;
+    for(let i=0;i<l;i++) H[s+i]+= (h[i]-mh);
+  }
+  return H;
+}
+
+// Per-signal spectrum + de Haan SNR (energy at fundamental & 2nd harmonic vs rest of band).
+function specAnalyze(sig, fs){
+  const n=sig.length;
+  const w=new Float64Array(n);
+  for(let i=0;i<n;i++) w[i]=sig[i]*(0.5-0.5*Math.cos(2*Math.PI*i/(n-1)));   // Hann
+  let nfft=1024; while(nfft<n) nfft<<=1; nfft<<=1;                          // zero-pad x2
+  const re=new Float64Array(nfft), im=new Float64Array(nfft);
+  for(let i=0;i<n;i++) re[i]=w[i];
+  fft(re,im);
+  const half=nfft>>1, mag=new Float64Array(half);
+  for(let i=0;i<half;i++) mag[i]=Math.hypot(re[i],im[i]);
+  const imin=Math.max(1,Math.floor(0.7*nfft/fs)), imax=Math.min(half-1,Math.ceil(4.0*nfft/fs));
+  let peak=imin, peakv=-1;
+  for(let i=imin;i<=imax;i++) if(mag[i]>peakv){peakv=mag[i];peak=i;}
+  let pi=peak;
+  if(peak>imin&&peak<imax){ const a=mag[peak-1],b=mag[peak],c=mag[peak+1]; pi=peak+(a-c)/(2*(a-2*b+c)||1e-9); }
+  const freq=pi*fs/nfft, bpm=freq*60;
+  const snrDb=deHaanSNR(mag,nfft,fs,peak,imin,imax);
+  return {bpm, freq, mag, imin, imax, nfft, fs, peak, snrDb};
+}
+// de Haan SNR (dB): power within +-0.1 Hz of f0 and 2*f0 vs the rest of the cardiac band.
+function deHaanSNR(mag,nfft,fs,peakBin,imin,imax){
+  const hb=Math.max(1, Math.round(0.1*nfft/fs));      // +-0.1 Hz half-mask in bins
+  let sig=0,tot=0;
+  for(let i=imin;i<=imax;i++){
+    const p=mag[i]*mag[i]; tot+=p;
+    if(Math.abs(i-peakBin)<=hb || Math.abs(i-2*peakBin)<=hb) sig+=p;
+  }
+  return 10*Math.log10(sig/Math.max(tot-sig,1e-9) + 1e-12);
+}
+function snrToConf(d){ return 1/(1+Math.exp(-(d-2)/2.5)); }   // ~0.5 at 2 dB
+
+// Fuse per-tile spectra weighted by SNR (relu dB), each normalized to unit band energy.
+function fuseSpectra(tiles, lastBpm){
+  const {nfft,fs,imin,imax}=tiles[0].sp, L=tiles[0].sp.mag.length;
+  const fp=new Float64Array(L); let wsum=0;
+  const add=(t,w)=>{ let e=0; for(let i=imin;i<=imax;i++) e+=t.sp.mag[i]*t.sp.mag[i]; e=e||1;
+    for(let i=imin;i<=imax;i++) fp[i]+= w*(t.sp.mag[i]*t.sp.mag[i])/e; };
+  for(const t of tiles){ const w=Math.max(0,t.sp.snrDb); if(w>0){ add(t,w); wsum+=w; } }
+  if(wsum===0) for(const t of tiles) add(t,1);          // all weak -> equal weight
+  const mag=new Float64Array(L);
+  for(let i=imin;i<=imax;i++) mag[i]=Math.sqrt(fp[i]);
+  const peak=pickPeak(mag,imin,imax,fs,nfft,lastBpm);
+  let pi=peak;
+  if(peak>imin&&peak<imax){ const a=mag[peak-1],b=mag[peak],c=mag[peak+1]; pi=peak+(a-c)/(2*(a-2*b+c)||1e-9); }
+  const freq=pi*fs/nfft, bpm=freq*60;
+  const snrDb=deHaanSNR(mag,nfft,fs,peak,imin,imax);
+  return {bpm, freq, mag, imin, imax, nfft, fs, peak, snrDb, conf:snrToConf(snrDb)};
+}
+// Spectral peak tracking: prefer a peak near the last HR; allow a jump only if far stronger.
+function pickPeak(mag,imin,imax,fs,nfft,lastBpm){
+  let gIdx=imin,gV=-1; const cands=[];
+  for(let i=imin+1;i<imax;i++) if(mag[i]>mag[i-1]&&mag[i]>=mag[i+1]){ cands.push(i); if(mag[i]>gV){gV=mag[i];gIdx=i;} }
+  if(!cands.length){ for(let i=imin;i<=imax;i++) if(mag[i]>gV){gV=mag[i];gIdx=i;} return gIdx; }
+  if(lastBpm>0){
+    const lb=lastBpm/60*nfft/fs, tol=12/60*nfft/fs;     // within 12 bpm of last estimate
+    let nIdx=-1,nV=-1;
+    for(const i of cands) if(Math.abs(i-lb)<=tol && mag[i]>nV){nV=mag[i];nIdx=i;}
+    if(nIdx>=0 && gV<=2.5*nV) return nIdx;              // jump only if global peak >2.5x stronger
+  }
+  return gIdx;
+}
+
+/* ------------------------- small DSP helpers --------------------------- */
+function std(a){ let m=0; for(const v of a)m+=v; m/=a.length; let s=0; for(const v of a)s+=(v-m)*(v-m); return Math.sqrt(s/a.length); }
+function detrend(a){
+  // remove linear trend + mean
+  const n=a.length; let sx=0,sy=0,sxx=0,sxy=0;
+  for(let i=0;i<n;i++){sx+=i;sy+=a[i];sxx+=i*i;sxy+=i*a[i];}
+  const d=(n*sxx-sx*sx)||1e-9, slope=(n*sxy-sx*sy)/d, inter=(sy-slope*sx)/n;
+  for(let i=0;i<n;i++) a[i]-= (slope*i+inter);
+}
+// iterative radix-2 FFT (in place)
+function fft(re,im){
+  const n=re.length;
+  for(let i=1,j=0;i<n;i++){
+    let bit=n>>1;
+    for(;j&bit;bit>>=1) j^=bit;
+    j^=bit;
+    if(i<j){ [re[i],re[j]]=[re[j],re[i]]; [im[i],im[j]]=[im[j],im[i]]; }
+  }
+  for(let len=2;len<=n;len<<=1){
+    const ang=-2*Math.PI/len, wr=Math.cos(ang), wi=Math.sin(ang);
+    for(let i=0;i<n;i+=len){
+      let cr=1,ci=0;
+      for(let k=0;k<len/2;k++){
+        const ur=re[i+k], ui=im[i+k];
+        const vr=re[i+k+len/2]*cr-im[i+k+len/2]*ci;
+        const vi=re[i+k+len/2]*ci+im[i+k+len/2]*cr;
+        re[i+k]=ur+vr; im[i+k]=ui+vi;
+        re[i+k+len/2]=ur-vr; im[i+k+len/2]=ui-vi;
+        const ncr=cr*wr-ci*wi; ci=cr*wi+ci*wr; cr=ncr;
+      }
+    }
+  }
+}
+// inverse FFT via the forward transform (conjugate trick).
+function ifft(re,im){
+  for(let i=0;i<im.length;i++) im[i]=-im[i];
+  fft(re,im);
+  const n=re.length;
+  for(let i=0;i<n;i++){ re[i]/=n; im[i]=-im[i]/n; }
+}
+function median(a){ if(!a.length) return 0; const s=[...a].sort((x,y)=>x-y); const m=s.length>>1; return s.length%2?s[m]:(s[m-1]+s[m])/2; }
+
+/* HRV: band-limit the pulse around the heart rate, detect systolic peaks,
+   derive inter-beat intervals (IBIs), and compute time-domain HRV metrics.
+   Camera PPG timing is noisy, so IBIs are artifact-filtered against the median. */
+function computeHRV(pulse, fs, f0){
+  const n=pulse.length;
+  let nfft=1; while(nfft<n) nfft<<=1;
+  const re=new Float64Array(nfft), im=new Float64Array(nfft);
+  for(let i=0;i<n;i++) re[i]=pulse[i];          // pulse is already detrended (mean ~0)
+  fft(re,im);
+  // keep [0.7*f0 .. 2.5*f0] (fundamental + 2nd harmonic sharpen peak timing), drop rest
+  const lo=Math.max(0.7, f0*0.7), hi=Math.min(4.0, f0*2.5);
+  for(let k=0;k<=nfft/2;k++){
+    const f=k*fs/nfft;
+    if(f<lo || f>hi){ re[k]=0; im[k]=0; const mk=(nfft-k)%nfft; re[mk]=0; im[mk]=0; }
+  }
+  ifft(re,im);
+  const filt=new Float64Array(n);
+  for(let i=0;i<n;i++) filt[i]=re[i];
+
+  // peak detection with a refractory distance of ~half a beat period
+  const minDist=Math.max(3, Math.round(0.5*fs/f0));
+  const sd=std(filt), th=0.15*sd;
+  const peaks=[];
+  for(let i=1;i<n-1;i++){
+    if(filt[i]>filt[i-1] && filt[i]>=filt[i+1] && filt[i]>th){
+      const last=peaks[peaks.length-1];
+      if(last!==undefined && i-last<minDist){ if(filt[i]>filt[last]) peaks[peaks.length-1]=i; }
+      else peaks.push(i);
+    }
+  }
+  // sub-sample peak times via parabolic interpolation -> precise IBIs
+  const times=peaks.map(i=>{
+    if(i>0&&i<n-1){ const a=filt[i-1],b=filt[i],c=filt[i+1]; const d=(a-c)/(2*(a-2*b+c)||1e-9); return (i+d)/fs; }
+    return i/fs;
+  });
+  const ibi=[]; for(let k=1;k<times.length;k++) ibi.push((times[k]-times[k-1])*1000); // ms
+  if(ibi.length<4) return {peaks, rmssd:0, sdnn:0, nBeats:peaks.length, ok:false};
+
+  const med=median(ibi);
+  const valid=ibi.map(v=> v>300 && v<1500 && v>0.7*med && v<1.3*med);
+  const good=ibi.filter((v,k)=>valid[k]);
+  const sdnn=good.length>1 ? std(good) : 0;
+  let ss=0,cnt=0;                                // RMSSD over contiguous valid IBI pairs
+  for(let k=1;k<ibi.length;k++){ if(valid[k]&&valid[k-1]){ const dd=ibi[k]-ibi[k-1]; ss+=dd*dd; cnt++; } }
+  const rmssd=cnt? Math.sqrt(ss/cnt):0;
+  return {peaks, rmssd, sdnn, nBeats:peaks.length, ok: good.length>=5 && cnt>=4};
+}
+
+// 1-D Kalman filter; measurement variance shrinks with confidence.
+function kalmanUpdate(z, conf){
+  const Q=0.8;                          // process noise (bpm^2 per step) -> tracks change
+  const Rm=8 + 60*(1-conf);             // measurement noise; high conf -> trust more
+  if(!kal){ kal={x:z,p:50}; return; }
+  kal.p += Q;
+  const K = kal.p/(kal.p+Rm);
+  kal.x += K*(z-kal.x);
+  kal.p *= (1-K);
+}
+
+/* ------------------------------ rendering ------------------------------ */
+const wcan=$('wave'), wctx=wcan.getContext('2d');
+const scan=$('spec'), sctx=scan.getContext('2d');
+function fitCanvas(c){ const r=c.getBoundingClientRect(), dpr=devicePixelRatio||1;
+  if(c.width!==Math.round(r.width*dpr)){c.width=r.width*dpr;c.height=r.height*dpr;} return dpr; }
+
+function render(pulse, res, inst, conf, confPct, hrv){
+  // numbers
+  $('bpm').textContent = kal ? Math.round(kal.x) : '--';
+  $('s_inst').textContent = inst>0 ? Math.round(inst)+' bpm' : '-- bpm';
+  $('s_kal').textContent = kal ? kal.x.toFixed(1)+' bpm' : '-- bpm';
+  $('s_rest').textContent = isFinite(restingBpm) ? Math.round(restingBpm)+' bpm' : '-- bpm';
+  $('s_conf').textContent = conf.toFixed(2);
+  $('confbar').style.width = confPct+'%';
+
+  // HRV (only trustworthy with a clean signal)
+  if(hrv && hrv.ok){
+    $('s_rmssd').textContent = Math.round(hrv.rmssd)+' ms';
+    $('s_sdnn').textContent  = Math.round(hrv.sdnn)+' ms';
+    $('s_beats').textContent = hrv.nBeats;
+  } else {
+    $('s_rmssd').textContent = '— hold still';
+    $('s_sdnn').textContent  = '—';
+    $('s_beats').textContent = hrv ? hrv.nBeats : '--';
+  }
+
+  const pill=$('qpill');
+  if(conf>0.6){ pill.className='pill good'; pill.textContent='good'; }
+  else if(conf>0.35){ pill.className='pill warn'; pill.textContent='fair'; }
+  else { pill.className='pill bad'; pill.textContent='weak — hold still'; }
+
+  // heart-beat pulse animation scaled to BPM
+  if(kal){ const period=60/kal.x; $('heart').style.transition=`transform ${period*0.5}s`;
+    $('heart').style.transform = (Math.floor(performance.now()/(period*500))%2) ? 'scale(1.18)' : 'scale(1.0)'; }
+
+  // waveform (last ~6s) with detected beats marked
+  drawWave(pulse, hrv && hrv.ok ? hrv.peaks : null);
+  // spectrum
+  drawSpec(res);
+}
+function drawWave(p, peaks){
+  const dpr=fitCanvas(wcan), W=wcan.width, H=wcan.height;
+  wctx.clearRect(0,0,W,H);
+  const show=Math.min(p.length, Math.round(FS*6));
+  const start=p.length-show;
+  let mn=Infinity,mx=-Infinity;
+  for(let i=start;i<p.length;i++){ if(p[i]<mn)mn=p[i]; if(p[i]>mx)mx=p[i]; }
+  const rng=(mx-mn)||1;
+  const X=i=>(i-start)/(show-1)*W, Y=i=>H-((p[i]-mn)/rng)*(H*0.82)-H*0.09;
+  wctx.lineWidth=2*dpr; wctx.strokeStyle='#ff4d6d'; wctx.beginPath();
+  for(let i=start;i<p.length;i++){ i===start?wctx.moveTo(X(i),Y(i)):wctx.lineTo(X(i),Y(i)); }
+  wctx.stroke();
+  // beat markers
+  if(peaks){
+    wctx.fillStyle='#36d399';
+    for(const i of peaks){ if(i>=start){ wctx.beginPath(); wctx.arc(X(i),Y(i),3*dpr,0,7); wctx.fill(); } }
+  }
+}
+function drawSpec(res){
+  const dpr=fitCanvas(scan), W=scan.width, H=scan.height;
+  sctx.clearRect(0,0,W,H);
+  const {mag,imin,imax,nfft,fs,peak}=res;
+  let mx=0; for(let i=imin;i<=imax;i++) if(mag[i]>mx)mx=mag[i]; mx=mx||1;
+  const span=imax-imin;
+  sctx.fillStyle='#2bd29b';
+  for(let i=imin;i<=imax;i++){
+    const x=(i-imin)/span*W, h=(mag[i]/mx)*(H*0.9);
+    sctx.fillRect(x,H-h, Math.max(1,W/span-0.5), h);
+  }
+  // peak marker + bpm labels along axis
+  const px=(peak-imin)/span*W;
+  sctx.strokeStyle='#ff4d6d'; sctx.lineWidth=1.5*dpr;
+  sctx.beginPath(); sctx.moveTo(px,0); sctx.lineTo(px,H); sctx.stroke();
+  sctx.fillStyle='#8a96a8'; sctx.font=(11*dpr)+'px sans-serif';
+  for(const bpm of [60,90,120,150,180]){
+    const f=bpm/60, bin=f*nfft/fs, x=(bin-imin)/span*W;
+    if(x>0&&x<W){ sctx.fillRect(x,H-4,1,4); sctx.fillText(bpm, x+2, H-6); }
+  }
+}
+
+window.addEventListener('resize', ()=>{ if(samples.length>FS*4) estimate(); });
+$('start').onclick=start; $('stop').onclick=stop; $('reset').onclick=reset;
+$('gain').oninput=e=>{ $('gainval').textContent=e.target.value+'×'; };
+</script>
+</body>
+</html>
