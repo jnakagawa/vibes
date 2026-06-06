@@ -19,8 +19,9 @@
   h1{font-size:19px;margin:0 0 2px;letter-spacing:.2px}
   .sub{color:var(--muted);font-size:13px;margin-bottom:16px}
   .sub b{color:var(--accent)}
-  .wrap{display:grid;grid-template-columns:minmax(320px,1fr) minmax(320px,1.05fr);gap:16px;max-width:1080px;margin:0 auto}
-  @media (max-width:840px){.wrap{grid-template-columns:1fr}}
+  .wrap{display:grid;grid-template-columns:minmax(340px,1fr) minmax(400px,1.18fr);gap:16px;max-width:1560px;margin:0 auto;align-items:start}
+  .rightcol{display:flex;flex-direction:column;gap:16px;min-width:0}
+  @media (max-width:1100px){.wrap{grid-template-columns:1fr}}
   .card{background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--line);border-radius:14px;padding:14px}
   .vidwrap{position:relative;border-radius:10px;overflow:hidden;background:#000;aspect-ratio:4/3}
   video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);display:block}
@@ -49,6 +50,16 @@
   .pill.bad{background:rgba(255,77,109,.15);color:var(--accent)}
   .label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin:14px 0 2px}
   .disclaimer{font-size:11.5px;color:var(--muted);margin-top:14px;line-height:1.5;border-top:1px solid #1f2940;padding-top:10px}
+  .breathcard{margin:0;min-width:0}
+  .breathgrid{display:grid;grid-template-columns:minmax(300px,1.2fr) minmax(260px,1fr);gap:18px;align-items:center}
+  @media (max-width:840px){.breathgrid{grid-template-columns:1fr}}
+  .mandalawrap{position:relative;aspect-ratio:1/1;max-height:360px;display:flex;align-items:center;justify-content:center}
+  #mandala{width:100%;height:100%;display:block}
+  .breathoverlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;text-align:center}
+  #breathPhase{font-size:26px;font-weight:700;letter-spacing:.5px;color:#cfe3ff;opacity:.55;transition:opacity .3s}
+  #breathPhase.on{opacity:1}
+  #breathCount{font-size:15px;color:var(--muted);margin-top:2px;font-variant-numeric:tabular-nums}
+  .cadence{font-size:13px;color:var(--accent2);margin-top:8px;text-align:center;font-variant-numeric:tabular-nums}
   .hint{font-size:12.5px;color:var(--muted);margin-top:8px}
   a{color:#7fb3ff}
 </style>
@@ -70,6 +81,7 @@
         <button id="reset" disabled>↺ Reset buffer</button>
       </div>
       <div class="hint" id="hint">Sit still in even, bright light — you can be <b>anywhere in frame</b>, the box follows your face. First reading needs ~10–15&nbsp;s of data.</div>
+      <div class="hint" id="faceStatus" style="margin-top:4px">Face detection: starts with the camera</div>
 
       <div class="label">Amplified pulse signal (live, B/W)</div>
       <canvas id="amp" class="graph" style="height:170px"></canvas>
@@ -81,7 +93,9 @@
       <div class="hint">Brightening/darkening = blood volume pulsing under the skin (per-pixel deviation from its running average). Non-skin pixels are dimmed.</div>
     </div>
 
-    <!-- RIGHT: readout -->
+    <!-- RIGHT COLUMN: live vitals, then breathing coach -->
+    <div class="rightcol">
+    <!-- live vitals / readout -->
     <div class="card">
       <div class="bigrow">
         <div class="heart" id="heart">♥</div>
@@ -113,7 +127,48 @@
 
       <div class="disclaimer">⚠️ <b>Not a medical device.</b> A demo of the camera-PPG principle. Readings are approximate and easily disrupted by motion, lighting, or skin tone. Do not use for diagnosis. For real heart monitoring use a validated device.</div>
     </div>
-  </div>
+
+    <!-- BREATHING COACH (below the live vitals) -->
+    <div class="card breathcard">
+    <div class="bigrow" style="align-items:center">
+      <div>
+        <div style="font-size:17px;font-weight:600">Breathing coach <span class="muted" style="font-weight:400;font-size:13px">— adaptive HRV biofeedback</span></div>
+        <div class="muted" style="font-size:12.5px;margin-top:2px">Follow the shape: expand = inhale, hold, contract = exhale. The pace adapts to your live biomarkers and gently guides you toward ~6 breaths/min resonance. It glows as your heart rhythm gets more coherent.</div>
+      </div>
+      <button id="breathStart" class="primary" style="margin-left:auto;white-space:nowrap">▸ Start breathing session</button>
+    </div>
+
+    <div class="breathgrid" style="margin-top:6px">
+      <div class="mandalawrap">
+        <canvas id="mandala"></canvas>
+        <div class="breathoverlay">
+          <div id="breathPhase">ready</div>
+          <div id="breathCount"></div>
+        </div>
+      </div>
+      <div>
+        <div class="cadence" id="breathCadence" style="margin-bottom:10px">Start the camera, then start a session.</div>
+        <div class="label" style="margin-top:0">Cardiac coherence</div>
+        <div class="barwrap"><div class="bar" id="b_cohbar" style="background:linear-gradient(90deg,#e23b5c,#36d399)"></div></div>
+        <div class="stat" style="margin-top:8px"><span class="muted">Coherence score</span><b id="b_coh">--</b></div>
+        <div class="stat"><span class="muted">Session peak coherence</span><b id="b_peak">--</b></div>
+        <div class="stat"><span class="muted">Respiratory rate</span><b id="b_rr">--</b></div>
+        <div class="stat"><span class="muted">RSA amplitude (vagal)</span><b id="b_rsa">--</b></div>
+        <div class="stat"><span class="muted">Breath↔heart sync (PLV)</span><b id="b_sync">--</b></div>
+        <div class="stat"><span class="muted">Stress proxy</span><b id="b_stress">--</b></div>
+      </div>
+    </div>
+
+    <div class="label" style="margin-top:16px">Session trend — the metrics you actually move by breathing</div>
+    <canvas id="cohChart" class="graph" style="height:160px"></canvas>
+    <div class="muted" style="font-size:11.5px;margin-top:4px">
+      <span style="color:#36d399">●</span> Cardiac coherence (true 0–100) &nbsp; <span style="color:#7fb3ff">●</span> RSA amplitude (heart-rate swing, auto-scaled to your range) &nbsp;·&nbsp; dashed line = session start.
+      Slow resonant breathing <b>directly drives these up</b> — RSA responds within a few breaths, coherence builds over ~30–60&nbsp;s. Watch both flow upward after the marker.
+    </div>
+    <div class="disclaimer">Breathe <b>easily, not too deeply</b> — if you feel light-headed, take shallower breaths or stop. Skip the holds if they're uncomfortable. Not for use with a pacemaker, during pregnancy, or with cardiac/respiratory conditions without medical clearance. This is a wellness demo, not therapy.</div>
+  </div><!-- /breathcard -->
+  </div><!-- /rightcol -->
+  </div><!-- /wrap -->
 
 <script>
 "use strict";
@@ -139,8 +194,8 @@ const $ = id => document.getElementById(id);
 const vid = $('vid'), roiEl = $('roi');
 
 // --- ring buffers of raw color samples ---
-const MAX_SECONDS = 20;
-let samples = [];          // {t, r, g, b}  t in seconds
+const MAX_SECONDS = 60;    // long buffer for respiration/coherence (HR uses last ~14s)
+let samples = [];          // {t, r:[tiles], g:[tiles], b:[tiles]}  t in seconds
 let running = false, rafId = null, lastEstT = 0;
 
 // --- canvases: detection (whole frame), analysis (ROI), amplified viz ---
@@ -157,33 +212,80 @@ ampBuf.width=AW; ampBuf.height=AH;
 const ampImg=ampBufCtx.createImageData(AW,AH);
 const emaG=new Float32Array(AW*AH); let emaInit=false;        // per-pixel running mean (green)
 
-// --- skin-based face tracking (works on ALL browsers incl. iOS Safari) ---
+// --- face tracking: BlazeFace (MediaPipe) when available, skin-blob fallback ---
 let trackBox=null, trackMiss=0;
+let faceDet=null, faceDetReady=false, faceInitStarted=false;
+let faceBox=null, faceMiss=0, faceLastDetect=0;
+function setFaceStatus(t){ const e=$('faceStatus'); if(e) e.textContent=t; }
+async function initFaceDetector(){
+  if(faceInitStarted) return; faceInitStarted=true;
+  setFaceStatus('Face detection: loading model…');
+  try{
+    const V='https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
+    const vision = await import(V+'/vision_bundle.mjs');
+    const fileset = await vision.FilesetResolver.forVisionTasks(V+'/wasm');
+    faceDet = await vision.FaceLandmarker.createFromOptions(fileset, {
+      baseOptions:{ modelAssetPath:'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task' },
+      runningMode:'VIDEO', numFaces:1
+    });
+    faceDetReady=true; setFaceStatus('Face detection: on ✓');
+  }catch(e){ faceDetReady=false; setFaceStatus('Face detection unavailable ('+(e&&e.message?e.message.slice(0,60):'error')+') — using skin tracking'); console.error('FaceLandmarker init failed:', e); }
+}
+// Forehead-only ROI from the face landmark box: an upper-central strip ABOVE the
+// eyes, so blinking adds no noise. Strongest, most stable rPPG region.
+function faceROI(bb){
+  return { x: bb.originX + bb.width*0.28, y: bb.originY + bb.height*0.06,
+           w: bb.width*0.44,              h: bb.height*0.22 };
+}
 function isSkin(R,G,B){
   const Y=0.299*R+0.587*G+0.114*B;
   const Cb=-0.169*R-0.331*G+0.5*B+128;
   const Cr=0.5*R-0.419*G-0.081*B+128;
-  return Y>50 && Cb>80 && Cb<135 && Cr>133 && Cr<180;        // Chai-Ngan-style skin gate, widened for tone range
+  return Y>45 && Cb>77 && Cb<135 && Cr>132 && Cr<182;        // Chai-Ngan-style skin gate, widened for tone/light range
 }
-function trackFace(vw,vh){
+function trackFaceSkin(vw,vh){
   dctx.drawImage(vid,0,0,DW,DH);
   const d=dctx.getImageData(0,0,DW,DH).data;
-  let sx=0,sy=0,n=0; const xs=[],ys=[];
+  const xs=[],ys=[];
   for(let p=0,i=0;p<DW*DH;p++,i+=4){
-    if(isSkin(d[i],d[i+1],d[i+2])){ const x=p%DW,y=(p/DW)|0; xs.push(x);ys.push(y);sx+=x;sy+=y;n++; }
+    if(isSkin(d[i],d[i+1],d[i+2])){ xs.push(p%DW); ys.push((p/DW)|0); }
   }
-  if(n < DW*DH*0.02) return null;                            // <2% skin -> no face found
-  const mx=sx/n, my=sy/n;
-  let vx=0,vy=0; for(let k=0;k<n;k++){vx+=(xs[k]-mx)**2;vy+=(ys[k]-my)**2;}
-  const stx=Math.sqrt(vx/n)||3, sty=Math.sqrt(vy/n)||3;      // spread of the skin blob
+  if(xs.length < DW*DH*0.015) return null;                   // <1.5% skin -> no face found
+  // Robust center: start from the mean, then re-center on inliers a few times so the
+  // box locks onto the densest blob (the face) instead of being pulled by scattered skin.
+  let mx=0,my=0; for(let k=0;k<xs.length;k++){ mx+=xs[k]; my+=ys[k]; } mx/=xs.length; my/=xs.length;
+  let stx=DW*0.18, sty=DH*0.2;
+  for(let pass=0; pass<3; pass++){
+    const rx=Math.max(5,2.0*stx), ry=Math.max(5,2.0*sty);
+    let sx=0,sy=0,n=0;
+    for(let k=0;k<xs.length;k++) if(Math.abs(xs[k]-mx)<=rx && Math.abs(ys[k]-my)<=ry){ sx+=xs[k]; sy+=ys[k]; n++; }
+    if(n<8) break;
+    mx=sx/n; my=sy/n;
+    let vx=0,vy=0;
+    for(let k=0;k<xs.length;k++) if(Math.abs(xs[k]-mx)<=rx && Math.abs(ys[k]-my)<=ry){ vx+=(xs[k]-mx)**2; vy+=(ys[k]-my)**2; }
+    stx=Math.sqrt(vx/n)||3; sty=Math.sqrt(vy/n)||3;
+  }
+  // Cap the spread so the box stays face-sized and can't balloon to fill the frame.
+  stx=Math.max(3,Math.min(stx, DW*0.16)); sty=Math.max(3,Math.min(sty, DH*0.22));
   return { x:(mx-1.3*stx)/DW*vw, y:(my-1.5*sty)/DH*vh,
-           w:(2.6*stx)/DW*vw,    h:(2.7*sty)/DH*vh };
+           w:(2.6*stx)/DW*vw,    h:(3.0*sty)/DH*vh };
 }
 
 // --- estimator state ---
 let kal = null;            // {x: bpm, p: variance}
 let restingBpm = Infinity;
 const FS = 30;             // uniform resample target (Hz)
+
+// --- biofeedback state ---
+const bio = { hr:0, rmssd:0, hrConf:0, rr:0, rsa:0, coherence:0, plv:0, stress:50 };
+let cohEMA = 0, plvEMA = 0, rsaEMA = 0, lastBioT = 0;
+let cohHist = [], sessionPeak = 0;     // session trend chart
+const breath = {            // adaptive paced-breathing session
+  active:false, targetBpm:8, pattern:{inhale:4,hold:0,exhale:4,hold2:0},
+  cycleStart:0, elapsedSec:0, lastRamp:0, cyclesDone:0
+};
+const PACE = { RES_BPM:5.5, MIN_BPM:4.5, MAX_TARGET:6.5, RAMP_PER_MIN:1.5, START_MAX:8,
+               MAX_HOLD:4, MIN_PHASE:2.0, RESONANCE_HZ:0.092 };
 
 /* ---------------------------- camera control ---------------------------- */
 async function start(){
@@ -197,6 +299,7 @@ async function start(){
     running = true;
     $('start').disabled = true; $('stop').disabled = false; $('reset').disabled = false;
     roiEl.style.display = 'block';
+    initFaceDetector();                 // loads BlazeFace in the background; skin tracking meanwhile
     loop();
   }catch(err){
     $('hint').innerHTML = '❌ Could not access camera: ' + err.message +
@@ -209,7 +312,9 @@ function stop(){
   vid.srcObject = null; roiEl.style.display='none';
   $('start').disabled=false; $('stop').disabled=true; $('reset').disabled=true;
 }
-function reset(){ samples=[]; kal=null; restingBpm=Infinity; trackBox=null; emaInit=false; lastBpm=0; }
+function reset(){ samples=[]; kal=null; restingBpm=Infinity; trackBox=null; faceBox=null; emaInit=false; lastBpm=0;
+  cohEMA=0; plvEMA=0; rsaEMA=0; bio.rr=0; bio.rsa=0; bio.coherence=0; bio.plv=0; bio.stress=50;
+  cohHist=[]; sessionPeak=0; rsaScaleLo=0; rsaScaleHi=1; }
 
 /* ---------------------------- main frame loop --------------------------- */
 let frameCount = 0;
@@ -221,14 +326,28 @@ async function loop(){
   frameCount++;
   const vw=vid.videoWidth, vh=vid.videoHeight;
 
-  // Track the face via skin detection every other frame, smoothed over time.
-  if(frameCount % 2 === 0){
-    const box = trackFace(vw,vh);
-    if(box){
-      if(!trackBox) trackBox = {...box};
-      else { const a=0.28;
-        trackBox.x+=(box.x-trackBox.x)*a; trackBox.y+=(box.y-trackBox.y)*a;
-        trackBox.w+=(box.w-trackBox.w)*a; trackBox.h+=(box.h-trackBox.h)*a; }
+  // Run BlazeFace (throttled ~8 fps) when loaded; else fall back to the skin tracker.
+  if(faceDetReady && now - faceLastDetect > 0.12){
+    faceLastDetect = now;
+    try{
+      const r = faceDet.detectForVideo(vid, now*1000);
+      if(r && r.faceLandmarks && r.faceLandmarks.length){
+        const lm=r.faceLandmarks[0];                       // normalized [0,1] landmarks
+        let minx=1,miny=1,maxx=0,maxy=0;
+        for(const p of lm){ if(p.x<minx)minx=p.x; if(p.x>maxx)maxx=p.x; if(p.y<miny)miny=p.y; if(p.y>maxy)maxy=p.y; }
+        faceBox={ originX:minx*vw, originY:miny*vh, width:(maxx-minx)*vw, height:(maxy-miny)*vh };
+        faceMiss=0;
+      } else if(++faceMiss > 8){ faceBox=null; }
+    }catch(e){ faceBox=null; }
+  }
+  // Choose ROI target: detected face (every frame) or skin blob (every other frame).
+  const target = faceBox ? faceROI(faceBox) : (frameCount%2===0 ? trackFaceSkin(vw,vh) : 'skip');
+  if(target!=='skip'){
+    if(target){
+      if(!trackBox) trackBox = {...target};
+      else { const a = faceBox?0.4:0.28;
+        trackBox.x+=(target.x-trackBox.x)*a; trackBox.y+=(target.y-trackBox.y)*a;
+        trackBox.w+=(target.w-trackBox.w)*a; trackBox.h+=(target.h-trackBox.h)*a; }
       trackMiss=0;
     } else if(++trackMiss > 20){ trackBox=null; }
   }
@@ -280,6 +399,7 @@ async function loop(){
     lastEstT = now;
     estimate();
   }
+  breathingTick(now);
 }
 
 // Render the amplified ROI buffer to the visible canvas, mirrored like the video.
@@ -321,13 +441,16 @@ function drawROIoverlay(roi){
 
 /* ----------------------- estimation core (DSP) -------------------------- */
 let lastBpm = 0;               // for spectral peak tracking
+let lastBestTile = 4;          // best ROI tile index, reused by the breathing analyzer
 function estimate(){
   const N = samples.length;
-  const t0 = samples[0].t, t1 = samples[N-1].t;
+  const tFirst = samples[0].t, tLast = samples[N-1].t;
+  const fullDur = tLast - tFirst;
+  const fps = (N-1)/Math.max(fullDur,1e-3);
+  const t0 = Math.max(tFirst, tLast - 14), t1 = tLast;   // HR uses last ~14 s only
   const dur = t1 - t0;
-  const fps = (N-1)/dur;
   $('s_fps').textContent = fps.toFixed(1)+' fps';
-  $('s_buf').textContent = dur.toFixed(1)+' s';
+  $('s_buf').textContent = fullDur.toFixed(1)+' s';
   const M = Math.floor(dur*FS);
   if(M < FS*4) return;
 
@@ -352,7 +475,9 @@ function estimate(){
   // Fuse tile spectra weighted by each tile's de Haan SNR; peak-tracked vs last HR.
   const res = fuseSpectra(tiles, lastBpm);
   // Highest-SNR tile drives the displayed waveform + HRV (cleanest region).
-  let best=tiles[0]; for(const t of tiles) if(t.sp.snrDb>best.sp.snrDb) best=t;
+  let best=tiles[0], bestIdx=0;
+  for(let i=0;i<tiles.length;i++) if(tiles[i].sp.snrDb>best.sp.snrDb){ best=tiles[i]; bestIdx=i; }
+  lastBestTile = bestIdx;
 
   const conf = res.conf;                                  // 0..1 from de Haan SNR
   const inst = res.bpm;
@@ -362,9 +487,12 @@ function estimate(){
     kalmanUpdate(inst, conf);
     if(kal.x < restingBpm && conf>0.5) restingBpm = kal.x;
     lastBpm = kal.x;
+    bio.hr = kal.x;
   }
 
   const hrv = (conf > 0.5 && inst>40 && inst<200) ? computeHRV(best.pulse, FS, best.sp.freq) : null;
+  if(hrv && hrv.ok) bio.rmssd = hrv.rmssd;
+  bio.hrConf = conf;
 
   render(best.pulse, res, inst, conf, confPct, hrv);
 }
@@ -639,9 +767,332 @@ function drawSpec(res){
   }
 }
 
+/* ====================================================================
+   BIOFEEDBACK: respiration, coherence, RSA + adaptive paced breathing.
+   Camera-robust subset (Karlen Smart Fusion RR, RSA peak-to-trough,
+   pacer-band coherence, PLV entrainment) + Lehrer/Gevirtz adaptive cadence.
+   ==================================================================== */
+function r1(x){ return Math.round(x*10)/10; }
+function ease(t){ t=Math.max(0,Math.min(1,t)); return 0.5-0.5*Math.cos(Math.PI*t); }
+
+// FFT-domain bandpass (zero bins outside [lo,hi], conjugate-symmetric).
+function bandpassFFT(sig, fs, lo, hi){
+  const n=sig.length; let nf=1; while(nf<n) nf<<=1;
+  const re=new Float64Array(nf), im=new Float64Array(nf);
+  for(let i=0;i<n;i++) re[i]=sig[i];
+  fft(re,im);
+  for(let k=0;k<=nf/2;k++){ const f=k*fs/nf;
+    if(f<lo||f>hi){ re[k]=0; im[k]=0; const m=(nf-k)%nf; re[m]=0; im[m]=0; } }
+  ifft(re,im);
+  const out=new Float64Array(n); for(let i=0;i<n;i++) out[i]=re[i]; return out;
+}
+// Linear resample of a non-uniform (times,vals) series onto a uniform grid.
+function resampleSeries(times, vals, fs, t0, t1){
+  const M=Math.max(2,Math.floor((t1-t0)*fs)); const out=new Float64Array(M); let j=0;
+  for(let i=0;i<M;i++){ const t=t0+i/fs;
+    while(j<times.length-2 && times[j+1]<t) j++;
+    const ta=times[j], tb=times[Math.min(j+1,times.length-1)], span=(tb-ta)||1e-6, f=(t-ta)/span;
+    const va=vals[j], vb=vals[Math.min(j+1,vals.length-1)];
+    out[i]=va+(vb-va)*f;
+  }
+  return out;
+}
+// Beats from the (long) best-tile pulse: sub-sample times + per-beat amplitude.
+function beatsFromPulse(pulse, fs, f0){
+  const filt=bandpassFFT(pulse, fs, Math.max(0.7,f0*0.7), Math.min(4,f0*2.5));
+  const n=filt.length, minDist=Math.max(3,Math.round(0.5*fs/f0)), sd=std(filt), th=0.1*sd;
+  const peaks=[];
+  for(let i=1;i<n-1;i++){ if(filt[i]>filt[i-1]&&filt[i]>=filt[i+1]&&filt[i]>th){
+    const last=peaks[peaks.length-1];
+    if(last!==undefined && i-last<minDist){ if(filt[i]>filt[last]) peaks[peaks.length-1]=i; } else peaks.push(i);
+  }}
+  const times=[], amps=[];
+  for(const i of peaks){
+    let pt=i; if(i>0&&i<n-1){ const a=filt[i-1],b=filt[i],c=filt[i+1]; pt=i+(a-c)/(2*(a-2*b+c)||1e-9); }
+    times.push(pt/fs);
+    let tr=filt[i]; for(let k=i;k>Math.max(0,i-minDist);k--) if(filt[k]<tr) tr=filt[k];
+    amps.push(filt[i]-tr);                            // RIAV (amplitude modulation)
+  }
+  return {times, amps};
+}
+// Respiratory rate (brpm) from one modulation series: bandpass 0.08-0.4 Hz, FFT peak.
+function rrFromSeries(series, rfs){
+  detrend(series);
+  const bp=bandpassFFT(series, rfs, 0.08, 0.4);
+  const n=bp.length; let nf=1; while(nf<n) nf<<=1; nf<<=2;
+  const re=new Float64Array(nf), im=new Float64Array(nf);
+  for(let i=0;i<n;i++) re[i]=bp[i]*(0.5-0.5*Math.cos(2*Math.PI*i/(n-1)));
+  fft(re,im);
+  const lo=Math.max(1,Math.floor(0.08*nf/rfs)), hi=Math.ceil(0.4*nf/rfs);
+  let pk=lo,pv=-1; for(let k=lo;k<=hi;k++){ const m=re[k]*re[k]+im[k]*im[k]; if(m>pv){pv=m;pk=k;} }
+  return pk*rfs/nf*60;
+}
+// Karlen Smart Fusion: mean of RR estimates if they agree within 4 brpm, else reject.
+function smartFusion(rrs){
+  const v=rrs.filter(x=>x>=4 && x<=30);
+  if(v.length<2) return null;
+  const m=v.reduce((a,b)=>a+b,0)/v.length;
+  let sd=0; for(const x of v) sd+=(x-m)**2; sd=Math.sqrt(sd/v.length);
+  return sd<4 ? m : null;
+}
+// IBI tachogram resampled to rfs, detrended.
+function buildTachogram(times, rfs, win){
+  const bt=[], ib=[];
+  for(let k=1;k<times.length;k++){ const ibi=(times[k]-times[k-1])*1000;
+    if(ibi>300&&ibi<2000){ bt.push(times[k]); ib.push(ibi); } }
+  if(bt.length<4) return null;
+  const t1=times[times.length-1], t0=t1-win;
+  const x=resampleSeries(bt, ib, rfs, t0, t1); detrend(x);
+  return {x, fs:rfs};
+}
+// Pacer-band coherence: power within +-0.015 Hz of the pace freq vs broadband.
+function coherence(tacho, paceHz){
+  const x=tacho.x, fs=tacho.fs, n=x.length;
+  let nf=1; while(nf<n) nf<<=1; nf<<=2;
+  const re=new Float64Array(nf), im=new Float64Array(nf);
+  for(let i=0;i<n;i++) re[i]=x[i]*(0.5-0.5*Math.cos(2*Math.PI*i/(n-1)));
+  fft(re,im);
+  const half=nf>>1, P=new Float64Array(half);
+  for(let k=0;k<half;k++) P[k]=re[k]*re[k]+im[k]*im[k];
+  const il=Math.max(1,Math.floor(0.02*nf/fs)), ih=Math.min(half-1,Math.ceil(0.5*nf/fs));
+  let broad=0; for(let k=il;k<=ih;k++) broad+=P[k];
+  let center;
+  if(paceHz){ center=Math.round(paceHz*nf/fs); }
+  else { let pk=il,pv=-1; const pl=Math.floor(0.04*nf/fs),ph=Math.ceil(0.26*nf/fs);
+         for(let k=pl;k<=ph;k++) if(P[k]>pv){pv=P[k];pk=k;} center=pk; }
+  const hw=Math.max(1,Math.round(0.015*nf/fs));
+  let peak=0; for(let k=center-hw;k<=center+hw;k++) if(k>=0&&k<half) peak+=P[k];
+  const ratio=peak/Math.max(broad-peak,1e-9);
+  return Math.max(0,Math.min(100, 100*(1-Math.exp(-0.7*ratio))));
+}
+// RSA amplitude: peak-to-trough of the band-passed IBI tachogram (ms).
+function rsaAmp(tacho){
+  const bp=bandpassFFT(tacho.x.slice(), tacho.fs, 0.05, 0.2);
+  let mn=Infinity,mx=-Infinity; for(const v of bp){ if(v<mn)mn=v; if(v>mx)mx=v; }
+  return mx-mn;
+}
+// Analytic-signal instantaneous phase (Hilbert via FFT).
+function hilbertPhase(x){
+  const n=x.length; let nf=1; while(nf<n) nf<<=1;
+  const re=new Float64Array(nf), im=new Float64Array(nf);
+  for(let i=0;i<n;i++) re[i]=x[i];
+  fft(re,im);
+  for(let k=1;k<nf/2;k++){ re[k]*=2; im[k]*=2; }
+  for(let k=nf/2+1;k<nf;k++){ re[k]=0; im[k]=0; }
+  ifft(re,im);
+  const ph=new Float64Array(n); for(let i=0;i<n;i++) ph[i]=Math.atan2(im[i],re[i]);
+  return ph;
+}
+// Phase-locking value between the pacing sinusoid and the RSA oscillation.
+function plvLock(tacho, paceHz){
+  const x=bandpassFFT(tacho.x.slice(), tacho.fs, 0.05, 0.2);
+  const ph=hilbertPhase(x), fs=tacho.fs, n=x.length;
+  let sr=0,si=0;
+  for(let i=0;i<n;i++){ const d=ph[i]-2*Math.PI*paceHz*(i/fs); sr+=Math.cos(d); si+=Math.sin(d); }
+  return Math.hypot(sr,si)/n;
+}
+
+// Compute all biofeedback metrics from the long best-tile window (~every 1.4 s).
+function breathingUpdate(){
+  const N=samples.length; if(N<FS*12) return;
+  const tLast=samples[N-1].t, t0=Math.max(samples[0].t, tLast-45), t1=tLast, M=Math.floor((t1-t0)*FS);
+  if(M<FS*12) return;
+  const ti=lastBestTile;
+  const R=new Float64Array(M),G=new Float64Array(M),B=new Float64Array(M);
+  let j=0;
+  for(let i=0;i<M;i++){ const t=t0+i/FS; while(j<N-2 && samples[j+1].t<t) j++;
+    const a=samples[j], b=samples[Math.min(j+1,N-1)], span=(b.t-a.t)||1e-6, f=(t-a.t)/span;
+    R[i]=a.r[ti]+(b.r[ti]-a.r[ti])*f; G[i]=a.g[ti]+(b.g[ti]-a.g[ti])*f; B[i]=a.b[ti]+(b.b[ti]-a.b[ti])*f; }
+  const f0=(bio.hr||72)/60;
+  const pulse=pos(R,G,B,FS); detrend(pulse);
+  const beats=beatsFromPulse(pulse, FS, f0);
+  if(beats.times.length<8) return;
+  const rfs=4;
+  // RR from AM (amplitude), FM (IBI), BW (raw green baseline) -> Smart Fusion
+  const amS=resampleSeries(beats.times, beats.amps, rfs, t0, t1);
+  const ibT=[], ibV=[];
+  for(let k=1;k<beats.times.length;k++){ const ibi=(beats.times[k]-beats.times[k-1])*1000;
+    if(ibi>300&&ibi<2000){ ibT.push(beats.times[k]); ibV.push(ibi); } }
+  const fmS=resampleSeries(ibT, ibV, rfs, t0, t1);
+  const bwT=[], bwV=[]; for(let i=0;i<M;i++){ bwT.push(t0+i/FS); bwV.push(G[i]); }
+  const bwS=resampleSeries(bwT, bwV, rfs, t0, t1);
+  const rr=smartFusion([rrFromSeries(amS.slice(),rfs), rrFromSeries(fmS.slice(),rfs), rrFromSeries(bwS.slice(),rfs)]);
+  if(rr) bio.rr=rr;
+  const tacho=buildTachogram(beats.times, rfs, Math.min(t1-t0,30));   // 30s -> more responsive
+  if(tacho){
+    const cyc=breath.active ? (breath.pattern.inhale+breath.pattern.hold+breath.pattern.exhale+breath.pattern.hold2) : 0;
+    const paceHz=breath.active && cyc>0 ? 1/cyc : null;
+    cohEMA += 0.18*(coherence(tacho,paceHz)-cohEMA); bio.coherence=cohEMA;
+    rsaEMA += 0.22*(rsaAmp(tacho)-rsaEMA); bio.rsa=rsaEMA;
+    if(paceHz){ plvEMA += 0.18*(plvLock(tacho,paceHz)-plvEMA); bio.plv=plvEMA; }
+  }
+  const lowHrv=Math.max(0,Math.min(1,(60-Math.max(0,Math.min(100,bio.rmssd)))/45));
+  bio.stress=Math.round(100*(0.5*lowHrv + 0.5*(1-Math.min(1,bio.coherence/100))));
+  // record session trend for the chart
+  const nowS=performance.now()/1000;
+  cohHist.push({t:nowS, coh:bio.coherence, rsa:bio.rsa, active:breath.active});
+  while(cohHist.length && nowS-cohHist[0].t > 240) cohHist.shift();   // keep last 4 min
+  if(breath.active && bio.coherence>sessionPeak) sessionPeak=bio.coherence;
+  if(breath.active) rampTarget();
+  updateBioUI(); drawChart();
+}
+
+// Lehrer/Gevirtz adaptive cadence: target bpm + biomarkers -> inhale/hold/exhale.
+function cadenceFromBpm(bpm){
+  const cycle=60/bpm;
+  const stress=Math.max(0,Math.min(100,bio.stress));
+  const lowHrv=Math.max(0,Math.min(1,(60-Math.max(0,Math.min(100,bio.rmssd||40)))/45));
+  const pushDown=Math.max(0,Math.min(1, 0.6*(stress/100)+0.4*lowHrv));
+  const exhaleRatio=1.0+1.0*pushDown;                  // 1:1 calm -> 1:2 stressed
+  let hold=0;
+  if(stress<40 && bio.coherence>=60) hold=Math.min(PACE.MAX_HOLD, Math.round(cycle*0.15));
+  const bt=cycle-hold;
+  let inhale=Math.max(PACE.MIN_PHASE, bt/(1+exhaleRatio));
+  let exhale=Math.max(PACE.MIN_PHASE, cycle-hold-inhale);
+  return {inhale:r1(inhale), hold, exhale:r1(exhale), hold2:0};
+}
+function rampTarget(){
+  if(breath.elapsedSec-breath.lastRamp < 30) return;
+  breath.lastRamp=breath.elapsedSec;
+  const floor=Math.max(PACE.MIN_BPM, Math.min(PACE.MAX_TARGET, PACE.RES_BPM));
+  const doingWell=(bio.coherence>=50)||(bio.stress<=50);
+  if(breath.targetBpm>floor && doingWell) breath.targetBpm=Math.max(floor, breath.targetBpm-PACE.RAMP_PER_MIN*0.5);
+  if(bio.rr>breath.targetBpm+2) breath.targetBpm=Math.max(floor, Math.min(bio.rr-0.5, breath.targetBpm+0.5));
+}
+
+function startBreath(){
+  if(!running){ $('breathCadence').textContent='Start the camera first.'; return; }
+  breath.active=true; breath.elapsedSec=0; breath.lastRamp=0; breath.cyclesDone=0;
+  // Start gentle: never faster than START_MAX (8 brpm), and not below ~6 to start.
+  breath.targetBpm = Math.max(6, Math.min(PACE.START_MAX, bio.rr>4 ? bio.rr : 7));
+  breath.pattern=cadenceFromBpm(breath.targetBpm);
+  breath.cycleStart=performance.now()/1000;
+  sessionPeak=0;
+  $('breathStart').textContent='■ Stop session';
+  $('breathPhase').classList.add('on');
+}
+function stopBreath(){
+  breath.active=false;
+  $('breathStart').textContent='▸ Start breathing session';
+  $('breathPhase').textContent='paused'; $('breathCount').textContent='';
+  $('breathPhase').classList.remove('on');
+  drawMandala(0.45,'Hold',bio.coherence);
+}
+function breathingTick(now){
+  if(now-lastBioT > 1.4 && samples.length>FS*12){ lastBioT=now; try{ breathingUpdate(); }catch(e){} }
+  if(breath.active) renderBreath(performance.now());
+}
+function renderBreath(nowMs){
+  const now=nowMs/1000, p=breath.pattern, cyc=p.inhale+p.hold+p.exhale+p.hold2;
+  let e=now-breath.cycleStart;
+  if(e>=cyc){ breath.cycleStart=now; breath.cyclesDone++; breath.elapsedSec+=cyc; e=0;
+    breath.pattern=cadenceFromBpm(breath.targetBpm); }
+  let phase,scale,remain;
+  if(e<p.inhale){ phase='Breathe in'; scale=0.45+0.55*ease(e/p.inhale); remain=p.inhale-e; }
+  else if(e<p.inhale+p.hold){ phase='Hold'; scale=1.0; remain=p.inhale+p.hold-e; }
+  else if(e<p.inhale+p.hold+p.exhale){ phase='Breathe out'; const t=e-p.inhale-p.hold; scale=1.0-0.55*ease(t/p.exhale); remain=p.inhale+p.hold+p.exhale-e; }
+  else { phase='Rest'; scale=0.45; remain=cyc-e; }
+  $('breathPhase').textContent=phase;
+  $('breathCount').textContent=Math.max(0,Math.ceil(remain))+'s';
+  drawMandala(scale, phase, bio.coherence);
+}
+let mandalaRot=0;
+function drawMandala(scale, phase, coh){
+  const c=$('mandala'); if(!c) return;
+  const dpr=devicePixelRatio||1, r=c.getBoundingClientRect();
+  if(c.width!==Math.round(r.width*dpr)){ c.width=r.width*dpr; c.height=r.height*dpr; }
+  const ctx=c.getContext('2d'), W=c.width, H=c.height, cx=W/2, cy=H/2;
+  ctx.clearRect(0,0,W,H);
+  const R=Math.min(W,H)*0.42*scale;
+  mandalaRot += 0.004 + 0.012*(coh/100);
+  const hue = phase==='Breathe in'?20 : phase==='Breathe out'?195 : 150;
+  const glow = 0.3+0.65*(coh/100);
+  ctx.save(); ctx.translate(cx,cy);
+  ctx.shadowBlur=28*dpr*glow; ctx.shadowColor=`hsla(${hue},85%,62%,${glow})`;
+  const layers=6, sides=6;
+  for(let L=0;L<layers;L++){
+    const rr=R*(0.32+0.68*L/(layers-1)), rot=mandalaRot*(L%2?-1:1)+L*0.32;
+    ctx.beginPath();
+    for(let s=0;s<=sides;s++){ const a=rot+s*2*Math.PI/sides; const x=Math.cos(a)*rr,y=Math.sin(a)*rr; s?ctx.lineTo(x,y):ctx.moveTo(x,y); }
+    ctx.closePath();
+    ctx.strokeStyle=`hsla(${hue},78%,${52+L*4}%,${0.22+0.5*(1-L/layers)})`;
+    ctx.lineWidth=(1.4+(1-L/layers)*1.6)*dpr; ctx.stroke();
+  }
+  const petals=12;
+  for(let pI=0;pI<petals;pI++){ const a=mandalaRot*0.5+pI*2*Math.PI/petals;
+    ctx.beginPath(); ctx.arc(Math.cos(a)*R*0.5, Math.sin(a)*R*0.5, R*0.27, 0, 7);
+    ctx.strokeStyle=`hsla(${hue},72%,66%,${0.08+0.2*(coh/100)})`; ctx.lineWidth=1*dpr; ctx.stroke(); }
+  ctx.beginPath(); ctx.arc(0,0,R*0.15,0,7);
+  ctx.fillStyle=`hsla(${hue},88%,66%,${0.55*glow+0.2})`; ctx.fill();
+  ctx.restore();
+}
+// Session trend — calm dual-area chart. Coherence on its true 0-100; RSA auto-scaled
+// to its own visible range (so it's always trackable). Smooth curves + soft gradients.
+let rsaScaleLo=0, rsaScaleHi=1;                            // slowly-adapting RSA scale (avoids jumpy rescaling)
+function drawChart(){
+  const c=$('cohChart'); if(!c) return;
+  const dpr=devicePixelRatio||1, r=c.getBoundingClientRect();
+  if(c.width!==Math.round(r.width*dpr)){ c.width=r.width*dpr; c.height=r.height*dpr; }
+  const ctx=c.getContext('2d'), W=c.width, H=c.height, pad=8*dpr;
+  ctx.clearRect(0,0,W,H);
+  ctx.strokeStyle='rgba(255,255,255,0.05)'; ctx.lineWidth=1*dpr;        // single faint baseline
+  ctx.beginPath(); ctx.moveTo(0,H-pad); ctx.lineTo(W,H-pad); ctx.stroke();
+  if(cohHist.length<2){ ctx.fillStyle='#5a6678'; ctx.font=(12*dpr)+'px -apple-system,sans-serif';
+    ctx.fillText('breathe with the shape — this will fill in…', 10*dpr, H/2); return; }
+
+  const t0=cohHist[0].t, t1=cohHist[cohHist.length-1].t, span=Math.max(1,t1-t0);
+  const top=pad, bot=H-pad, hgt=bot-top, X=t=>pad+(t-t0)/span*(W-2*pad);
+  // RSA range, eased so the axis drifts gently rather than snapping
+  let lo=Infinity,hi=-Infinity; for(const p of cohHist){ if(p.rsa<lo)lo=p.rsa; if(p.rsa>hi)hi=p.rsa; }
+  if(!isFinite(lo)){lo=0;hi=1;} if(hi-lo<2) hi=lo+2;
+  rsaScaleLo += 0.1*(lo-rsaScaleLo); rsaScaleHi += 0.1*(hi-rsaScaleHi);
+  const Ycoh=v=>bot-(Math.max(0,Math.min(100,v))/100)*hgt;
+  const Yrsa=v=>bot-Math.max(0,Math.min(1,(v-rsaScaleLo)/((rsaScaleHi-rsaScaleLo)||1)))*hgt*0.94;
+
+  // smooth quadratic path through the points for the given Y mapping
+  const build=(Yfn,key)=>{ const pts=cohHist.map(p=>[X(p.t),Yfn(p[key])]);
+    ctx.beginPath(); ctx.moveTo(pts[0][0],pts[0][1]);
+    for(let i=1;i<pts.length;i++){ const a=pts[i-1],b=pts[i]; ctx.quadraticCurveTo(a[0],a[1],(a[0]+b[0])/2,(a[1]+b[1])/2); }
+    ctx.lineTo(pts[pts.length-1][0],pts[pts.length-1][1]); return pts; };
+  const area=(Yfn,key,c0,c1)=>{ const pts=build(Yfn,key);
+    ctx.lineTo(pts[pts.length-1][0],bot); ctx.lineTo(pts[0][0],bot); ctx.closePath();
+    const g=ctx.createLinearGradient(0,top,0,bot); g.addColorStop(0,c0); g.addColorStop(1,c1); ctx.fillStyle=g; ctx.fill(); };
+  const stroke=(Yfn,key,col,w)=>{ build(Yfn,key); ctx.strokeStyle=col; ctx.lineWidth=w*dpr; ctx.lineJoin='round'; ctx.stroke(); };
+
+  // session-start marker (soft amber)
+  const s=cohHist.find(p=>p.active);
+  if(s){ const x=X(s.t); ctx.strokeStyle='rgba(255,191,73,0.45)'; ctx.setLineDash([3*dpr,4*dpr]);
+    ctx.beginPath(); ctx.moveTo(x,top); ctx.lineTo(x,bot); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle='rgba(255,191,73,0.8)'; ctx.font=(10*dpr)+'px -apple-system,sans-serif'; ctx.fillText('start', x+4*dpr, top+11*dpr); }
+
+  area(Yrsa,'rsa','rgba(127,179,255,0.26)','rgba(127,179,255,0.015)');   // RSA soft area (auto-scaled)
+  stroke(Yrsa,'rsa','rgba(127,179,255,0.85)',2);
+  area(Ycoh,'coh','rgba(54,211,153,0.22)','rgba(54,211,153,0.015)');     // coherence
+  stroke(Ycoh,'coh','#36d399',2.4);
+
+  // glowing live-value dots
+  const last=cohHist[cohHist.length-1];
+  for(const [Yfn,key,col] of [[Yrsa,'rsa','rgba(127,179,255,1)'],[Ycoh,'coh','#36d399']]){
+    ctx.beginPath(); ctx.arc(X(last.t), Yfn(last[key]), 3.4*dpr,0,7);
+    ctx.shadowBlur=10*dpr; ctx.shadowColor=col; ctx.fillStyle=col; ctx.fill(); ctx.shadowBlur=0; }
+}
+function updateBioUI(){
+  $('b_peak').textContent = breath.active ? Math.round(sessionPeak) : Math.round(bio.coherence);
+  $('b_rr').textContent  = bio.rr>0 ? bio.rr.toFixed(1)+' brpm' : '--';
+  $('b_coh').textContent = Math.round(bio.coherence);
+  $('b_cohbar').style.width = Math.round(bio.coherence)+'%';
+  $('b_rsa').textContent = bio.rsa>0 ? Math.round(bio.rsa)+' ms' : '--';
+  $('b_sync').textContent= bio.plv>0 ? Math.round(bio.plv*100)+'%' : '--';
+  $('b_stress').textContent = bio.stress+'/100';
+  if(breath.active){ const p=breath.pattern;
+    $('breathCadence').textContent = `${breath.targetBpm.toFixed(1)} brpm · in ${p.inhale}s${p.hold?' · hold '+p.hold+'s':''} · out ${p.exhale}s`; }
+}
+
 window.addEventListener('resize', ()=>{ if(samples.length>FS*4) estimate(); });
 $('start').onclick=start; $('stop').onclick=stop; $('reset').onclick=reset;
 $('gain').oninput=e=>{ $('gainval').textContent=e.target.value+'×'; };
+$('breathStart').onclick=()=>{ breath.active ? stopBreath() : startBreath(); };
+requestAnimationFrame(()=>drawMandala(0.55,'Rest',0));   // idle visual before a session
 </script>
 </body>
 </html>
