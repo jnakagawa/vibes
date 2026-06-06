@@ -97,35 +97,30 @@
     <div class="rightcol">
     <!-- live vitals / readout -->
     <div class="card">
-      <div class="bigrow">
-        <div class="heart" id="heart">♥</div>
-        <div><span class="bpm" id="bpm">--</span><small>bpm</small></div>
-        <div style="margin-left:auto;text-align:right">
-          <div class="muted" style="font-size:12px">Signal quality</div>
+      <div class="bigrow" style="margin-bottom:4px;align-items:center">
+        <div class="heart" id="heart" style="font-size:32px">♥</div>
+        <div><span class="bpm" id="bpm" style="font-size:48px">--</span><small>bpm</small></div>
+        <div style="margin-left:auto;display:flex;gap:14px;align-items:center;flex-wrap:wrap;justify-content:flex-end;font-size:13px">
           <span class="pill bad" id="qpill">acquiring…</span>
+          <span class="muted">Resting <b id="s_rest" style="color:var(--ink)">--</b></span>
+          <span class="muted">RMSSD <b id="s_rmssd" style="color:var(--ink)">—</b></span>
+          <span class="muted">SNR <b id="s_conf" style="color:var(--ink)">--</b></span>
         </div>
       </div>
       <div class="barwrap"><div class="bar" id="confbar"></div></div>
 
-      <div class="label">Pulse waveform (rPPG)</div>
-      <canvas id="wave" class="graph"></canvas>
-
-      <div class="label">Frequency spectrum</div>
-      <canvas id="spec" class="graph"></canvas>
-
-      <div style="margin-top:14px">
-        <div class="stat"><span class="muted">Instant HR</span><b id="s_inst">-- bpm</b></div>
-        <div class="stat"><span class="muted">Smoothed (Kalman)</span><b id="s_kal">-- bpm</b></div>
-        <div class="stat"><span class="muted">Resting estimate (session low)</span><b id="s_rest">-- bpm</b></div>
-        <div class="stat"><span class="muted">HRV · RMSSD</span><b id="s_rmssd">—</b></div>
-        <div class="stat"><span class="muted">HRV · SDNN</span><b id="s_sdnn">—</b></div>
-        <div class="stat"><span class="muted">Beats detected (window)</span><b id="s_beats">--</b></div>
-        <div class="stat"><span class="muted">Confidence (spectral SNR)</span><b id="s_conf">--</b></div>
-        <div class="stat"><span class="muted">Camera sample rate</span><b id="s_fps">-- fps</b></div>
-        <div class="stat"><span class="muted">Buffer filled</span><b id="s_buf">0 s</b></div>
+      <div style="display:flex;align-items:flex-end;gap:8px;margin-top:8px">
+        <canvas id="spec" class="graph" style="height:56px;flex:1"></canvas>
+        <span class="muted" style="font-size:10px;white-space:nowrap">spectrum</span>
       </div>
+      <div class="muted" style="font-size:10.5px;margin-top:6px">Not a medical device — approximate camera-PPG demo, not for diagnosis.</div>
 
-      <div class="disclaimer">⚠️ <b>Not a medical device.</b> A demo of the camera-PPG principle. Readings are approximate and easily disrupted by motion, lighting, or skin tone. Do not use for diagnosis. For real heart monitoring use a validated device.</div>
+      <!-- kept in DOM for live updates, not displayed -->
+      <div style="display:none">
+        <canvas id="wave"></canvas>
+        <span id="s_inst"></span><span id="s_kal"></span><span id="s_sdnn"></span>
+        <span id="s_beats"></span><span id="s_fps"></span><span id="s_buf"></span>
+      </div>
     </div>
 
     <!-- BREATHING COACH (below the live vitals) -->
