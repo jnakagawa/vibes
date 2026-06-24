@@ -1,0 +1,17 @@
+{
+  "name": "jp-reader",
+  "version": "1.0.0",
+  "description": "Photograph a Japanese page, highlight a phrase, get furigana + definition + translation.",
+  "type": "commonjs",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "build": "swiftc -O native/ocr.swift -o bin/mac-ocr",
+    "postinstall": "node -e \"if(process.platform==='darwin'){try{require('fs').mkdirSync('bin',{recursive:true});require('child_process').execFileSync('swiftc',['-O','native/ocr.swift','-o','bin/mac-ocr']);console.log('built bin/mac-ocr (Apple Vision OCR)')}catch(e){console.log('mac-ocr build skipped:',e.message)}}\""
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "kuromoji": "^0.1.2"
+  }
+}

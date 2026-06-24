@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f1115" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>読む · Japanese Reader</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>読む<span class="sub">Japanese Reader</span></h1>
+    <span id="engine" class="engine" title="OCR / translation engine"></span>
+  </header>
+
+  <main>
+    <!-- Capture -->
+    <section class="card capture" id="capture-card">
+      <label for="file" class="shoot">
+        <span class="cam">📷</span>
+        <span class="shoot-label">Take a photo of the page</span>
+        <span class="shoot-hint">or choose an image</span>
+      </label>
+      <input id="file" type="file" accept="image/*" capture="environment" hidden />
+      <div id="preview-wrap" class="preview-wrap" hidden>
+        <img id="preview" alt="captured page" />
+        <button id="retake" class="retake" type="button">Retake</button>
+      </div>
+      <div id="ocr-status" class="status" hidden></div>
+    </section>
+
+    <!-- Reader -->
+    <section id="reader-card" class="card reader-card" hidden>
+      <div class="reader-head">
+        <span class="hint" id="reader-hint">Drag a finger across the text — reading floats above, meaning below. Lift to dismiss.</span>
+        <button id="edit-toggle" class="ghost" type="button">Edit</button>
+      </div>
+      <div id="reader" class="reader" lang="ja"></div>
+      <textarea id="editor" class="editor" hidden spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
+    </section>
+  </main>
+
+  <!-- Floating popovers (positioned in JS, follow the selection).
+       Stacked above the phrase: translation on top, furigana just above the text. -->
+  <div id="bubble-trans" class="bubble" hidden></div>
+  <div id="bubble-furi" class="bubble" hidden></div>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
