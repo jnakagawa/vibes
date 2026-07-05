@@ -953,7 +953,7 @@
             const layer = {
                 id: Date.now() + layerIndex,
                 audioBuffer: audioBuffer,
-                volume: sliderToGain(100), // Default loud (0dB); users trim down as needed
+                volume: sliderToGain(80), // Default to 80% slider position (~0.4 gain)
                 selection: { start: 0, end: 1 }, // Normalized 0-1
                 sourceNode: null,
                 gainNode: null,
@@ -1000,7 +1000,7 @@
             //  - Fill grows from the bottom to the current gain (--gain)
             //  - Numeral sits on top
             //  - Drag vertically to adjust; transient chip shows value
-            if (layer.volumeSlider === undefined) layer.volumeSlider = 100;
+            if (layer.volumeSlider === undefined) layer.volumeSlider = 80;
             const numberEl = document.createElement('div');
             numberEl.className = 'layer-number';
             numberEl.style.setProperty('--layer-fill', layer.color);
