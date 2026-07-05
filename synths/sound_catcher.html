@@ -706,7 +706,6 @@
 
         const MAX_LAYERS = 5;
         const MAX_RECORDING_TIME = 30000; // 30 seconds
-        const SAMPLE_RATE = 44100;
         const FFT_SIZE = 4096;
         const MIN_FREQ = 40;
         const MAX_FREQ = 10000;
@@ -720,7 +719,14 @@
         let currentRecordingLayer = null;
         let mediaStream = null;
         let isInitialized = false;
-        let shouldAutoReconnect = false; // Track if we should auto-reconnect on visibility change
+
+        // Raw capture: echo cancellation & friends are voice-call processing that
+        // mangles music/ambient sound AND makes iOS duck the output volume.
+        const MIC_CONSTRAINTS = {
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false
+        };
 
         let layers = [];
         let isPlaying = false;
@@ -785,20 +791,28 @@
 
         async function init() {
             try {
-                // Initialize audio context (doesn't require user permission)
-                audioContext = new (window.AudioContext || window.webkitAudioContext)({
-                    sampleRate: SAMPLE_RATE
-                });
+                // Initialize audio context (doesn't require user permission).
+                // No forced sampleRate: let it match the hardware rate. Forcing 44.1kHz
+                // makes iOS resample (and glitch) when the mic flips the hardware to 48kHz.
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
 
-                // Master gain default chosen to compensate for the iOS audio
-                // session category flip (see unlockSilentMode below). When iOS
-                // moves from "ambient" to "playback" mode, audio routes to the
-                // media speaker at the user's media volume — much louder than
-                // ambient routing. Dropping masterGain to 0.15 (~-16dB) brings
-                // the perceived loudness back near the pre-unlock baseline.
+                // Master gain — default loud. The mic is no longer held open between
+                // recordings, so the session sits in full-volume "playback" mode and
+                // there's no category flip-flop to compensate for; per-layer faders
+                // trim from here.
                 masterGain = audioContext.createGain();
-                masterGain.gain.value = 0.22;
-                masterGain.connect(audioContext.destination);
+                masterGain.gain.value = 0.8;
+
+                // Safety limiter so stacked layers stay loud without clipping
+                const limiter = audioContext.createDynamicsCompressor();
+                limiter.threshold.value = -6;
+                limiter.knee.value = 6;
+                limiter.ratio.value = 12;
+                limiter.attack.value = 0.003;
+                limiter.release.value = 0.25;
+
+                masterGain.connect(limiter);
+                limiter.connect(audioContext.destination);
 
                 // Create convolver for reverb
                 convolver = audioContext.createConvolver();
@@ -837,6 +851,18 @@
             }
         }
 
+        // Counterpart to unlockSilentMode: a looping (even silent) <audio>
+        // element keeps the audio session alive — including in background,
+        // where it reads as "playing audio" and burns battery. Pause it
+        // whenever the app goes idle or hidden; every path back to sound
+        // (play/record tap, visibility resume while playing) re-unlocks.
+        function pauseSilentLoop() {
+            const el = document.getElementById('silent-unlock');
+            if (el && !el.paused) {
+                el.pause();
+            }
+        }
+
         // Pick the first MIME the browser actually supports. iOS Safari only
         // records audio/mp4; Chrome/Firefox prefer webm/opus. The default
         // (no MIME) chooses webm on iOS, which then fails to record.
@@ -856,19 +882,6 @@
                 }
             }
             return '';
-        }
-
-        async function requestPermissions() {
-            // Permissions are now handled by the overlay on first load
-            // This function just ensures init has happened
-            if (isInitialized) return true;
-
-            // Ensure audioContext is initialized
-            if (!audioContext) {
-                await init();
-            }
-
-            return isInitialized;
         }
 
         async function requestOrientationPermission() {
@@ -940,7 +953,7 @@
             const layer = {
                 id: Date.now() + layerIndex,
                 audioBuffer: audioBuffer,
-                volume: sliderToGain(80), // Default to 80% slider position (~0.4 gain)
+                volume: sliderToGain(100), // Default loud (0dB); users trim down as needed
                 selection: { start: 0, end: 1 }, // Normalized 0-1
                 sourceNode: null,
                 gainNode: null,
@@ -987,7 +1000,7 @@
             //  - Fill grows from the bottom to the current gain (--gain)
             //  - Numeral sits on top
             //  - Drag vertically to adjust; transient chip shows value
-            if (layer.volumeSlider === undefined) layer.volumeSlider = 80;
+            if (layer.volumeSlider === undefined) layer.volumeSlider = 100;
             const numberEl = document.createElement('div');
             numberEl.className = 'layer-number';
             numberEl.style.setProperty('--layer-fill', layer.color);
@@ -1398,8 +1411,23 @@
         // ============================================================================
 
         async function startRecording() {
-            // Permissions are handled by the overlay now
+            // Acquire the mic just for this recording. Holding a live mic stream
+            // between recordings keeps iOS in its ducked "play-and-record" output
+            // mode (quiet!) and burns battery while idle.
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                console.log('Already recording, ignoring start request');
+                return;
+            }
+
             try {
+                if (!mediaRecorder || !mediaStream) {
+                    const ok = await setupMicrophone();
+                    if (!ok) {
+                        alert('Microphone could not be enabled. Check permissions and try again.');
+                        return;
+                    }
+                }
+
                 recordingChunks = [];
                 recordingStartTime = Date.now();
                 mediaRecorder.start();
@@ -1418,6 +1446,32 @@
                 console.log('Recording started');
             } catch (error) {
                 console.error('Recording failed:', error);
+                releaseMicrophone();
+            }
+        }
+
+        // Stop mic capture and drop the recorder so iOS returns to
+        // full-volume media output and the mic hardware powers down
+        function releaseMicrophone() {
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => track.stop());
+                mediaStream = null;
+            }
+            mediaRecorder = null;
+        }
+
+        // After mic use, iOS can leave the output route ducked until the context
+        // is cycled — the same suspend/resume a tab switch triggers, which is why
+        // the app used to get louder after switching tabs. Do it deliberately.
+        async function restoreLoudOutput() {
+            if (audioContext && audioContext.state === 'running' && !document.hidden) {
+                try {
+                    await audioContext.suspend();
+                    await audioContext.resume();
+                    console.log('Output route reset after mic release');
+                } catch (error) {
+                    console.warn('Output route reset failed:', error);
+                }
             }
         }
 
@@ -1435,6 +1489,14 @@
         }
 
         async function handleRecordingComplete() {
+            // Capture the recorder's MIME before releasing it
+            const blobType = (mediaRecorder && mediaRecorder.mimeType) || recorderMime || 'audio/webm';
+
+            // Release the mic first — chunks are already delivered by onstop time,
+            // and holding the stream keeps output volume ducked on iOS
+            releaseMicrophone();
+            await restoreLoudOutput();
+
             try {
                 if (!audioContext) {
                     throw new Error('Audio context not initialized');
@@ -1443,7 +1505,6 @@
                 if (!recordingChunks.length) {
                     throw new Error('Recording was empty');
                 }
-                const blobType = (mediaRecorder && mediaRecorder.mimeType) || recorderMime || 'audio/webm';
                 const blob = new Blob(recordingChunks, { type: blobType });
                 const arrayBuffer = await blob.arrayBuffer();
                 const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
@@ -1464,11 +1525,12 @@
                     // Add new layer with audio
                     createLayer(audioBuffer);
 
-                    // Auto-start or restart playback to include new layer
-                    if (isPlaying) {
-                        stopPlayback();
-                        startPlayback();
-                    } else {
+                    // Auto-start or restart playback to include new layer —
+                    // but never start audio while backgrounded
+                    if (!document.hidden) {
+                        if (isPlaying) {
+                            stopPlayback();
+                        }
                         startPlayback();
                     }
                 }
@@ -1708,9 +1770,13 @@
         }
 
         function startPlayback() {
-            if (audioContext.state === 'suspended') {
-                audioContext.resume();
-            }
+            // Always resume: a suspend from stopPlayback/visibility handling may
+            // still be settling, so don't trust a synchronous state check here
+            audioContext.resume();
+
+            // Re-prime the silent loop (paused while idle) so the hardware
+            // silent switch keeps being bypassed during playback
+            unlockSilentMode();
 
             isPlaying = true;
             playbackStartTime = audioContext.currentTime;
@@ -1790,6 +1856,15 @@
             if (animationFrameId) {
                 cancelAnimationFrame(animationFrameId);
                 animationFrameId = null;
+            }
+
+            // Go fully idle so the audio hardware can sleep: suspend the context
+            // and pause the silent-unlock loop (unless a recording is running).
+            // startPlayback resumes unconditionally, so back-to-back stop/start
+            // — e.g. the restart in handleRecordingComplete — is safe.
+            if (audioContext && !(mediaRecorder && mediaRecorder.state === 'recording')) {
+                audioContext.suspend();
+                pauseSilentLoop();
             }
 
             console.log('Playback stopped');
@@ -2216,6 +2291,9 @@
         const ORIENTATION_LOG_INTERVAL = 1000; // Log every 1 second
 
         function handleOrientation(event) {
+            // No DOM/audio work while backgrounded
+            if (document.hidden) return;
+
             const rawBeta = event.beta || 0;   // Pitch: -180 to 180
             const rawGamma = event.gamma || 0; // Roll: -90 to 90
             const rawAlpha = event.alpha || 0; // Yaw: 0 to 360
@@ -2377,7 +2455,9 @@
             document.getElementById('nuke-btn').disabled = !hasAudio;
         }
 
-        // Helper function to setup microphone
+        // Acquire the microphone and build a recorder for one recording session.
+        // Callers release via releaseMicrophone() as soon as the recording is
+        // done — the mic is never held while idle.
         async function setupMicrophone() {
             try {
                 // Ensure audioContext is initialized first
@@ -2394,7 +2474,7 @@
                 unlockSilentMode();
 
                 // Request microphone
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: MIC_CONSTRAINTS });
                 mediaStream = stream;
 
                 // Setup media recorder with a MIME the browser actually supports
@@ -2410,14 +2490,10 @@
                 };
                 mediaRecorder.onstop = handleRecordingComplete;
 
-                // Mark that we should auto-reconnect on visibility changes
-                shouldAutoReconnect = true;
-
                 console.log('Microphone setup complete');
                 return true;
             } catch (error) {
                 console.error('Microphone setup error:', error);
-                shouldAutoReconnect = false;
                 return false;
             }
         }
@@ -2429,6 +2505,12 @@
                 const success = await setupMicrophone();
 
                 if (success) {
+                    // Permission is granted — release the mic and go idle until
+                    // the first Record tap (a valid gesture) re-acquires it.
+                    releaseMicrophone();
+                    audioContext.suspend();
+                    pauseSilentLoop();
+
                     // Update button for orientation request
                     requestMicBtn.textContent = 'Enable Tilt';
                     requestMicBtn.id = 'request-orientation-btn';
@@ -2463,15 +2545,8 @@
                 alert('Please complete the permission setup first.');
                 return;
             }
-            // Mic was torn down by a background/suspend. This click IS a
-            // user gesture, so re-acquire is allowed on iOS.
-            if (!mediaRecorder || !mediaStream) {
-                const ok = await setupMicrophone();
-                if (!ok) {
-                    alert('Microphone could not be re-enabled. Reload the page.');
-                    return;
-                }
-            }
+            // startRecording acquires the mic itself — this click IS a user
+            // gesture, so getUserMedia is allowed on iOS.
             currentRecordingLayer = null;
             startRecording();
         });
@@ -2573,13 +2648,14 @@
 
         // Pause/resume strategy:
         //   - Stop the grain scheduler so it doesn't pile up queued grains
-        //     against a frozen currentTime (caused a loud burst on return).
+        //     against a frozen currentTime (caused a loud burst on return),
+        //     and so its setTimeout chain stops waking the CPU in background.
+        //   - Stop any IN-PROGRESS recording (it'd be invalid mid-suspend);
+        //     its onstop handler releases the mic. Otherwise drop any held
+        //     mic tracks directly so the OS-level indicator clears.
+        //   - Pause the silent-unlock loop — a playing <audio> element keeps
+        //     the page's audio session alive in background, draining battery.
         //   - Suspend the audio context so playback stops cleanly.
-        //   - Stop any IN-PROGRESS recording (it'd be invalid mid-suspend).
-        //   - DO NOT tear down mediaStream/mediaRecorder. Recreating them
-        //     requires a user gesture on iOS, and visibilitychange isn't one,
-        //     so the rebuild silently fails and the app comes back broken.
-        //     iOS auto-mutes the mic for backgrounded pages anyway.
         async function pauseEverything() {
             console.log('🛑 PAUSING');
             layers.forEach(layer => {
@@ -2590,17 +2666,10 @@
             });
             if (mediaRecorder && mediaRecorder.state === 'recording') {
                 stopRecording();
+            } else {
+                releaseMicrophone();
             }
-            // Fully stop the mic tracks so the OS-level indicator drops.
-            // (track.enabled = false would only mute audio; the indicator
-            // stays because capture is technically still open.) Re-acquiring
-            // needs a user gesture on iOS, so if visibility-driven resume
-            // can't re-init, the record button handler picks it up on tap.
-            if (mediaStream) {
-                mediaStream.getTracks().forEach(t => t.stop());
-                mediaStream = null;
-            }
-            mediaRecorder = null;
+            pauseSilentLoop();
             if (audioContext && audioContext.state === 'running') {
                 try { await audioContext.suspend(); } catch (e) { console.warn(e); }
             }
@@ -2609,6 +2678,12 @@
         async function resumeEverything() {
             console.log('▶️ RESUMING (state:', audioContext?.state + ')');
             if (!audioContext) return;
+
+            // Only spin the audio machinery back up if the user was actually
+            // listening — an idle context left suspended costs no battery.
+            // The mic is NOT re-acquired here: it's per-recording now, and the
+            // next Record tap (a valid user gesture) acquires it fresh.
+            if (!isPlaying) return;
 
             // Resume the context. iOS may report 'interrupted' instead of
             // 'suspended'; resume() works for both.
@@ -2621,19 +2696,8 @@
             // which would let the silent switch mute us again).
             unlockSilentMode();
 
-            // Try to re-acquire the mic silently. iOS often blocks getUserMedia
-            // without a fresh user gesture, in which case this fails quietly
-            // and the record-btn handler will pick it up on next tap.
-            if (shouldAutoReconnect && !mediaStream && isInitialized) {
-                try {
-                    await setupMicrophone();
-                } catch (e) {
-                    console.log('Silent mic re-acquire deferred until next tap:', e);
-                }
-            }
-
             // Restart the grain scheduler from "now" for any active layers.
-            if (isPlaying && audioContext.state === 'running') {
+            if (audioContext.state === 'running') {
                 const now = audioContext.currentTime;
                 layers.forEach(layer => {
                     if (layer.gainNode && !layer.grainScheduleId) {
@@ -2656,6 +2720,13 @@
             } else {
                 await resumeEverything();
             }
+        });
+
+        // pagehide covers page close / navigation, where visibilitychange
+        // can be unreliable on iOS Safari
+        window.addEventListener('pagehide', () => {
+            console.log('👋 PAGEHIDE EVENT');
+            pauseEverything();
         });
 
         // ============================================================================
