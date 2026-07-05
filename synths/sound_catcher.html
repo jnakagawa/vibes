@@ -472,7 +472,6 @@
 
         const MAX_LAYERS = 5;
         const MAX_RECORDING_TIME = 30000; // 30 seconds
-        const SAMPLE_RATE = 44100;
         const FFT_SIZE = 4096;
         const MIN_FREQ = 40;
         const MAX_FREQ = 10000;
@@ -486,7 +485,16 @@
         let currentRecordingLayer = null;
         let mediaStream = null;
         let isInitialized = false;
-        let shouldAutoReconnect = false; // Track if we should auto-reconnect on visibility change
+        let micPermissionGranted = false; // Set once the user grants mic access via the overlay
+        let wasPlayingBeforeHide = false; // Restore playback when returning from background
+
+        // Raw capture: echo cancellation & friends are voice-call processing that
+        // mangles music/ambient sound AND makes iOS duck the output volume.
+        const MIC_CONSTRAINTS = {
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false
+        };
 
         let layers = [];
         let isPlaying = false;
@@ -539,15 +547,25 @@
 
         async function init() {
             try {
-                // Initialize audio context (doesn't require user permission)
-                audioContext = new (window.AudioContext || window.webkitAudioContext)({
-                    sampleRate: SAMPLE_RATE
-                });
+                // Initialize audio context (doesn't require user permission).
+                // No forced sampleRate: let it match the hardware rate. Forcing 44.1kHz
+                // makes iOS resample (and glitch) when the mic flips the hardware to 48kHz.
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
 
-                // Create master gain with reasonable default (0.3 = -10dB)
+                // Master gain — default loud; per-layer sliders trim from here
                 masterGain = audioContext.createGain();
-                masterGain.gain.value = 0.3;
-                masterGain.connect(audioContext.destination);
+                masterGain.gain.value = 0.8;
+
+                // Safety limiter so stacked layers stay loud without clipping
+                const limiter = audioContext.createDynamicsCompressor();
+                limiter.threshold.value = -6;
+                limiter.knee.value = 6;
+                limiter.ratio.value = 12;
+                limiter.attack.value = 0.003;
+                limiter.release.value = 0.25;
+
+                masterGain.connect(limiter);
+                limiter.connect(audioContext.destination);
 
                 // Create convolver for reverb
                 convolver = audioContext.createConvolver();
@@ -558,19 +576,6 @@
                 console.error('Failed to initialize audio:', error);
                 alert('Failed to initialize audio system. Please refresh the page.');
             }
-        }
-
-        async function requestPermissions() {
-            // Permissions are now handled by the overlay on first load
-            // This function just ensures init has happened
-            if (isInitialized) return true;
-
-            // Ensure audioContext is initialized
-            if (!audioContext) {
-                await init();
-            }
-
-            return isInitialized;
         }
 
         async function requestOrientationPermission() {
@@ -642,7 +647,7 @@
             const layer = {
                 id: Date.now() + layerIndex,
                 audioBuffer: audioBuffer,
-                volume: sliderToGain(80), // Default to 80% slider position (~0.4 gain)
+                volume: sliderToGain(100), // Default loud (0dB); users trim down as needed
                 selection: { start: 0, end: 1 }, // Normalized 0-1
                 sourceNode: null,
                 gainNode: null,
@@ -745,7 +750,7 @@
             volumeSlider.type = 'range';
             volumeSlider.min = '0';
             volumeSlider.max = '100';
-            volumeSlider.value = '80'; // Default to 80% (roughly -6dB)
+            volumeSlider.value = '100'; // Default loud (0dB); users trim down as needed
             volumeSlider.className = 'volume-slider';
             volumeSlider.addEventListener('input', (e) => {
                 const sliderValue = parseInt(e.target.value);
@@ -945,8 +950,29 @@
         // ============================================================================
 
         async function startRecording() {
-            // Permissions are handled by the overlay now
+            // Permission was granted via the overlay; acquire the mic just for this
+            // recording. Holding a live mic stream keeps iOS in its ducked
+            // "play-and-record" output mode (quiet!) and burns battery while idle.
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                console.log('Already recording, ignoring start request');
+                return;
+            }
+
             try {
+                if (!audioContext) {
+                    await init();
+                }
+
+                mediaStream = await navigator.mediaDevices.getUserMedia({ audio: MIC_CONSTRAINTS });
+
+                mediaRecorder = new MediaRecorder(mediaStream);
+                mediaRecorder.ondataavailable = (e) => {
+                    if (e.data.size > 0) {
+                        recordingChunks.push(e.data);
+                    }
+                };
+                mediaRecorder.onstop = handleRecordingComplete;
+
                 recordingChunks = [];
                 recordingStartTime = Date.now();
                 mediaRecorder.start();
@@ -965,6 +991,33 @@
                 console.log('Recording started');
             } catch (error) {
                 console.error('Recording failed:', error);
+                releaseMicrophone();
+                alert('Could not access the microphone. Please check permissions and try again.');
+            }
+        }
+
+        // Stop mic capture and drop the recorder so iOS returns to
+        // full-volume media output and the mic hardware powers down
+        function releaseMicrophone() {
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => track.stop());
+                mediaStream = null;
+            }
+            mediaRecorder = null;
+        }
+
+        // After mic use, iOS can leave the output route ducked until the context
+        // is cycled — the same suspend/resume a tab switch triggers, which is why
+        // the app used to get louder after switching tabs. Do it deliberately.
+        async function restoreLoudOutput() {
+            if (audioContext && audioContext.state === 'running' && !document.hidden) {
+                try {
+                    await audioContext.suspend();
+                    await audioContext.resume();
+                    console.log('Output route reset after mic release');
+                } catch (error) {
+                    console.warn('Output route reset failed:', error);
+                }
             }
         }
 
@@ -982,6 +1035,11 @@
         }
 
         async function handleRecordingComplete() {
+            // Release the mic first — chunks are already delivered by onstop time,
+            // and holding the stream keeps output volume ducked on iOS
+            releaseMicrophone();
+            await restoreLoudOutput();
+
             try {
                 if (!audioContext) {
                     throw new Error('Audio context not initialized');
@@ -1007,11 +1065,12 @@
                     // Add new layer with audio
                     createLayer(audioBuffer);
 
-                    // Auto-start or restart playback to include new layer
-                    if (isPlaying) {
-                        stopPlayback();
-                        startPlayback();
-                    } else {
+                    // Auto-start or restart playback to include new layer —
+                    // but never start audio while backgrounded
+                    if (!document.hidden) {
+                        if (isPlaying) {
+                            stopPlayback();
+                        }
                         startPlayback();
                     }
                 }
@@ -1324,9 +1383,9 @@
         }
 
         function startPlayback() {
-            if (audioContext.state === 'suspended') {
-                audioContext.resume();
-            }
+            // Always resume: a suspend from stopPlayback/visibility handling may still
+            // be settling, so don't trust a synchronous state check here
+            audioContext.resume();
 
             isPlaying = true;
             playbackStartTime = audioContext.currentTime;
@@ -1399,6 +1458,12 @@
             if (animationFrameId) {
                 cancelAnimationFrame(animationFrameId);
                 animationFrameId = null;
+            }
+
+            // Suspend the context while idle so the audio hardware can sleep.
+            // startPlayback resumes unconditionally, so back-to-back stop/start is safe.
+            if (audioContext && !(mediaRecorder && mediaRecorder.state === 'recording')) {
+                audioContext.suspend();
             }
 
             console.log('Playback stopped');
@@ -1777,6 +1842,9 @@
         const ORIENTATION_LOG_INTERVAL = 1000; // Log every 1 second
 
         function handleOrientation(event) {
+            // No DOM/audio work while backgrounded
+            if (document.hidden) return;
+
             const rawBeta = event.beta || 0;   // Pitch: -180 to 180
             const rawGamma = event.gamma || 0; // Roll: -90 to 90
             const rawAlpha = event.alpha || 0; // Yaw: 0 to 360
@@ -1946,35 +2014,24 @@
             document.getElementById('nuke-btn').disabled = !hasAudio;
         }
 
-        // Helper function to setup microphone
-        async function setupMicrophone() {
+        // Prompt for mic permission, then release the stream immediately.
+        // The mic is re-acquired per recording so it's never held while idle.
+        async function primeMicrophonePermission() {
             try {
                 // Ensure audioContext is initialized first
                 if (!audioContext) {
                     await init();
                 }
 
-                // Request microphone
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                mediaStream = stream;
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: MIC_CONSTRAINTS });
+                stream.getTracks().forEach(track => track.stop());
 
-                // Setup media recorder
-                mediaRecorder = new MediaRecorder(mediaStream);
-                mediaRecorder.ondataavailable = (e) => {
-                    if (e.data.size > 0) {
-                        recordingChunks.push(e.data);
-                    }
-                };
-                mediaRecorder.onstop = handleRecordingComplete;
-
-                // Mark that we should auto-reconnect on visibility changes
-                shouldAutoReconnect = true;
-
-                console.log('Microphone setup complete');
+                micPermissionGranted = true;
+                console.log('Microphone permission granted');
                 return true;
             } catch (error) {
-                console.error('Microphone setup error:', error);
-                shouldAutoReconnect = false;
+                console.error('Microphone permission error:', error);
+                micPermissionGranted = false;
                 return false;
             }
         }
@@ -1983,7 +2040,7 @@
         const requestMicBtn = document.getElementById('request-mic-btn');
         if (requestMicBtn) {
             requestMicBtn.addEventListener('click', async () => {
-                const success = await setupMicrophone();
+                const success = await primeMicrophonePermission();
 
                 if (success) {
                     // Update button for orientation request
@@ -2015,7 +2072,7 @@
                 stopRecording();
             } else {
                 // Check if initialized
-                if (!isInitialized || !mediaRecorder) {
+                if (!isInitialized || !micPermissionGranted) {
                     alert('Please complete the permission setup first.');
                     return;
                 }
@@ -2085,7 +2142,7 @@
         }
 
         // ============================================================================
-        // PAGE VISIBILITY - Stop microphone when app is in background
+        // PAGE VISIBILITY - Release the mic and stop all audio work in background
         // ============================================================================
 
         // Helper to pause everything
@@ -2095,32 +2152,27 @@
             console.log('  MediaStream active:', !!mediaStream);
             console.log('  MediaRecorder state:', mediaRecorder?.state);
 
-            // Suspend audio context immediately (pauses all playback)
+            // Stop playback properly: clears every grain-scheduler timeout and the
+            // animation frame, so no timers keep waking the CPU while backgrounded
+            if (isPlaying) {
+                wasPlayingBeforeHide = true;
+                stopPlayback();
+                console.log('  ✓ Playback stopped (will restore on return)');
+            }
+
+            // Finish any active recording (its onstop handler releases the mic);
+            // otherwise release the mic directly so it's never held in background
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                console.log('  Stopping active recording...');
+                stopRecording();
+            } else {
+                releaseMicrophone();
+            }
+
+            // Suspend audio context so the audio hardware can sleep
             if (audioContext) {
                 await audioContext.suspend();
                 console.log('  ✓ Audio context suspended, new state:', audioContext.state);
-            }
-
-            // Stop media stream first to release microphone
-            if (mediaStream) {
-                console.log('  Stopping media stream tracks...');
-                mediaStream.getTracks().forEach(track => {
-                    console.log(`    Stopping track: ${track.kind}, current state: ${track.readyState}`);
-                    track.stop();
-                    console.log(`    Track stopped, new state: ${track.readyState}`);
-                });
-                mediaStream = null;
-                console.log('  ✓ Media stream nulled');
-            }
-
-            // Stop any active recording after stopping stream
-            if (mediaRecorder) {
-                if (mediaRecorder.state === 'recording') {
-                    console.log('  Stopping active recording...');
-                    stopRecording();
-                }
-                mediaRecorder = null;
-                console.log('  ✓ Media recorder nulled');
             }
         }
 
@@ -2129,16 +2181,14 @@
             console.log('▶️ RESUMING EVERYTHING');
             console.log('  AudioContext state:', audioContext?.state);
 
-            // Resume audio context (continues playback)
-            if (audioContext && audioContext.state === 'suspended') {
-                await audioContext.resume();
-                console.log('  ✓ Audio context resumed, new state:', audioContext.state);
-            }
-
-            // Auto-reconnect microphone if user had previously granted access
-            if (shouldAutoReconnect && !mediaStream && isInitialized) {
-                console.log('  Auto-reconnecting microphone...');
-                await setupMicrophone();
+            // Restart playback if the user was listening when we went to background.
+            // Otherwise stay suspended — an idle context costs battery for nothing.
+            if (wasPlayingBeforeHide) {
+                wasPlayingBeforeHide = false;
+                if (!isPlaying && layers.some(l => l.audioBuffer)) {
+                    startPlayback();
+                    console.log('  ✓ Playback restored');
+                }
             }
         }
 
@@ -2162,6 +2212,16 @@
         window.addEventListener('focus', async () => {
             console.log('🎯 FOCUS EVENT - window gained focus');
             await resumeEverything();
+        });
+
+        // pagehide covers page close / navigation, where visibilitychange
+        // can be unreliable on iOS Safari
+        window.addEventListener('pagehide', () => {
+            console.log('👋 PAGEHIDE EVENT');
+            releaseMicrophone();
+            if (audioContext) {
+                audioContext.suspend();
+            }
         });
 
         // ============================================================================
