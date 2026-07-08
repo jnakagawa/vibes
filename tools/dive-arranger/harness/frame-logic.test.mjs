@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import {
   deepCopyModel,
   moveBlock,
+  removeBlock,
   fillRowSpans,
   pickDropTarget,
   COLS,
@@ -141,6 +142,44 @@ test("moveBlock never mutates its input on the new paths", () => {
   moveBlock(m, 0, 1, { kind: "cell", rowIdx: 1, cellIdx: 0 });
   moveBlock(m, 0, 1, { kind: "cell", rowIdx: 0, cellIdx: 0 });
   assert.equal(JSON.stringify(m), before);
+});
+
+test("removeBlock: drops the cell and re-flows the survivors to fill 12", () => {
+  const m = {
+    rows: [
+      { cells: [{ block: 0, span: 6, heightPx: null }, { block: 1, span: 6, heightPx: 300 }] },
+      { cells: [{ block: 2, span: 12, heightPx: null }] },
+    ],
+  };
+  const before = JSON.stringify(m);
+  const out = removeBlock(m, 0, 0);
+  assert.equal(JSON.stringify(m), before); // input untouched
+  assert.deepEqual(out.rows.map((r) => r.cells.map((c) => c.block)), [[1], [2]]);
+  assert.equal(out.rows[0].cells[0].span, COLS); // survivor fills the row
+  assert.equal(out.rows[0].cells[0].heightPx, 300); // …and keeps its height
+  // 4/4/4 → survivors re-flow proportionally to 6/6
+  const m3 = { rows: [{ cells: [{ block: 0, span: 4 }, { block: 1, span: 4 }, { block: 2, span: 4 }] }, { cells: [{ block: 3, span: 12 }] }] };
+  assert.deepEqual(removeBlock(m3, 0, 1).rows[0].cells.map((c) => c.span), [6, 6]);
+});
+
+test("removeBlock: removing a solo cell drops the whole row", () => {
+  const m = model3();
+  const out = removeBlock(m, 1, 0);
+  assert.deepEqual(out.rows.map((r) => r.cells.map((c) => c.block)), [[0], [2]]);
+  assert.equal(out.rows.length, 2);
+});
+
+test("removeBlock: deleting the last remaining tile is a no-op returning the ORIGINAL model", () => {
+  const m = { rows: [{ cells: [{ block: 0, span: 12, heightPx: null }] }] };
+  const out = removeBlock(m, 0, 0);
+  assert.equal(out, m); // same reference — callers use identity to detect the no-op
+  assert.deepEqual(m.rows.map((r) => r.cells.map((c) => c.block)), [[0]]); // untouched
+});
+
+test("removeBlock: out-of-range indices are a no-op returning the ORIGINAL model", () => {
+  const m = model3();
+  assert.equal(removeBlock(m, 5, 0), m);
+  assert.equal(removeBlock(m, 0, 9), m);
 });
 
 test("fillRowSpans: proportional integer re-flow to exactly 12", () => {

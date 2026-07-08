@@ -19,7 +19,7 @@
 // only our own parent may drive a session) and carry a per-session nonce.
 import { validateLayout, GRID_COLS, GRID_GAP } from "../engine/validate.mjs";
 import { classifyRowContainer } from "../engine/rowcontainer.mjs";
-import { deepCopyModel, moveBlock, pickDropTarget, COLS } from "./layout-model.mjs";
+import { deepCopyModel, moveBlock, removeBlock, pickDropTarget, COLS } from "./layout-model.mjs";
 import { alignRowsToChildren } from "./frame-map.mjs";
 
 const BRIDGE = "dive-arranger-bridge";
@@ -114,11 +114,22 @@ function onModel(d) {
     const remap = new Map(d.idMap);
     const remapMap = (m) => {
       const out = new Map();
-      for (const [k, v] of m) out.set(remap.has(k) ? remap.get(k) : k, v);
+      for (const [k, v] of m) {
+        // A block deleted this session is absent from the submitted flat order,
+        // so it has no idMap entry — drop its stale handle instead of letting
+        // the old id collide with a kept block's new id.
+        if (session.deleted.has(k) && !remap.has(k)) continue;
+        out.set(remap.has(k) ? remap.get(k) : k, v);
+      }
       return out;
     };
     session.tiles = remapMap(session.tiles);
     session.dynEls = remapMap(session.dynEls);
+    // Committed deletes are now IN the source: the element keeps its inline
+    // display:none (nothing re-places it), but it is no longer session state.
+    session.deleted = new Set(
+      [...session.deleted].filter((k) => remap.has(k)).map((k) => remap.get(k)),
+    );
   }
   if (Array.isArray(d.blocks)) session.blocks = d.blocks;
   session.model = deepCopyModel(d.model);
@@ -421,6 +432,7 @@ function startSession(d) {
     tiles,
     dynEls,
     inert,
+    deleted: new Set(), // blockIds deleted this session (preview-only; Cancel restores)
     baseStyle,
     undo,
     chrome: [],
@@ -531,6 +543,18 @@ function layoutFrame() {
     }
     if (any) r += 1;
   }
+  // Deleted tiles are absent from the model, so the loop above never places
+  // (or un-hides) them — keep them hidden across EVERY re-layout. If an
+  // authoritative MODEL push brought a block back (the top rejected the
+  // delete), un-delete it: the loop above has already restored its placement.
+  for (const id of [...s.deleted]) {
+    if (findCell(s.model, id)) {
+      s.deleted.delete(id);
+      continue;
+    }
+    const t = s.tiles.get(id);
+    if (t) t.el.style.display = "none";
+  }
 }
 
 // ── Chrome (grips, resize handles, badges) over the real tiles ────────
@@ -550,6 +574,14 @@ const CHROME_CSS = `
     font: 600 12px/1.4 system-ui, sans-serif; user-select: none;
     box-shadow: 0 1px 6px rgba(0,0,0,.35);
   }
+  .del {
+    position: fixed; pointer-events: auto; cursor: pointer; touch-action: none;
+    background: #26262c; color: #ff8f82; border: 1px solid #4a3437;
+    border-radius: 6px; padding: 1px 7px;
+    font: 600 12px/1.4 system-ui, sans-serif; user-select: none;
+    box-shadow: 0 1px 6px rgba(0,0,0,.35);
+  }
+  .del:hover { background: #7a2430; color: #fff; border-color: #7a2430; }
   .meta {
     position: fixed; pointer-events: none;
     background: rgba(23,23,27,.85); color: #cfe3cf; border-radius: 6px;
@@ -619,12 +651,19 @@ function rebuildChrome() {
   s.chrome = [];
 
   for (const [blockId, t] of s.tiles) {
+    if (s.deleted.has(blockId)) continue; // deleted this session — no chrome
     const box = document.createElement("div");
     box.className = "box";
     const grip = document.createElement("div");
     grip.className = "grip";
     grip.textContent = "⠿";
     grip.title = `${labelOf(blockId)} — drag to move`;
+    // ✕ only on draggable (static) tiles — pinned dynamics and inert blocks
+    // never get one: deleting conditional/loop output would change dive logic.
+    const del = document.createElement("div");
+    del.className = "del";
+    del.textContent = "✕";
+    del.title = `${labelOf(blockId)} — delete tile (preview only; Submit saves, Close restores)`;
     const meta = document.createElement("div");
     meta.className = "meta";
     const east = document.createElement("div");
@@ -633,8 +672,12 @@ function rebuildChrome() {
     const south = document.createElement("div");
     south.className = "rz-s";
     south.title = "drag to set height · double-click to reset";
-    s.layer.append(box, grip, meta, east, south);
+    s.layer.append(box, grip, del, meta, east, south);
     grip.addEventListener("pointerdown", (ev) => startDrag(ev, blockId));
+    del.addEventListener("click", (ev) => {
+      ev.preventDefault?.();
+      deleteTile(blockId);
+    });
     east.addEventListener("pointerdown", (ev) => startResizeW(ev, blockId));
     south.addEventListener("pointerdown", (ev) => startResizeH(ev, blockId));
     south.addEventListener("dblclick", () => {
@@ -644,7 +687,7 @@ function rebuildChrome() {
       layoutFrame();
       propose();
     });
-    s.chrome.push({ kind: "tile", blockId, el: t.el, box, grip, meta, east, south });
+    s.chrome.push({ kind: "tile", blockId, el: t.el, box, grip, del, meta, east, south });
   }
 
   for (const [blockId, els] of s.dynEls) {
@@ -689,7 +732,7 @@ function updateChrome() {
   for (const c of s.chrome) {
     const rect = c.kind === "tile" ? unionRect([c.el]) : unionRect(c.els);
     const parts =
-      c.kind === "tile" ? [c.box, c.grip, c.meta, c.east, c.south] : [c.box, c.badge];
+      c.kind === "tile" ? [c.box, c.grip, c.del, c.meta, c.east, c.south] : [c.box, c.badge];
     if (!rect) {
       for (const p of parts) p.style.display = "none";
       continue;
@@ -703,6 +746,7 @@ function updateChrome() {
       continue;
     }
     place(c.grip, { left: rect.left + 6, top: rect.top + 6 });
+    place(c.del, { left: rect.left + 34, top: rect.top + 6 });
     const loc = findCell(s.model, c.blockId);
     if (loc) {
       const cell = s.model.rows[loc.rowIdx].cells[loc.cellIdx];
@@ -846,6 +890,27 @@ function startDrag(ev, blockId) {
   };
   window.addEventListener("pointermove", onMove, true);
   window.addEventListener("pointerup", onUp, true);
+}
+
+// ── Delete (preview-only: Submit commits, Cancel restores) ───────────
+
+function deleteTile(blockId) {
+  const s = session;
+  if (!s || s.drag) return;
+  const loc = findCell(s.model, blockId);
+  if (!loc) return;
+  const next = removeBlock(s.model, loc.rowIdx, loc.cellIdx);
+  // removeBlock returns the SAME object when the delete is impossible (the
+  // last remaining tile — an empty layout is invalid) → refuse quietly.
+  if (next === s.model) return;
+  if (!isValid(next)) return; // belt & braces: the engine oracle gates deletes too
+  s.model = next;
+  s.deleted.add(blockId);
+  const t = s.tiles.get(blockId);
+  if (t) t.el.style.display = "none"; // style-only hide; baseStyle/undo restore it
+  layoutFrame();
+  rebuildChrome();
+  propose();
 }
 
 // ── Resize ────────────────────────────────────────────────────────────

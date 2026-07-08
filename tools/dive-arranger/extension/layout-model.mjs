@@ -78,6 +78,26 @@ export function moveBlock(model, fromRow, fromCell, target) {
 }
 
 /**
+ * Delete the cell at (rowIdx, cellIdx) and return a NEW model (input
+ * untouched). The row's surviving cells re-flow proportionally to fill the 12
+ * columns (same re-flow as a cell LEAVING a row); a row left empty is
+ * dropped. Deleting the last remaining tile would produce an empty layout —
+ * which validateLayout rejects — so that case (and any out-of-range index)
+ * returns the ORIGINAL model unchanged; callers detect the no-op by identity.
+ */
+export function removeBlock(model, rowIdx, cellIdx) {
+  const row = model.rows[rowIdx];
+  if (!row || !row.cells[cellIdx]) return model;
+  if (model.rows.length === 1 && row.cells.length === 1) return model; // last tile
+  const m = deepCopyModel(model);
+  const src = m.rows[rowIdx];
+  src.cells.splice(cellIdx, 1);
+  if (src.cells.length > 0) fillRowSpans(src.cells);
+  m.rows = m.rows.filter((r) => r.cells.length > 0);
+  return m;
+}
+
+/**
  * Pure drop-target picker for the drag UX (no DOM — the caller snapshots
  * geometry). Given the pointer position and per-row geometry, decide what
  * dropping here would mean and what indicator to draw. Every candidate is

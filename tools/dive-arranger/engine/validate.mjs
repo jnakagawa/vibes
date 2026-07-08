@@ -59,8 +59,18 @@ export function validateLayout(blocks, layout) {
     }
   }
 
+  // A STATIC block may be absent from the layout — that is a delete (apply
+  // drops its node from the output). A DYNAMIC block must always be present:
+  // deleting conditional/loop output would change the dive's logic, so
+  // dynamics stay pinned. (The segment rule below is unaffected by deleted
+  // statics: segments are numbered by the dynamics, which all remain, in
+  // order, so `newSeg` still advances in lockstep with `segmentOf`.)
   for (const blk of blocks) {
-    if (!seen.has(blk.id)) throw new LayoutError(`block ${blk.id} (${blk.label}) is missing from the layout`);
+    if (!seen.has(blk.id) && blk.kind === "dynamic") {
+      throw new LayoutError(
+        `block ${blk.id} (${blk.label}) is dynamic (pinned) and missing from the layout — dynamic blocks cannot be deleted`,
+      );
+    }
   }
 
   // Segment rule: dynamic (pinned) blocks are immovable separators. Their

@@ -640,6 +640,221 @@ test("frame session: decoy grid/flex siblings don't inflate the wrapper count", 
   dispatch(topMsg({ type: "ARRANGE_CANCEL", nonce: "n7" }));
 });
 
+// ── Delete (✕) ────────────────────────────────────────────────────────
+
+const delFor = (label) => findChrome("del", label)[0];
+const click = (el) => fire(el, "click", pointer(0, 0));
+
+test("frame session: ✕ deletes a tile — PROPOSE shrinks, row reflows, element hidden; Cancel restores", async () => {
+  const t0 = tile("Alpha KPIs");
+  const t1 = tile("Beta chart");
+  const t2 = tile("Gamma table");
+  t0._attrs.style = "color: blue"; // must survive delete + Cancel
+  const container = makeEl("div");
+  container.append(t0, t1, t2);
+  const root = makeEl("div");
+  root.appendChild(container);
+  globalThis.document = makeDocument([root]);
+  drain();
+
+  const blocks = [
+    { id: 0, kind: "static", label: "Alpha", name: "div", texts: ["Alpha KPIs"] },
+    { id: 1, kind: "static", label: "Beta", name: "div", texts: ["Beta chart"] },
+    { id: 2, kind: "static", label: "Gamma", name: "div", texts: ["Gamma table"] },
+  ];
+  dispatch(topMsg({ type: "ARRANGE_INIT", nonce: "d1", blocks, model: bareModel(3) }));
+  assert.equal(sent.find((m) => m.type === "MAPPED")?.ok, true);
+
+  // top pushes a model pairing Alpha ∥ Beta 6/6, Gamma below
+  dispatch(
+    topMsg({
+      type: "MODEL",
+      nonce: "d1",
+      model: {
+        rows: [
+          { cells: [{ block: 0, span: 6, heightPx: null }, { block: 1, span: 6, heightPx: null }] },
+          { cells: [{ block: 2, span: 12, heightPx: null }] },
+        ],
+      },
+    }),
+  );
+  assert.equal(t0.style.gridColumn, "1 / span 6");
+
+  // every draggable tile has a ✕; click Alpha's
+  assert.equal(findChrome("del").length, 3);
+  drain();
+  click(delFor("Alpha"));
+
+  // PROPOSE has one fewer block and the surviving sibling re-flowed to 12
+  const proposed = sent.find((m) => m.type === "PROPOSE");
+  assert.ok(proposed, "delete posted a PROPOSE");
+  assert.deepEqual(rowsOf(proposed.model), [[1], [2]]);
+  assert.deepEqual(spansOf(proposed.model), [[12], [12]]);
+
+  // the element is hidden (preview-only), the DOM order untouched
+  assert.equal(t0.style.display, "none");
+  assert.deepEqual(container.children, [t0, t1, t2]);
+  // chrome for the deleted tile is gone; the survivors keep theirs
+  assert.equal(gripFor("Alpha"), undefined);
+  assert.equal(delFor("Alpha"), undefined);
+  assert.ok(gripFor("Beta"));
+  assert.ok(delFor("Gamma"));
+
+  // top validates (subset-tolerant) and pushes the authoritative model back —
+  // the deleted tile must STAY hidden across the re-layout
+  dispatch(topMsg({ type: "MODEL", nonce: "d1", model: proposed.model }));
+  assert.equal(t0.style.display, "none");
+  assert.equal(t1.style.gridRow, "1");
+  assert.equal(t1.style.gridColumn, "1 / span 12");
+  assert.equal(t2.style.gridRow, "2");
+
+  // Cancel restores the element and its original inline style
+  drain();
+  dispatch(topMsg({ type: "ARRANGE_CANCEL", nonce: "d1" }));
+  assert.deepEqual(sent.map((m) => m.type), ["EXITED"]);
+  assert.equal(t0.getAttribute("style"), "color: blue");
+  assert.notEqual(t0.style.display, "none");
+  assert.equal(container.getAttribute("style"), null);
+  assert.deepEqual(container.children, [t0, t1, t2]);
+});
+
+test("frame session: no ✕ chrome for pinned (dynamic) or inert tiles", async () => {
+  // pinned: [static, dynamic(renders 2 nodes), static]
+  const t0 = tile("Alpha KPIs");
+  const d1 = tile("dyn item one");
+  const d2 = tile("dyn item two");
+  const t2 = tile("Gamma table");
+  const container = makeEl("div");
+  container.append(t0, d1, d2, t2);
+  globalThis.document = makeDocument([container]);
+  drain();
+  const blocks = [
+    { id: 0, kind: "static", label: "Alpha", name: "div", texts: ["Alpha KPIs"] },
+    { id: 1, kind: "dynamic", label: "{conditional} #1", name: "?", texts: [] },
+    { id: 2, kind: "static", label: "Gamma", name: "div", texts: ["Gamma table"] },
+  ];
+  dispatch(topMsg({ type: "ARRANGE_INIT", nonce: "d2", blocks, model: bareModel(3) }));
+  assert.equal(sent.find((m) => m.type === "MAPPED")?.ok, true);
+  assert.equal(findChrome("del").length, 2); // the two statics only
+  assert.equal(findChrome("del", "{conditional}").length, 0);
+  dispatch(topMsg({ type: "ARRANGE_CANCEL", nonce: "d2" }));
+
+  // inert: an unanchored static BETWEEN two dynamics gets no chrome at all
+  const c0 = tile("one");
+  const c1 = tile("two");
+  const c2 = tile("three");
+  const container2 = makeEl("div");
+  container2.append(c0, c1, c2);
+  globalThis.document = makeDocument([container2]);
+  drain();
+  const blocks2 = [
+    { id: 0, kind: "dynamic", label: "{conditional} #0", name: "?", texts: [] },
+    { id: 1, kind: "static", label: "Inert", name: "div", texts: [] },
+    { id: 2, kind: "dynamic", label: "{conditional} #2", name: "?", texts: [] },
+  ];
+  dispatch(topMsg({ type: "ARRANGE_INIT", nonce: "d3", blocks: blocks2, model: bareModel(3) }));
+  const mapped = sent.find((m) => m.type === "MAPPED");
+  assert.equal(mapped?.ok, true);
+  assert.equal(mapped.tiles, 0);
+  assert.deepEqual(mapped.inert, ["Inert"]);
+  assert.equal(findChrome("del").length, 0);
+  assert.equal(findChrome("grip").length, 0);
+  dispatch(topMsg({ type: "ARRANGE_CANCEL", nonce: "d3" }));
+});
+
+test("frame session: post-Submit remap after a delete — stale handle dropped, ids stay coherent", async () => {
+  const t0 = tile("Alpha KPIs");
+  const t1 = tile("Beta chart");
+  const t2 = tile("Gamma table");
+  const container = makeEl("div");
+  container.append(t0, t1, t2);
+  globalThis.document = makeDocument([container]);
+  drain();
+
+  const blocks = [
+    { id: 0, kind: "static", label: "Alpha", name: "div", texts: ["Alpha KPIs"] },
+    { id: 1, kind: "static", label: "Beta", name: "div", texts: ["Beta chart"] },
+    { id: 2, kind: "static", label: "Gamma", name: "div", texts: ["Gamma table"] },
+  ];
+  dispatch(topMsg({ type: "ARRANGE_INIT", nonce: "d5", blocks, model: bareModel(3) }));
+  assert.equal(sent.find((m) => m.type === "MAPPED")?.ok, true);
+
+  // delete Beta (id 1), top accepts
+  drain();
+  click(delFor("Beta"));
+  const proposed = sent.find((m) => m.type === "PROPOSE");
+  assert.deepEqual(rowsOf(proposed.model), [[0], [2]]);
+  dispatch(topMsg({ type: "MODEL", nonce: "d5", model: proposed.model }));
+  assert.equal(t1.style.display, "none");
+
+  // Submit re-discovers from the saved source: ids compact to 0..n-1, so
+  // Gamma's NEW id (1) collides with deleted Beta's OLD id (1). insitu sends
+  // the authoritative model + new blocks + idMap (old→new, deleted id absent).
+  const newBlocks = [
+    { id: 0, kind: "static", label: "Alpha", name: "div", texts: ["Alpha KPIs"] },
+    { id: 1, kind: "static", label: "Gamma", name: "div", texts: ["Gamma table"] },
+  ];
+  dispatch(
+    topMsg({
+      type: "MODEL",
+      nonce: "d5",
+      model: { rows: [{ cells: [{ block: 0, span: 12, heightPx: null }] }, { cells: [{ block: 1, span: 12, heightPx: null }] }] },
+      blocks: newBlocks,
+      idMap: [[0, 0], [2, 1]],
+    }),
+  );
+
+  // Gamma's element follows its new id; the committed delete stays hidden
+  assert.equal(t0.style.gridRow, "1");
+  assert.equal(t2.style.gridRow, "2");
+  assert.equal(t1.style.display, "none");
+  // chrome is coherent: exactly the two kept tiles, correctly labelled
+  assert.equal(findChrome("del").length, 2);
+  assert.equal(findChrome("grip", "Gamma").length, 1);
+  assert.equal(findChrome("grip", "Beta").length, 0);
+
+  // Cancel still restores the committed-deleted element's inline style
+  drain();
+  dispatch(topMsg({ type: "ARRANGE_CANCEL", nonce: "d5" }));
+  assert.deepEqual(sent.map((m) => m.type), ["EXITED"]);
+  assert.equal(t1.getAttribute("style"), null);
+  assert.notEqual(t1.style.display, "none");
+});
+
+test("frame session: deleting the last remaining tile is a no-op", async () => {
+  const t0 = tile("Alpha KPIs");
+  const t1 = tile("Beta chart");
+  const container = makeEl("div");
+  container.append(t0, t1);
+  globalThis.document = makeDocument([container]);
+  drain();
+  const blocks = [
+    { id: 0, kind: "static", label: "Alpha", name: "div", texts: ["Alpha KPIs"] },
+    { id: 1, kind: "static", label: "Beta", name: "div", texts: ["Beta chart"] },
+  ];
+  dispatch(topMsg({ type: "ARRANGE_INIT", nonce: "d4", blocks, model: bareModel(2) }));
+  assert.equal(sent.find((m) => m.type === "MAPPED")?.ok, true);
+
+  // delete Alpha (fine), accept it, then try to delete the LAST tile
+  drain();
+  click(delFor("Alpha"));
+  const proposed = sent.find((m) => m.type === "PROPOSE");
+  assert.deepEqual(rowsOf(proposed.model), [[1]]);
+  dispatch(topMsg({ type: "MODEL", nonce: "d4", model: proposed.model }));
+
+  drain();
+  click(delFor("Beta"));
+  assert.deepEqual(sent, []); // no PROPOSE — the delete was refused
+  assert.notEqual(t1.style.display, "none"); // still visible
+  assert.ok(gripFor("Beta")); // chrome intact
+
+  drain();
+  dispatch(topMsg({ type: "ARRANGE_CANCEL", nonce: "d4" }));
+  assert.deepEqual(sent.map((m) => m.type), ["EXITED"]);
+  assert.equal(t0.getAttribute("style"), null); // deleted tile fully restored
+  assert.equal(t1.getAttribute("style"), null);
+});
+
 test("frame bridge: messages not sent by the parent window are ignored", () => {
   const container = makeEl("div");
   container.append(tile("Alpha KPIs"));

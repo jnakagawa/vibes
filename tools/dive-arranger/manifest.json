@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Dive Arranger",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Visually rearrange the blocks of any MotherDuck dive and write the new layout back to the dive's source.",
   "permissions": ["storage"],
   "host_permissions": [

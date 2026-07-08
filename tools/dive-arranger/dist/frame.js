@@ -48,7 +48,11 @@
       }
     }
     for (const blk of blocks) {
-      if (!seen.has(blk.id)) throw new LayoutError(`block ${blk.id} (${blk.label}) is missing from the layout`);
+      if (!seen.has(blk.id) && blk.kind === "dynamic") {
+        throw new LayoutError(
+          `block ${blk.id} (${blk.label}) is dynamic (pinned) and missing from the layout \u2014 dynamic blocks cannot be deleted`
+        );
+      }
     }
     const segmentOf = /* @__PURE__ */ new Map();
     let seg = 0;
@@ -189,6 +193,17 @@
       m.rows.splice(target.idx, 0, { cells: [moved] });
     }
     if (leftSourceRow && src.cells.length > 0) fillRowSpans(src.cells);
+    m.rows = m.rows.filter((r) => r.cells.length > 0);
+    return m;
+  }
+  function removeBlock(model, rowIdx, cellIdx) {
+    const row = model.rows[rowIdx];
+    if (!row || !row.cells[cellIdx]) return model;
+    if (model.rows.length === 1 && row.cells.length === 1) return model;
+    const m = deepCopyModel(model);
+    const src = m.rows[rowIdx];
+    src.cells.splice(cellIdx, 1);
+    if (src.cells.length > 0) fillRowSpans(src.cells);
     m.rows = m.rows.filter((r) => r.cells.length > 0);
     return m;
   }
@@ -442,11 +457,17 @@
       const remap = new Map(d.idMap);
       const remapMap = (m) => {
         const out = /* @__PURE__ */ new Map();
-        for (const [k, v] of m) out.set(remap.has(k) ? remap.get(k) : k, v);
+        for (const [k, v] of m) {
+          if (session.deleted.has(k) && !remap.has(k)) continue;
+          out.set(remap.has(k) ? remap.get(k) : k, v);
+        }
         return out;
       };
       session.tiles = remapMap(session.tiles);
       session.dynEls = remapMap(session.dynEls);
+      session.deleted = new Set(
+        [...session.deleted].filter((k) => remap.has(k)).map((k) => remap.get(k))
+      );
     }
     if (Array.isArray(d.blocks)) session.blocks = d.blocks;
     session.model = deepCopyModel(d.model);
@@ -680,6 +701,8 @@
       tiles,
       dynEls,
       inert,
+      deleted: /* @__PURE__ */ new Set(),
+      // blockIds deleted this session (preview-only; Cancel restores)
       baseStyle,
       undo,
       chrome: [],
@@ -775,6 +798,14 @@
       }
       if (any) r += 1;
     }
+    for (const id of [...s.deleted]) {
+      if (findCell(s.model, id)) {
+        s.deleted.delete(id);
+        continue;
+      }
+      const t = s.tiles.get(id);
+      if (t) t.el.style.display = "none";
+    }
   }
   var CHROME_CSS = `
   :host { all: initial; }
@@ -791,6 +822,14 @@
     font: 600 12px/1.4 system-ui, sans-serif; user-select: none;
     box-shadow: 0 1px 6px rgba(0,0,0,.35);
   }
+  .del {
+    position: fixed; pointer-events: auto; cursor: pointer; touch-action: none;
+    background: #26262c; color: #ff8f82; border: 1px solid #4a3437;
+    border-radius: 6px; padding: 1px 7px;
+    font: 600 12px/1.4 system-ui, sans-serif; user-select: none;
+    box-shadow: 0 1px 6px rgba(0,0,0,.35);
+  }
+  .del:hover { background: #7a2430; color: #fff; border-color: #7a2430; }
   .meta {
     position: fixed; pointer-events: none;
     background: rgba(23,23,27,.85); color: #cfe3cf; border-radius: 6px;
@@ -856,12 +895,17 @@
     s.layer.textContent = "";
     s.chrome = [];
     for (const [blockId, t] of s.tiles) {
+      if (s.deleted.has(blockId)) continue;
       const box = document.createElement("div");
       box.className = "box";
       const grip = document.createElement("div");
       grip.className = "grip";
       grip.textContent = "\u283F";
       grip.title = `${labelOf(blockId)} \u2014 drag to move`;
+      const del = document.createElement("div");
+      del.className = "del";
+      del.textContent = "\u2715";
+      del.title = `${labelOf(blockId)} \u2014 delete tile (preview only; Submit saves, Close restores)`;
       const meta = document.createElement("div");
       meta.className = "meta";
       const east = document.createElement("div");
@@ -870,8 +914,12 @@
       const south = document.createElement("div");
       south.className = "rz-s";
       south.title = "drag to set height \xB7 double-click to reset";
-      s.layer.append(box, grip, meta, east, south);
+      s.layer.append(box, grip, del, meta, east, south);
       grip.addEventListener("pointerdown", (ev) => startDrag(ev, blockId));
+      del.addEventListener("click", (ev) => {
+        ev.preventDefault?.();
+        deleteTile(blockId);
+      });
       east.addEventListener("pointerdown", (ev) => startResizeW(ev, blockId));
       south.addEventListener("pointerdown", (ev) => startResizeH(ev, blockId));
       south.addEventListener("dblclick", () => {
@@ -881,7 +929,7 @@
         layoutFrame();
         propose();
       });
-      s.chrome.push({ kind: "tile", blockId, el: t.el, box, grip, meta, east, south });
+      s.chrome.push({ kind: "tile", blockId, el: t.el, box, grip, del, meta, east, south });
     }
     for (const [blockId, els] of s.dynEls) {
       if (!els.length) continue;
@@ -919,7 +967,7 @@
     const s = session;
     for (const c of s.chrome) {
       const rect = c.kind === "tile" ? unionRect([c.el]) : unionRect(c.els);
-      const parts = c.kind === "tile" ? [c.box, c.grip, c.meta, c.east, c.south] : [c.box, c.badge];
+      const parts = c.kind === "tile" ? [c.box, c.grip, c.del, c.meta, c.east, c.south] : [c.box, c.badge];
       if (!rect) {
         for (const p of parts) p.style.display = "none";
         continue;
@@ -933,6 +981,7 @@
         continue;
       }
       place(c.grip, { left: rect.left + 6, top: rect.top + 6 });
+      place(c.del, { left: rect.left + 34, top: rect.top + 6 });
       const loc = findCell(s.model, c.blockId);
       if (loc) {
         const cell = s.model.rows[loc.rowIdx].cells[loc.cellIdx];
@@ -1054,6 +1103,22 @@
     };
     window.addEventListener("pointermove", onMove, true);
     window.addEventListener("pointerup", onUp, true);
+  }
+  function deleteTile(blockId) {
+    const s = session;
+    if (!s || s.drag) return;
+    const loc = findCell(s.model, blockId);
+    if (!loc) return;
+    const next = removeBlock(s.model, loc.rowIdx, loc.cellIdx);
+    if (next === s.model) return;
+    if (!isValid(next)) return;
+    s.model = next;
+    s.deleted.add(blockId);
+    const t = s.tiles.get(blockId);
+    if (t) t.el.style.display = "none";
+    layoutFrame();
+    rebuildChrome();
+    propose();
   }
   function startResizeW(ev, blockId) {
     ev.preventDefault();

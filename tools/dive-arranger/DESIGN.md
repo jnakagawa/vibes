@@ -25,8 +25,8 @@ app.motherduck.com tab (TOP frame)
 ├─ <iframe sandbox src=https://motherduckusercontent.com/sandbox/…>
 │   └─ dist/frame.js (isolated world, injected via all_frames): the dive's
 │       rendered tiles live HERE (cross-origin). Maps tiles ↔ source blocks
-│       (frame-map.mjs), grids the container, draws drag/resize chrome on the
-│       REAL tiles, validates drops with engine/validate.mjs (recast-free
+│       (frame-map.mjs), grids the container, draws drag/resize/delete chrome
+│       on the REAL tiles, validates drops with engine/validate.mjs (recast-free
 │       bundle, ~41 KB), reports mutations to the top frame.
 └─ dist/background.js (service worker): toolbar action → "open arranger"
 
@@ -131,9 +131,9 @@ Mechanics, chosen to avoid fighting the dive's React:
   child order is never touched, so re-render breakage risk is confined to
   inline styles. The one structural exception: previous arranger row wrappers
   are unwrapped once on entry (cells lifted to container level), undo-logged.
-- **Chrome, not surgery, for affordances**: grips/resize handles/outlines are
-  fixed-position shadow-DOM elements tracking tile rects on rAF — nothing is
-  inserted into React-owned subtrees.
+- **Chrome, not surgery, for affordances**: grips/delete ✕/resize handles/
+  outlines are fixed-position shadow-DOM elements tracking tile rects on rAF —
+  nothing is inserted into React-owned subtrees.
 - **Cancel restores everything** from the undo log (original inline style
   attributes + reverse reparenting).
 - The engine's `validateLayout` (split into recast-free engine/validate.mjs)
@@ -191,6 +191,40 @@ read-back plus a re-parse (single default-export check). The harness only
 writes to the dive it just created, with a hard denylist of the known real
 dive ids on top, and deletes it in a `finally` block.
 
+**11. Delete = a layout that omits the block (statics only).**
+Deleting a tile (prime use case: an empty spacer `<div/>` orphaned by a moved
+neighbor) needed almost no engine surface: `applyLayout` already rebuilds the
+root's children *only* from `layout.rows`, so a block absent from the layout
+has its node dropped from the output automatically, and the post-apply
+self-check compares against `validateLayout`'s returned `flat` — which only
+contains blocks the layout references. The one real change is in
+`validateLayout`: a **static** block may now be absent (that is a delete); a
+**dynamic** block that is absent still throws (deleting conditional/loop
+output would change dive logic — dynamics stay pinned, full stop). The
+segment rule is unaffected by deleted statics: segments are numbered by the
+dynamics, which must all remain, in order, so cross-pin moves are still
+rejected in a layout that also deletes.
+Safety rails, layered:
+- **UI**: the `✕` control is rendered only on draggable (static) tiles —
+  pinned and inert tiles never get one; `removeBlock` (layout-model.mjs,
+  pure) refuses to produce an empty layout, so the last remaining tile
+  cannot be deleted; the frame re-checks every delete against the
+  engine-validate oracle before applying it.
+- **Preview-only**: a delete just hides the element (`display:none` on top of
+  its undo-captured inline style) and drops it from the session model —
+  `layoutFrame` keeps deleted elements hidden across every re-layout, and the
+  existing Cancel/teardown path restores the element, its style, and any
+  source grids untouched. Nothing is written until Submit.
+- **Authoritative re-validation**: the top frame re-validates the proposed
+  (now smaller) model with the same `validateLayout` before accepting it.
+- **Recoverable after commit**: MotherDuck keeps server-side dive version
+  history, so even a submitted delete can be restored.
+Post-Submit, re-discovery compacts block ids, so a kept block's new id can
+collide with the deleted block's old id; the frame's idMap remap drops the
+deleted block's stale tile handle (it has no idMap entry) instead of letting
+it shadow a kept block, and clears the session's deleted-set — the element
+simply stays hidden, matching the new source until reload.
+
 ## Verification status (honest)
 
 **Verified (live, against a throwaway MotherDuck dive — created and deleted
@@ -204,17 +238,25 @@ wrappers → `MD_DELETE_DIVE` confirmed. 24 assertions, plus 13 offline engine
 tests, plus the engine executing correctly from the browser-target esbuild
 bundle in a bare (Node-builtin-free) VM.
 
-**Verified (Node, offline — `npm test`, 67 tests):** the engine suite
+**Verified (Node, offline — `npm test`, 79 tests):** the engine suite
 (including source-row decomposition: grid-cols-2/4, inline repeat(N,…), flex
 rows, col-span scaling, spacer columns, dynamic-child and wrapping vetoes,
 pin-crossing still rejected, and discover→apply→discover stability on a
-chat-dive-shaped fixture); the shared move-model ops (layout-model.mjs); the
-row-container classifier (rowcontainer.mjs); the tile↔block alignment matrix
+chat-dive-shaped fixture); block deletion (a layout omitting a static block —
+incl. the spacer `<div/>` — round-trips with one fewer block, the deleted
+node and its text gone, the sibling re-flowed; omitting a dynamic throws;
+delete adjacent to a pin validates while a cross-pin move still fails); the
+shared move-model ops (layout-model.mjs, incl. `removeBlock` re-flow /
+empty-row drop / last-tile no-op); the row-container classifier
+(rowcontainer.mjs); the tile↔block alignment matrix
 (frame-map.mjs: positional, anchored, wrapper rows, dynamics rendering 0..n
 nodes, inert interior statics, every failure mode returning null); and a
 fake-DOM smoke of the REAL frame.js session — ARRANGE_INIT → INIT_ACK/MAPPED,
 grid placement values, wrapper AND source-grid lift, drags (join / reorder /
-extract, incl. extracting a tile out of a decomposed source grid), MODEL
+extract, incl. extracting a tile out of a decomposed source grid), tile
+delete via ✕ (PROPOSE shrinks, element hidden, no ✕ on pinned/inert tiles,
+last-tile refusal, post-Submit idMap remap with a committed delete, Cancel
+restoring the element + inline style), MODEL
 re-place with untouched DOM order, ARRANGE_CANCEL restoring inline styles and
 reparenting cells back into their wrappers/source grids, the MAPPED
 ok:false retry path, and the bridge hardening (messages from non-parent

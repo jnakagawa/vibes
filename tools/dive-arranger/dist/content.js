@@ -31361,7 +31361,11 @@
       }
     }
     for (const blk of blocks) {
-      if (!seen.has(blk.id)) throw new LayoutError(`block ${blk.id} (${blk.label}) is missing from the layout`);
+      if (!seen.has(blk.id) && blk.kind === "dynamic") {
+        throw new LayoutError(
+          `block ${blk.id} (${blk.label}) is dynamic (pinned) and missing from the layout \u2014 dynamic blocks cannot be deleted`
+        );
+      }
     }
     const segmentOf = /* @__PURE__ */ new Map();
     let seg = 0;

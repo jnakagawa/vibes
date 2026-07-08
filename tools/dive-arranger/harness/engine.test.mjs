@@ -411,6 +411,69 @@ export default function D() {
   assert.equal(blocks.length, 2); // wrapping grid kept opaque + tail
 });
 
+// ── Deleting blocks (a layout may omit STATIC blocks; dynamics never) ──
+
+test("delete: omitting the empty spacer <div/> from its 2-col row drops the node and reflows the sibling", () => {
+  const { blocks, rows } = discoverBlocks(CHAT);
+  assert.equal(blocks[3].label, "<div> (empty)"); // the spacer column
+  const layout = layoutOf(rows);
+  layout.rows[2] = { cells: [{ block: 4, span: 12 }] }; // funnel reflowed solo; spacer (3) deleted
+  const { code } = applyLayout(CHAT, layout);
+
+  // output re-parses and re-discovers exactly one fewer block; the spacer node is gone
+  const re = discoverBlocks(code);
+  assert.equal(re.blocks.length, blocks.length - 1);
+  assert.ok(!re.blocks.some((b) => b.label === "<div> (empty)"));
+  // the spacer node is gone from the COMPONENT (the file's leading comment
+  // legitimately mentions "<div />" and must survive byte-exactly)
+  assert.ok(!code.slice(code.indexOf("export default")).includes("<div />"));
+  // the surviving sibling is a full-width solo row now
+  const funnelId = re.blocks.find((b) => b.label === "funnel").id;
+  const funnelRow = re.rows.find((r) => r.cells.some((c) => c.block === funnelId));
+  assert.deepEqual(funnelRow.cells.map((c) => [c.block, c.span]), [[funnelId, 12]]);
+  // everything else survives byte-exactly
+  assert.ok(code.includes("const fmtCount = (n) => n.toLocaleString(); // helper (must survive)"));
+  assert.ok(code.includes("{/* activity chart body (must survive) */}"));
+});
+
+test("delete: omitting a real chart tile removes its node and its text from the output", () => {
+  const { blocks, rows } = discoverBlocks(CHAT);
+  const layout = layoutOf(rows);
+  layout.rows[4] = { cells: [{ block: 6, span: 12 }] }; // modelmix solo; latency (7) deleted
+  const { code } = applyLayout(CHAT, layout);
+  assert.ok(!code.includes('id="latency"'));
+  assert.ok(!code.includes("p50 / p95 per day")); // the deleted node's text is gone
+  const re = discoverBlocks(code);
+  assert.equal(re.blocks.length, blocks.length - 1);
+  assert.ok(code.includes('id="modelmix"'));
+});
+
+test("delete: a layout omitting a DYNAMIC block throws LayoutError", () => {
+  const { rows } = discoverBlocks(CHAT);
+  const layout = layoutOf(rows);
+  layout.rows.splice(3, 1); // drop the pinned conditional's row
+  assert.throws(() => applyLayout(CHAT, layout), LayoutError);
+  assert.throws(() => applyLayout(CHAT, layout), /cannot be deleted/);
+});
+
+test("delete: adjacent to a pinned dynamic still validates; a cross-segment move still fails", () => {
+  const { rows } = discoverBlocks(CHAT);
+  // delete funnel (4) — the tile directly ABOVE the pinned conditional (5)
+  const del = layoutOf(rows);
+  del.rows[2] = { cells: [{ block: 3, span: 12 }] }; // spacer survives, reflowed
+  const { code } = applyLayout(CHAT, del);
+  assert.ok(!code.includes('id="funnel"'));
+  assert.equal(discoverBlocks(code).blocks.length, 7);
+
+  // …but with that delete in place, hoisting modelmix (6) above the pin still fails
+  const crossed = layoutOf(rows);
+  crossed.rows[2] = { cells: [{ block: 3, span: 12 }] }; // funnel deleted
+  const [mix] = crossed.rows[4].cells.splice(0, 1);
+  crossed.rows[4].cells[0].span = 12;
+  crossed.rows.splice(3, 0, { cells: [{ block: mix.block, span: 12 }] });
+  assert.throws(() => applyLayout(CHAT, crossed), LayoutError);
+});
+
 test("base64 content routing round-trips unicode and quotes", () => {
   const nasty = `const s = 'it\\'s'; // ünïcødé ✓ \`backticks\` "quotes" \${tpl}`;
   const b64 = encodeContentBase64(nasty);

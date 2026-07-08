@@ -1,8 +1,8 @@
 # dive-arranger
 
 A Chrome (Manifest V3) extension that lets you **visually rearrange the blocks
-of any MotherDuck dive** — reorder, place side-by-side, resize — and write the
-new layout back to the dive's source. It works on arbitrary dives by **parsing
+of any MotherDuck dive** — reorder, place side-by-side, resize, delete — and
+write the new layout back to the dive's source. It works on arbitrary dives by **parsing
 the dive's JSX source**, not by knowing its widgets in advance (that was the
 limitation of its predecessor, [`dive-builder`](../dive-builder), which only
 handled one hardcoded dive via a widget manifest).
@@ -38,6 +38,16 @@ Then in Chrome:
    - **Resize width** by dragging a tile's right edge (snaps to a 12-column
      grid). **Resize height** by dragging the bottom edge (double-click the
      bottom edge to reset to auto height).
+   - **Delete** a tile with the `✕` next to its grip (prime use case: an
+     empty spacer `<div/>` left over from a moved neighbor — but any draggable
+     tile works). Safety rails: deletion is **preview-only** until Submit
+     (the tile is hidden and its row re-flows; nothing is written); **Close
+     restores it** like every other preview change; only **static** tiles are
+     deletable — pinned dynamic blocks never get a `✕` (removing conditional
+     or `.map()` output would change dive logic), and the engine refuses a
+     layout missing a dynamic block; deleting the last remaining tile is
+     refused (a dive can't be emptied). A **committed** delete is still
+     recoverable from MotherDuck's server-side dive version history.
    - Tiles badged **pinned** (amber dashed outline) come from dynamic JSX — a
      conditional or a `.map()` at the top level. They are shown in place but
      cannot be moved or resized (v1 scope, see below).
@@ -126,7 +136,7 @@ end-to-end against a **throwaway dive the harness creates and deletes itself**
 dive ids as a second guard):
 
 ```bash
-npm test                                    # 67 pure tests (engine + frame logic + fake-DOM frame session), no network
+npm test                                    # 79 pure tests (engine + frame logic + fake-DOM frame session), no network
 MOTHERDUCK_TOKEN=<short-lived token> npm run roundtrip
 ```
 
@@ -138,11 +148,14 @@ the dive — 24 assertions.
 
 ## v1 scope and explicit limits
 
-- **Only static top-level children of the root element are draggable.**
-  Dynamic top-level children (conditionals, `.map()`s) are pinned: visible,
-  never moved, never resized, and static blocks cannot be dragged **across**
-  them (they act as fixed separators). Anything *inside* a block — including
-  nested conditionals and maps — moves with its block, untouched.
+- **Only static top-level children of the root element are draggable — or
+  deletable.** Dynamic top-level children (conditionals, `.map()`s) are
+  pinned: visible, never moved, never resized, never deleted, and static
+  blocks cannot be dragged **across** them (they act as fixed separators).
+  Anything *inside* a block — including nested conditionals and maps — moves
+  (or is deleted) with its block, untouched. `validateLayout` enforces all of
+  this: a layout may omit static blocks (that's a delete) but must contain
+  every dynamic block.
 - **Source row containers decompose exactly one level.** The children of a
   top-level `grid grid-cols-N`/flex-row container become individual blocks
   (spans derived from the template); there is no deeper recursion. A row
