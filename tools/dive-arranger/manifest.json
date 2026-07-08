@@ -1,0 +1,34 @@
+{
+  "manifest_version": 3,
+  "name": "Dive Arranger",
+  "version": "0.1.0",
+  "description": "Visually rearrange the blocks of any MotherDuck dive and write the new layout back to the dive's source.",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://app.motherduck.com/*",
+    "https://motherduckusercontent.com/*"
+  ],
+  "action": { "default_title": "Arrange this dive" },
+  "background": { "service_worker": "dist/background.js" },
+  "content_scripts": [
+    {
+      "matches": ["https://app.motherduck.com/*"],
+      "js": ["dist/content.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://motherduckusercontent.com/*"],
+      "js": ["dist/frame.js"],
+      "run_at": "document_idle",
+      "all_frames": true,
+      "match_origin_as_fallback": true
+    }
+  ],
+  "options_page": "extension/options.html",
+  "web_accessible_resources": [
+    {
+      "resources": ["dist/md-main.js"],
+      "matches": ["https://app.motherduck.com/*"]
+    }
+  ]
+}
