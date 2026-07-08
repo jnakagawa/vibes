@@ -1,0 +1,9 @@
+# never commit tokens or env files
+.env
+.env.*
+*.token
+
+node_modules/
+harness/tmp/
+# NOTE: dist/ is intentionally committed here so the extension loads unpacked
+# without a build step. Rebuild with `npm install && npm run build`.

@@ -1,0 +1,21 @@
+{
+  "name": "dive-arranger",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Chrome MV3 extension: visually rearrange the blocks of any MotherDuck dive and write the layout back.",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node --test harness/engine.test.mjs harness/frame-logic.test.mjs harness/frame-dom.test.mjs",
+    "roundtrip": "node harness/roundtrip.mjs"
+  },
+  "dependencies": {
+    "@babel/parser": "^7.26.0",
+    "@motherduck/wasm-client": "^0.8.1",
+    "recast": "^0.23.9"
+  },
+  "devDependencies": {
+    "@duckdb/node-api": "^1.5.4-r.1",
+    "esbuild": "^0.24.0"
+  }
+}
