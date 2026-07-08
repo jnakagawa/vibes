@@ -6,7 +6,7 @@
   "description": "Chrome MV3 extension: visually rearrange the blocks of any MotherDuck dive and write the layout back.",
   "scripts": {
     "build": "node build.mjs",
-    "test": "node --test harness/engine.test.mjs harness/frame-logic.test.mjs harness/frame-dom.test.mjs",
+    "test": "node --test harness/engine.test.mjs harness/frame-logic.test.mjs harness/frame-dom.test.mjs harness/token.test.mjs",
     "roundtrip": "node harness/roundtrip.mjs"
   },
   "dependencies": {

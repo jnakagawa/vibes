@@ -15,6 +15,7 @@ import {
 } from "../engine/index.mjs";
 import { mapBlocksToDom, snapshotElement } from "./snapshot.js";
 import { COLS, deepCopyModel as deepCopy, moveBlock } from "./layout-model.mjs";
+import { classifyAuthError, authMessage, fmtExpiry } from "./token.mjs";
 
 const hash = (s) => {
   let h = 5381;
@@ -39,6 +40,8 @@ const CSS = `
   }
   .bar .title { font-weight: 700; font-size: 14px; }
   .bar .dive { font-family: monospace; font-size: 11px; color: #9a9aa2; }
+  .bar .auth { font-size: 11px; color: #6a6a72; white-space: nowrap; }
+  .bar .auth.warn { color: #e8c76a; }
   .bar .spacer { flex: 1; }
   .bar button {
     font: inherit; padding: 6px 14px; border-radius: 6px; cursor: pointer;
@@ -110,7 +113,7 @@ const CSS = `
   .hint { text-align: center; color: #6a6a72; font-size: 11px; padding: 10px 0 30px; }
 `;
 
-export function openArranger({ diveId, source, runQueries, onClose, note }) {
+export function openArranger({ diveId, source, runQueries, onClose, note, auth }) {
   // ── state ─────────────────────────────────────────────────────────
   let state;
   const previews = new Map(); // hash(block.code) -> {node,width,height} | "none"
@@ -149,6 +152,7 @@ export function openArranger({ diveId, source, runQueries, onClose, note }) {
     <div class="bar">
       <span class="title">Dive Arranger</span>
       <span class="dive">${diveId}</span>
+      <span class="auth" id="auth"></span>
       <span class="status" id="status">drag cards by ⠿ · drag right/bottom edges to resize</span>
       <span class="spacer"></span>
       <button id="code">View code</button>
@@ -169,7 +173,25 @@ export function openArranger({ diveId, source, runQueries, onClose, note }) {
     $status.className = `status ${cls}`;
   };
 
+  // Auth transparency (parity with the in-situ toolbar): source + expiry
+  // only, never the token. `auth` is a live descriptor content.js updates in
+  // place on token rotation; amber once under 5 minutes remain.
+  const $auth = shadow.getElementById("auth");
+  const renderAuth = () => {
+    if (!auth) {
+      $auth.textContent = "";
+      return;
+    }
+    const label = auth.source === "page" ? "page session" : "options token";
+    $auth.textContent = `auth: ${label} · exp ${fmtExpiry(auth.exp)}`;
+    const msLeft = auth.exp == null ? Infinity : auth.exp - Date.now();
+    $auth.className = `auth${msLeft < 5 * 60_000 ? " warn" : ""}`;
+  };
+  renderAuth();
+  const authTimer = setInterval(renderAuth, 30_000);
+
   const close = () => {
+    clearInterval(authTimer);
     host.remove();
     onClose?.();
   };
@@ -437,8 +459,12 @@ export function openArranger({ diveId, source, runQueries, onClose, note }) {
       render();
       setStatus(`saved ✓ ${new Date().toLocaleTimeString()} — reload the dive tab to see it live`, "okk");
     } catch (e) {
-      setStatus(`submit failed: ${e.message}`, "err");
+      // Same actionable-error treatment as the in-situ toolbar: auth failures
+      // get authMessage; everything else passes through unchanged.
+      const kind = classifyAuthError(e?.message);
+      setStatus(kind === "unknown" ? `submit failed: ${e.message}` : authMessage(kind), "err");
     } finally {
+      renderAuth(); // the query path may have adopted a rotated token
       $submit.disabled = false;
     }
   });

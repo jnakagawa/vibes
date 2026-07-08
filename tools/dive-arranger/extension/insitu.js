@@ -19,6 +19,7 @@ import {
   sqlStatementsForUpdate,
 } from "../engine/index.mjs";
 import { deepCopyModel } from "./layout-model.mjs";
+import { classifyAuthError, authMessage, fmtExpiry } from "./token.mjs";
 
 const BRIDGE = "dive-arranger-bridge";
 const FRAME_ORIGIN = "https://motherduckusercontent.com";
@@ -36,6 +37,8 @@ const CSS = `
   }
   .title { font-weight: 700; white-space: nowrap; }
   .dive { font-family: monospace; font-size: 10px; color: #9a9aa2; }
+  .auth { font-size: 11px; color: #6a6a72; white-space: nowrap; }
+  .auth.warn { color: #e8c76a; }
   .status { font-size: 12px; color: #9a9aa2; max-width: 44ch; overflow: hidden; text-overflow: ellipsis; }
   .status.err { color: #ff7b6b; }
   .status.okk { color: #7fd77f; }
@@ -68,7 +71,7 @@ const liteBlocks = (blocks) =>
  * and the toolbar is up; REJECTS if the bridge/mapping fails (caller falls
  * back to the card overlay). Returns { close }.
  */
-export async function openInSitu({ diveId, source, runQueries, onClose }) {
+export async function openInSitu({ diveId, source, runQueries, onClose, auth }) {
   let state;
   const setSource = (src) => {
     const { blocks, rows } = discoverBlocks(src);
@@ -178,6 +181,7 @@ export async function openInSitu({ diveId, source, runQueries, onClose }) {
   bar.innerHTML = `
     <span class="title">Dive Arranger</span>
     <span class="dive"></span>
+    <span class="auth" id="auth"></span>
     <span class="status" id="status"></span>
     <button id="code">View code</button>
     <button id="submit" class="primary">Submit to MotherDuck</button>
@@ -192,6 +196,24 @@ export async function openInSitu({ diveId, source, runQueries, onClose }) {
     $status.textContent = msg;
     $status.className = `status ${cls}`;
   };
+
+  // Auth transparency: which token this session runs on and when it dies —
+  // source + expiry only, never the token itself. `auth` is a live descriptor
+  // (content.js updates it in place if the query path adopts a rotated
+  // token), so re-render periodically; amber once under 5 minutes remain.
+  const $auth = shadow.getElementById("auth");
+  const renderAuth = () => {
+    if (!auth) {
+      $auth.textContent = "";
+      return;
+    }
+    const label = auth.source === "page" ? "page session" : "options token";
+    $auth.textContent = `auth: ${label} · exp ${fmtExpiry(auth.exp)}`;
+    const msLeft = auth.exp == null ? Infinity : auth.exp - Date.now();
+    $auth.className = `auth${msLeft < 5 * 60_000 ? " warn" : ""}`;
+  };
+  renderAuth();
+  const authTimer = setInterval(renderAuth, 30_000);
   const inertNote = mapped.inert?.length
     ? ` (${mapped.inert.length} block${mapped.inert.length > 1 ? "s" : ""} not draggable: ${mapped.inert.join(", ")})`
     : "";
@@ -221,6 +243,7 @@ export async function openInSitu({ diveId, source, runQueries, onClose }) {
   const close = () => {
     if (closed) return;
     closed = true;
+    clearInterval(authTimer);
     try {
       send(frameWin, { type: "ARRANGE_CANCEL" });
     } catch {
@@ -284,8 +307,13 @@ export async function openInSitu({ diveId, source, runQueries, onClose }) {
       }
       setStatus(`saved ✓ ${new Date().toLocaleTimeString()} — reload the tab to re-render from source`, "okk");
     } catch (e) {
-      setStatus(`submit failed: ${e.message}`, "err");
+      // Auth failures get the actionable message, not the raw wasm dump;
+      // everything else (engine/read-back errors classify as 'unknown')
+      // passes through unchanged.
+      const kind = classifyAuthError(e?.message);
+      setStatus(kind === "unknown" ? `submit failed: ${e.message}` : authMessage(kind), "err");
     } finally {
+      renderAuth(); // the query path may have adopted a rotated token
       $submit.disabled = false;
     }
   });

@@ -115,18 +115,36 @@ Then in Chrome:
 
 The SQL runs through `@motherduck/wasm-client` injected into the
 app.motherduck.com page itself (main world), under the same CSP the MotherDuck
-app uses for its own duckdb-wasm workers. The token is found in this order:
+app uses for its own duckdb-wasm workers. Tokens are picked by an
+**expiry-aware resolver** (`extension/token.mjs`, pure and unit-tested):
 
-1. **Page storage** — the content script scans the tab's
-   `localStorage`/`sessionStorage` for a MotherDuck-shaped JWT (payload
-   containing `mdRegion`/`tokenType`/`tokenId`) and reuses it. Best-effort:
-   if the MD app keeps its token only in memory, this finds nothing.
-2. **Options fallback** — paste a token in the extension's Options page
-   (stored in `chrome.storage.local` only; a short-lived read/write token from
-   the MotherDuck MCP `get_short_lived_token` works and is the safest choice).
+- **Candidates**: every MotherDuck-shaped JWT (payload containing
+  `mdRegion`/`tokenType`/`tokenId`) in the tab's
+  `localStorage`/`sessionStorage` (source `page`), plus the token pasted in
+  the extension's Options page (`chrome.storage.local` only, source
+  `fallback`; a short-lived read/write token from the MotherDuck MCP
+  `get_short_lived_token` works and is the safest choice).
+- **Selection**: candidates that are expired — or within a 45 s safety skew
+  of expiring — are dropped *before* selection (a near-dead token is never
+  picked); survivors rank `page` before `fallback`, then by most time left.
+  A JWT with no `exp` claim counts as non-expiring.
+- **Preflight**: before the arranger opens, a `SELECT 1` validates the chosen
+  token, so a dead token surfaces as an actionable message ("refresh the
+  MotherDuck tab…") instead of a cryptic wasm/DuckDB dump mid-flow.
+- **Re-resolve on rotation**: if a query later fails with an auth-classified
+  error (the MD app rotates its session token, so a token that was valid at
+  launch can die mid-session), the resolver re-scans storage and retries
+  **once** with the fresh token — only if it actually differs from the one
+  that just failed. Non-auth errors pass through unchanged.
+- **Transparency**: the arranger toolbar shows an auth line —
+  `auth: page session · exp 3:47pm` — which turns amber when under 5 minutes
+  remain. It shows only the token's source and expiry, never the token.
 
-No token is ever hardcoded, committed, or sent anywhere other than
-api.motherduck.com by the wasm client.
+Auth errors are classified (`expired` / `scope` / `network` / `unknown`,
+defaulting to `unknown`) and rendered as short actionable instructions rather
+than raw error dumps. No token is ever hardcoded, committed, logged, or sent
+anywhere other than api.motherduck.com by the wasm client; error strings from
+the wasm bridge are token-scrubbed before they can reach any UI surface.
 
 ## Verifying the engine (Node harness, no browser needed)
 
@@ -136,7 +154,7 @@ end-to-end against a **throwaway dive the harness creates and deletes itself**
 dive ids as a second guard):
 
 ```bash
-npm test                                    # 79 pure tests (engine + frame logic + fake-DOM frame session), no network
+npm test                                    # 104 pure tests (engine + frame logic + fake-DOM frame session + token resolver), no network
 MOTHERDUCK_TOKEN=<short-lived token> npm run roundtrip
 ```
 
@@ -178,7 +196,8 @@ the dive — 24 assertions.
   expression is not supported).
 - The in-browser UX (iframe script injection, tile mapping quality on real
   dives, the drag pointer UX, the postMessage bridge, the wasm bridge, token
-  discovery) has **not** been exercised end-to-end in a real Chrome session —
+  resolution against the real MD app's storage) has **not** been exercised
+  end-to-end in a real Chrome session —
   the engine, the SQL, the alignment logic, and the frame session protocol are
   verified by the Node harness/tests; the live browser parts are not (see
   DESIGN.md "Verification status").
@@ -206,7 +225,9 @@ engine/              the AST engine (shared by extension + harness)
   rowcontainer.mjs     source row-container classifier (shared JSX + DOM sides)
   mdsql.mjs            MD_GET_DIVE / MD_UPDATE_DIVE_CONTENT SQL builders
 extension/
-  content.js           top-frame content script: token, wasm bridge, launch
+  content.js           top-frame content script: auth resolution, wasm bridge, launch
+  token.mjs            pure token resolver: expiry-aware JWT selection,
+                       auth-error classification, user-facing auth strings (Node-tested)
   insitu.js            top-frame controller for in-place mode (toolbar, Submit)
   frame.js             IN-IFRAME script: tile mapping + drag/resize on real tiles
   frame-map.mjs        pure tile↔block alignment (Node-tested)

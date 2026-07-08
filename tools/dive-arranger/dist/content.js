@@ -32070,6 +32070,66 @@
     return m;
   }
 
+  // extension/token.mjs
+  var SKEW_MS = 45e3;
+  function decodeJwt(token) {
+    if (typeof token !== "string") return null;
+    const m = token.match(/^eyJ[\w-]+\.([\w-]+)\.[\w-]+$/);
+    if (!m) return null;
+    try {
+      const payload = JSON.parse(atob(m[1].replace(/-/g, "+").replace(/_/g, "/")));
+      return payload && typeof payload === "object" && !Array.isArray(payload) ? payload : null;
+    } catch {
+      return null;
+    }
+  }
+  function isMdJwt(payload) {
+    return Boolean(payload && (payload.mdRegion || payload.tokenType || payload.tokenId));
+  }
+  function tokenInfo(token, nowMs, source) {
+    const payload = decodeJwt(token);
+    if (!isMdJwt(payload)) return null;
+    const exp = typeof payload.exp === "number" && Number.isFinite(payload.exp) ? payload.exp * 1e3 : null;
+    const msLeft = exp == null ? Infinity : exp - nowMs;
+    const info = { token, exp, expired: msLeft < SKEW_MS, msLeft };
+    if (source !== void 0) info.source = source;
+    return info;
+  }
+  function resolveToken(candidates, nowMs) {
+    const usable = [];
+    for (const c of candidates ?? []) {
+      const info = c && tokenInfo(c.token, nowMs, c.source);
+      if (info && !info.expired) usable.push(info);
+    }
+    if (usable.length === 0) return null;
+    const srcRank = (s) => s === "page" ? 0 : 1;
+    usable.sort((a, b2) => srcRank(a.source) - srcRank(b2.source) || b2.msLeft - a.msLeft);
+    return usable[0];
+  }
+  function classifyAuthError(message) {
+    const s = String(message ?? "");
+    if (/expired|jwt|unauthor|invalid token|\b401\b/i.test(s)) return "expired";
+    if (/read[- ]?only|permission|forbidden|not allowed|\b403\b|\bwrite\b/i.test(s)) return "scope";
+    if (/network|fetch|connect|timed? ?out|offline/i.test(s)) return "network";
+    return "unknown";
+  }
+  var AUTH_MESSAGES = {
+    expired: "Your MotherDuck session token expired \u2014 refresh the MotherDuck tab, then click Arrange again.",
+    scope: "This token is read-only; saving a layout needs a read/write token (set one in the extension Options).",
+    network: "Couldn't reach MotherDuck \u2014 check your connection and retry.",
+    unknown: "MotherDuck rejected the request \u2014 refresh the MotherDuck tab and try again, or set a fresh token in the extension Options."
+  };
+  function authMessage(kind) {
+    return AUTH_MESSAGES[kind] ?? AUTH_MESSAGES.unknown;
+  }
+  function fmtExpiry(exp) {
+    if (exp == null || !Number.isFinite(exp)) return "no expiry";
+    const d = new Date(exp);
+    const h12 = d.getHours() % 12 || 12;
+    const mm = String(d.getMinutes()).padStart(2, "0");
+    return `${h12}:${mm}${d.getHours() >= 12 ? "pm" : "am"}`;
+  }
+
   // extension/overlay.js
   var hash = (s) => {
     let h = 5381;
@@ -32093,6 +32153,8 @@
   }
   .bar .title { font-weight: 700; font-size: 14px; }
   .bar .dive { font-family: monospace; font-size: 11px; color: #9a9aa2; }
+  .bar .auth { font-size: 11px; color: #6a6a72; white-space: nowrap; }
+  .bar .auth.warn { color: #e8c76a; }
   .bar .spacer { flex: 1; }
   .bar button {
     font: inherit; padding: 6px 14px; border-radius: 6px; cursor: pointer;
@@ -32163,7 +32225,7 @@
   }
   .hint { text-align: center; color: #6a6a72; font-size: 11px; padding: 10px 0 30px; }
 `;
-  function openArranger({ diveId, source, runQueries, onClose, note }) {
+  function openArranger({ diveId, source, runQueries, onClose, note, auth }) {
     let state;
     const previews = /* @__PURE__ */ new Map();
     const setSource = (src) => {
@@ -32198,6 +32260,7 @@
     <div class="bar">
       <span class="title">Dive Arranger</span>
       <span class="dive">${diveId}</span>
+      <span class="auth" id="auth"></span>
       <span class="status" id="status">drag cards by \u283F \xB7 drag right/bottom edges to resize</span>
       <span class="spacer"></span>
       <button id="code">View code</button>
@@ -32216,7 +32279,21 @@
       $status.textContent = msg;
       $status.className = `status ${cls}`;
     };
+    const $auth = shadow.getElementById("auth");
+    const renderAuth = () => {
+      if (!auth) {
+        $auth.textContent = "";
+        return;
+      }
+      const label = auth.source === "page" ? "page session" : "options token";
+      $auth.textContent = `auth: ${label} \xB7 exp ${fmtExpiry(auth.exp)}`;
+      const msLeft = auth.exp == null ? Infinity : auth.exp - Date.now();
+      $auth.className = `auth${msLeft < 5 * 6e4 ? " warn" : ""}`;
+    };
+    renderAuth();
+    const authTimer = setInterval(renderAuth, 3e4);
     const close = () => {
+      clearInterval(authTimer);
       host.remove();
       onClose?.();
     };
@@ -32453,8 +32530,10 @@
         render();
         setStatus(`saved \u2713 ${(/* @__PURE__ */ new Date()).toLocaleTimeString()} \u2014 reload the dive tab to see it live`, "okk");
       } catch (e) {
-        setStatus(`submit failed: ${e.message}`, "err");
+        const kind = classifyAuthError(e?.message);
+        setStatus(kind === "unknown" ? `submit failed: ${e.message}` : authMessage(kind), "err");
       } finally {
+        renderAuth();
         $submit.disabled = false;
       }
     });
@@ -32479,6 +32558,8 @@
   }
   .title { font-weight: 700; white-space: nowrap; }
   .dive { font-family: monospace; font-size: 10px; color: #9a9aa2; }
+  .auth { font-size: 11px; color: #6a6a72; white-space: nowrap; }
+  .auth.warn { color: #e8c76a; }
   .status { font-size: 12px; color: #9a9aa2; max-width: 44ch; overflow: hidden; text-overflow: ellipsis; }
   .status.err { color: #ff7b6b; }
   .status.okk { color: #7fd77f; }
@@ -32501,7 +32582,7 @@
 `;
   var nonceStr = () => [...crypto.getRandomValues(new Uint8Array(12))].map((x) => x.toString(16).padStart(2, "0")).join("");
   var liteBlocks = (blocks) => blocks.map((b2) => ({ id: b2.id, kind: b2.kind, label: b2.label, name: b2.name, texts: b2.texts }));
-  async function openInSitu({ diveId, source, runQueries, onClose }) {
+  async function openInSitu({ diveId, source, runQueries, onClose, auth }) {
     let state;
     const setSource = (src) => {
       const { blocks, rows } = discoverBlocks(src);
@@ -32588,6 +32669,7 @@
     bar.innerHTML = `
     <span class="title">Dive Arranger</span>
     <span class="dive"></span>
+    <span class="auth" id="auth"></span>
     <span class="status" id="status"></span>
     <button id="code">View code</button>
     <button id="submit" class="primary">Submit to MotherDuck</button>
@@ -32601,6 +32683,19 @@
       $status.textContent = msg;
       $status.className = `status ${cls}`;
     };
+    const $auth = shadow.getElementById("auth");
+    const renderAuth = () => {
+      if (!auth) {
+        $auth.textContent = "";
+        return;
+      }
+      const label = auth.source === "page" ? "page session" : "options token";
+      $auth.textContent = `auth: ${label} \xB7 exp ${fmtExpiry(auth.exp)}`;
+      const msLeft = auth.exp == null ? Infinity : auth.exp - Date.now();
+      $auth.className = `auth${msLeft < 5 * 6e4 ? " warn" : ""}`;
+    };
+    renderAuth();
+    const authTimer = setInterval(renderAuth, 3e4);
     const inertNote = mapped.inert?.length ? ` (${mapped.inert.length} block${mapped.inert.length > 1 ? "s" : ""} not draggable: ${mapped.inert.join(", ")})` : "";
     setStatus(`drag tiles in the dive by \u283F \xB7 drag right/bottom edges to resize${inertNote}`);
     const onSessionMsg = (ev) => {
@@ -32624,6 +32719,7 @@
     const close = () => {
       if (closed) return;
       closed = true;
+      clearInterval(authTimer);
       try {
         send(frameWin, { type: "ARRANGE_CANCEL" });
       } catch {
@@ -32676,8 +32772,10 @@
         }
         setStatus(`saved \u2713 ${(/* @__PURE__ */ new Date()).toLocaleTimeString()} \u2014 reload the tab to re-render from source`, "okk");
       } catch (e) {
-        setStatus(`submit failed: ${e.message}`, "err");
+        const kind = classifyAuthError(e?.message);
+        setStatus(kind === "unknown" ? `submit failed: ${e.message}` : authMessage(kind), "err");
       } finally {
+        renderAuth();
         $submit.disabled = false;
       }
     });
@@ -32688,47 +32786,47 @@
   var SOURCE = "dive-arranger";
   var UUID_RE2 = /\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/i;
   try {
-    document.documentElement.setAttribute("data-dive-arranger-build", "modelaware-1");
+    document.documentElement.setAttribute("data-dive-arranger-build", "tokenresolver-1");
   } catch {
   }
   var diveIdFromUrl = () => location.pathname.match(UUID_RE2)?.[1]?.toLowerCase() ?? null;
-  function looksLikeMdJwt(value) {
-    if (typeof value !== "string") return false;
-    const m = value.match(/^eyJ[\w-]+\.([\w-]+)\.[\w-]+$/);
-    if (!m) return false;
-    try {
-      const payload = JSON.parse(atob(m[1].replace(/-/g, "+").replace(/_/g, "/")));
-      return Boolean(payload.mdRegion || payload.tokenType || payload.tokenId);
-    } catch {
-      return false;
-    }
-  }
-  function scanStorageForToken() {
+  function scanStorageForTokens() {
+    const seen = /* @__PURE__ */ new Set();
+    const tokens2 = [];
+    const add = (t) => {
+      if (!seen.has(t)) {
+        seen.add(t);
+        tokens2.push(t);
+      }
+    };
     for (const store of [window.localStorage, window.sessionStorage]) {
       try {
         for (let i = 0; i < store.length; i++) {
-          const key = store.key(i);
-          const raw = store.getItem(key);
+          const raw = store.getItem(store.key(i));
           if (!raw) continue;
-          if (looksLikeMdJwt(raw)) return raw;
-          if (raw.length < 2e5 && raw.includes("eyJ")) {
-            for (const cand of raw.match(/eyJ[\w-]+\.[\w-]+\.[\w-]+/g) || []) {
-              if (looksLikeMdJwt(cand)) return cand;
-            }
+          if (/^eyJ[\w-]+\.[\w-]+\.[\w-]+$/.test(raw)) add(raw);
+          else if (raw.length < 2e5 && raw.includes("eyJ")) {
+            for (const cand of raw.match(/eyJ[\w-]+\.[\w-]+\.[\w-]+/g) || []) add(cand);
           }
         }
       } catch {
       }
     }
-    return null;
+    return tokens2;
   }
-  async function findToken() {
-    const fromPage = scanStorageForToken();
-    if (fromPage) return { token: fromPage, source: "page storage" };
-    const { mdToken } = await chrome.storage.local.get("mdToken");
-    if (mdToken) return { token: mdToken, source: "extension options" };
-    return null;
+  async function gatherCandidates() {
+    const candidates = scanStorageForTokens().map((token) => ({ token, source: "page" }));
+    try {
+      const { mdToken } = await chrome.storage.local.get("mdToken");
+      if (mdToken) candidates.push({ token: mdToken, source: "fallback" });
+    } catch {
+    }
+    return candidates;
   }
+  async function resolveAuth(nowMs) {
+    return resolveToken(await gatherCandidates(), nowMs);
+  }
+  var sourceLabel = (source) => source === "page" ? "page session" : "options token";
   var mainWorldReady = null;
   function ensureMainWorld() {
     if (mainWorldReady) return mainWorldReady;
@@ -32787,19 +32885,40 @@
       alert("Dive Arranger: no dive id found in this URL \u2014 open a dive first.");
       return;
     }
-    let auth = null;
-    try {
-      auth = await findToken();
-    } catch {
-    }
-    if (!auth) {
+    const resolved = await resolveAuth(Date.now());
+    if (!resolved) {
       alert(
-        "Dive Arranger: no MotherDuck token found in the page, and no fallback token is set.\nOpen the extension's Options page and paste a token (a short-lived token works)."
+        "Dive Arranger: no unexpired MotherDuck token found \u2014 open or refresh an app.motherduck.com tab so a session token is present, or paste one in the extension Options (a short-lived token works)."
       );
       return;
     }
-    const runQueries = (sqls) => runQueriesWithToken(sqls, auth.token);
+    const authState = { token: resolved.token, source: resolved.source, exp: resolved.exp };
+    const authView = { source: resolved.source, exp: resolved.exp };
+    const runQueries = async (sqls) => {
+      try {
+        return await runQueriesWithToken(sqls, authState.token);
+      } catch (e) {
+        const kind = classifyAuthError(e?.message);
+        if (kind !== "expired" && kind !== "scope") throw e;
+        const fresh = await resolveAuth(Date.now());
+        if (!fresh || fresh.token === authState.token) throw e;
+        const rows = await runQueriesWithToken(sqls, fresh.token);
+        Object.assign(authState, { token: fresh.token, source: fresh.source, exp: fresh.exp });
+        Object.assign(authView, { source: fresh.source, exp: fresh.exp });
+        return rows;
+      }
+    };
     const btn = ensureButton();
+    try {
+      btn.textContent = "checking auth \u2026";
+      await runQueries(["SELECT 1"]);
+    } catch (e) {
+      btn.textContent = BTN_LABEL;
+      const kind = classifyAuthError(e?.message);
+      alert(`Dive Arranger: ${authMessage(kind)}${kind === "unknown" ? `
+(${e.message})` : ""}`);
+      return;
+    }
     try {
       btn.textContent = "loading dive \u2026";
       const rows = await runQueries([sqlGetDive(diveId)]);
@@ -32811,7 +32930,7 @@
       overlayOpen = true;
       try {
         btn.textContent = "mapping tiles \u2026";
-        await openInSitu({ diveId, source, runQueries, onClose });
+        await openInSitu({ diveId, source, runQueries, onClose, auth: authView });
       } catch (bridgeErr) {
         if (bridgeErr instanceof DiveShapeError) throw bridgeErr;
         openArranger({
@@ -32819,13 +32938,17 @@
           source,
           runQueries,
           note: `in-place mode unavailable: ${bridgeErr.message} \u2014 using card view`,
-          onClose
+          onClose,
+          auth: authView
         });
       }
     } catch (e) {
       overlayOpen = false;
-      alert(`Dive Arranger: ${e.message}
-(token source: ${auth.source})`);
+      const kind = classifyAuthError(e?.message);
+      alert(
+        kind === "unknown" ? `Dive Arranger: ${e.message}
+(auth: ${sourceLabel(authState.source)})` : `Dive Arranger: ${authMessage(kind)}`
+      );
     } finally {
       btn.textContent = BTN_LABEL;
     }

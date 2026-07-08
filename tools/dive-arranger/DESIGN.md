@@ -18,7 +18,9 @@ app.motherduck.com tab (TOP frame)
 │   │   Submit; postMessage bridge to the dive iframe (origin-checked, nonced)
 │   ├─ overlay.js + snapshot.js: card-overlay FALLBACK (only when the iframe
 │   │   bridge / tile mapping fails)
-│   └─ token discovery (page storage scan → chrome.storage fallback)
+│   └─ token resolver (token.mjs, pure): expiry-aware selection over ALL
+│       page-storage JWTs + the Options fallback; SELECT 1 preflight; one
+│       re-resolve retry on auth failure (token rotation)
 ├─ dist/md-main.js  (MAIN world, injected on demand)
 │   └─ @motherduck/wasm-client: runs MD_GET_DIVE / MD_UPDATE_DIVE_CONTENT
 │       (postMessage bridge to the content script)
@@ -184,6 +186,8 @@ is best-effort — if the app holds its token only in memory, the scan finds
 nothing and the user pastes a token (short-lived preferred) into the Options
 page (`chrome.storage.local`, machine-local, never committed). Prohibited by
 design: hardcoding tokens, logging them, or writing them to files.
+*Superseded in part by #12: the one-shot "first JWT wins" grab became an
+expiry-aware resolver over all candidates.*
 
 **10. Safety rails for write-back.**
 Submit is the only write path; it backs its verification on byte-equal
@@ -225,6 +229,42 @@ deleted block's stale tile handle (it has no idMap entry) instead of letting
 it shadow a kept block, and clears the session's deleted-set — the element
 simply stays hidden, matching the new source until reload.
 
+**12. Token resolver: expiry-aware selection, preflight, one re-resolve retry.**
+The original grab (decision 9) took the FIRST MotherDuck-shaped JWT it saw and
+never looked at the `exp` claim or re-read storage — so an expired token could
+be picked over a live one, and a short-lived token that died mid-session made
+Submit fail with a raw wasm dump even though the MD app had already rotated a
+fresh token into the very storage we scanned at launch. The fix is a pure
+resolver core (`extension/token.mjs`, fully unit-tested, takes `nowMs` as a
+parameter — `Date.now()` stays in content.js so the module is deterministic):
+- `tokenInfo` decodes the JWT payload and derives `{exp, expired, msLeft}` —
+  JWT `exp` is in seconds (×1000); no `exp` claim means non-expiring; anything
+  with under `SKEW_MS` (45 s) left counts as expired, because by the time the
+  wasm client connects it would be dead anyway.
+- `resolveToken` ranks ALL candidates (every page-storage JWT, tagged `page`,
+  plus the Options token, tagged `fallback`): expired/near-expiry dropped
+  first, then `page` before `fallback` (the page token is the one the app
+  itself keeps fresh), then max `msLeft`. Null when nothing usable remains —
+  which produces a "no unexpired token" alert with instructions, not a crash.
+- **Preflight**: `launch()` runs `SELECT 1` through the resolved token before
+  opening any UI; failures are classified and alerted with an actionable
+  message, so bad auth can never masquerade as a broken dive.
+- **Re-resolve on failure**: the `runQueries` wrapper classifies each bridge
+  error (`classifyAuthError`: expired/scope/network/unknown, string
+  heuristics, DEFAULT unknown so the arranger's own pipeline errors are never
+  misdrawn as auth); on expired/scope it re-scans storage and retries exactly
+  once, and only if the freshly-resolved token differs from the one that just
+  failed — no different token means the original classified error surfaces;
+  there is no loop. A successful retry adopts the fresh token for the rest of
+  the session and updates the UI's auth descriptor in place.
+- **Transparency without exposure**: the UIs receive `{source, exp}` only —
+  the token never leaves content.js's closure — and render an auth line
+  (`auth: page session · exp 3:47pm`, amber under 5 min, re-rendered on an
+  interval so rotation and aging show up). Auth failures in Submit set the
+  status to the actionable `authMessage` string; non-auth errors pass through
+  verbatim. The md-main bridge already scrubs the token out of error text
+  before it can reach any of these surfaces.
+
 ## Verification status (honest)
 
 **Verified (live, against a throwaway MotherDuck dive — created and deleted
@@ -238,7 +278,7 @@ wrappers → `MD_DELETE_DIVE` confirmed. 24 assertions, plus 13 offline engine
 tests, plus the engine executing correctly from the browser-target esbuild
 bundle in a bare (Node-builtin-free) VM.
 
-**Verified (Node, offline — `npm test`, 79 tests):** the engine suite
+**Verified (Node, offline — `npm test`, 104 tests):** the engine suite
 (including source-row decomposition: grid-cols-2/4, inline repeat(N,…), flex
 rows, col-span scaling, spacer columns, dynamic-child and wrapping vetoes,
 pin-crossing still rejected, and discover→apply→discover stability on a
@@ -262,12 +302,24 @@ reparenting cells back into their wrappers/source grids, the MAPPED
 ok:false retry path, and the bridge hardening (messages from non-parent
 windows ignored; teardown mid-drag leaves the surviving pointer listeners
 inert; a superseded INIT's mapping-retry loop goes dead instead of clobbering
-the newer session).
+the newer session); and the token resolver core (token.mjs: JWT decode on
+valid/garbage input, sec→ms exp parsing, near-expiry-within-skew treated as
+expired, no-exp ⇒ non-expiring, expired candidates dropped, page-over-fallback
+then max-msLeft ranking, null on nothing usable, every classifyAuthError
+bucket incl. the unknown default on the arranger's own error strings, and the
+local-time expiry formatting).
 
 **Not verified (needs a live Chrome session):** frame.js actually being
 injected into the sandbox iframe by Chrome (manifest match patterns vs. the
 real sandbox URL); tile-mapping quality against real rendered dives; the
 in-place drag/resize pointer UX and chrome positioning; the top↔iframe
 postMessage handshake timing on a real page; how gracefully the preview
-survives a mid-session React re-render; token discovery against the real MD
-app's storage; and the main-world wasm bridge under the app's CSP.
+survives a mid-session React re-render; token resolution against the real MD
+app's storage (incl. whether the rotated session token actually lands in
+local/sessionStorage for the re-resolve path to find); the main-world wasm
+bridge under the app's CSP; and `classifyAuthError`'s string heuristics
+against real MotherDuck/wasm error text (the buckets are regex guesses —
+expired ≈ /expired|jwt|unauthor|invalid token|401/, scope ≈
+/read-?only|permission|forbidden|not allowed|403|write/, network ≈
+/network|fetch|connect|timed out|offline/ — defaulting to 'unknown', which
+passes the raw scrubbed message through).

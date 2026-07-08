@@ -12,6 +12,7 @@
 import { openArranger } from "./overlay.js";
 import { openInSitu } from "./insitu.js";
 import { sqlGetDive, DiveShapeError } from "../engine/index.mjs";
+import { resolveToken, classifyAuthError, authMessage } from "./token.mjs";
 
 const SOURCE = "dive-arranger";
 const UUID_RE = /\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/i;
@@ -20,7 +21,7 @@ const UUID_RE = /\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}
 // isolated world (not always visible to external readers), but the DOM is
 // shared with the page, so an outside check can confirm which bundle is live.
 try {
-  document.documentElement.setAttribute("data-dive-arranger-build", "modelaware-1");
+  document.documentElement.setAttribute("data-dive-arranger-build", "tokenresolver-1");
 } catch {
   /* documentElement not ready — harmless */
 }
@@ -28,51 +29,60 @@ try {
 const diveIdFromUrl = () => location.pathname.match(UUID_RE)?.[1]?.toLowerCase() ?? null;
 
 // ── Token discovery ───────────────────────────────────────────────────
-// Priority: (1) a MotherDuck-looking JWT in the page's local/sessionStorage
-// (the content script shares the page origin's storage), (2) the fallback
-// token pasted in the extension options (chrome.storage.local).
+// The resolver core (token.mjs, pure + unit-tested) picks the best token from
+// ALL candidates: every MotherDuck-shaped JWT in the page's local/session-
+// Storage (the content script shares the page origin's storage) tagged
+// 'page', plus the Options fallback (chrome.storage.local) tagged 'fallback'.
+// Expired and near-expiry tokens are dropped BEFORE selection, and the query
+// path re-resolves once on an auth failure — the MD app rotates its session
+// token, so a fresh one may have appeared in storage since launch.
 
-function looksLikeMdJwt(value) {
-  if (typeof value !== "string") return false;
-  const m = value.match(/^eyJ[\w-]+\.([\w-]+)\.[\w-]+$/);
-  if (!m) return false;
-  try {
-    const payload = JSON.parse(atob(m[1].replace(/-/g, "+").replace(/_/g, "/")));
-    return Boolean(payload.mdRegion || payload.tokenType || payload.tokenId);
-  } catch {
-    return false;
-  }
-}
-
-function scanStorageForToken() {
+function scanStorageForTokens() {
+  const seen = new Set();
+  const tokens = [];
+  const add = (t) => {
+    if (!seen.has(t)) {
+      seen.add(t);
+      tokens.push(t);
+    }
+  };
   for (const store of [window.localStorage, window.sessionStorage]) {
     try {
       for (let i = 0; i < store.length; i++) {
-        const key = store.key(i);
-        const raw = store.getItem(key);
+        const raw = store.getItem(store.key(i));
         if (!raw) continue;
-        if (looksLikeMdJwt(raw)) return raw;
+        if (/^eyJ[\w-]+\.[\w-]+\.[\w-]+$/.test(raw)) add(raw);
         // Tokens are often nested in JSON blobs (auth caches etc.)
-        if (raw.length < 200000 && raw.includes("eyJ")) {
-          for (const cand of raw.match(/eyJ[\w-]+\.[\w-]+\.[\w-]+/g) || []) {
-            if (looksLikeMdJwt(cand)) return cand;
-          }
+        else if (raw.length < 200000 && raw.includes("eyJ")) {
+          for (const cand of raw.match(/eyJ[\w-]+\.[\w-]+\.[\w-]+/g) || []) add(cand);
         }
       }
     } catch {
       /* storage access denied — move on */
     }
   }
-  return null;
+  // MD-ness and expiry are judged by the resolver (tokenInfo), not here.
+  return tokens;
 }
 
-async function findToken() {
-  const fromPage = scanStorageForToken();
-  if (fromPage) return { token: fromPage, source: "page storage" };
-  const { mdToken } = await chrome.storage.local.get("mdToken");
-  if (mdToken) return { token: mdToken, source: "extension options" };
-  return null;
+async function gatherCandidates() {
+  const candidates = scanStorageForTokens().map((token) => ({ token, source: "page" }));
+  try {
+    const { mdToken } = await chrome.storage.local.get("mdToken");
+    if (mdToken) candidates.push({ token: mdToken, source: "fallback" });
+  } catch {
+    // chrome.storage unreachable (e.g. the extension was just reloaded and
+    // this content script is orphaned) — page candidates only.
+  }
+  return candidates;
 }
+
+// Date.now() lives HERE (the browser side); the resolver stays deterministic.
+async function resolveAuth(nowMs) {
+  return resolveToken(await gatherCandidates(), nowMs);
+}
+
+const sourceLabel = (source) => (source === "page" ? "page session" : "options token");
 
 // ── Main-world bridge ─────────────────────────────────────────────────
 
@@ -140,23 +150,59 @@ async function launch() {
     alert("Dive Arranger: no dive id found in this URL — open a dive first.");
     return;
   }
-  let auth = null;
-  try {
-    auth = await findToken();
-  } catch {
-    // chrome.storage unreachable (e.g. the extension was just reloaded and
-    // this content script is orphaned) — treat as "no token found".
-  }
-  if (!auth) {
+  const resolved = await resolveAuth(Date.now());
+  if (!resolved) {
     alert(
-      "Dive Arranger: no MotherDuck token found in the page, and no fallback token is set.\n" +
-        "Open the extension's Options page and paste a token (a short-lived token works).",
+      "Dive Arranger: no unexpired MotherDuck token found — open or refresh an " +
+        "app.motherduck.com tab so a session token is present, or paste one in the " +
+        "extension Options (a short-lived token works).",
     );
     return;
   }
-  const runQueries = (sqls) => runQueriesWithToken(sqls, auth.token);
+  // authState (token + metadata) stays private to this closure; authView is
+  // the descriptor handed to the UIs — source + expiry only, NEVER the token.
+  // Both are updated in place when the query path adopts a rotated token, so
+  // the toolbar's auth line tracks reality.
+  const authState = { token: resolved.token, source: resolved.source, exp: resolved.exp };
+  const authView = { source: resolved.source, exp: resolved.exp };
+
+  // Query path with one-shot re-resolve: on an auth-classified failure
+  // (expired/scope), re-scan storage — the MD app may have rotated in a fresh
+  // session token since we resolved — and retry ONCE, only if the fresh token
+  // actually differs from the one that just failed (never loop). Non-auth
+  // errors, and auth errors with no different token available, pass through.
+  const runQueries = async (sqls) => {
+    try {
+      return await runQueriesWithToken(sqls, authState.token);
+    } catch (e) {
+      const kind = classifyAuthError(e?.message);
+      if (kind !== "expired" && kind !== "scope") throw e;
+      const fresh = await resolveAuth(Date.now());
+      if (!fresh || fresh.token === authState.token) throw e;
+      const rows = await runQueriesWithToken(sqls, fresh.token);
+      Object.assign(authState, { token: fresh.token, source: fresh.source, exp: fresh.exp });
+      Object.assign(authView, { source: fresh.source, exp: fresh.exp });
+      return rows;
+    }
+  };
 
   const btn = ensureButton();
+
+  // Preflight: validate auth with a trivial query BEFORE opening anything, so
+  // a dead token surfaces as an actionable message instead of a cryptic
+  // wasm/DuckDB dump mid-flow. (Benefits from the re-resolve retry above.)
+  try {
+    btn.textContent = "checking auth …";
+    await runQueries(["SELECT 1"]);
+  } catch (e) {
+    btn.textContent = BTN_LABEL;
+    const kind = classifyAuthError(e?.message);
+    // e.message is token-free: md-main scrubs the token from bridge errors,
+    // and local bridge failures (timeouts, injection) never carry it.
+    alert(`Dive Arranger: ${authMessage(kind)}${kind === "unknown" ? `\n(${e.message})` : ""}`);
+    return;
+  }
+
   try {
     btn.textContent = "loading dive …";
     const rows = await runQueries([sqlGetDive(diveId)]);
@@ -168,7 +214,7 @@ async function launch() {
     overlayOpen = true;
     try {
       btn.textContent = "mapping tiles …";
-      await openInSitu({ diveId, source, runQueries, onClose });
+      await openInSitu({ diveId, source, runQueries, onClose, auth: authView });
     } catch (bridgeErr) {
       // A dive the engine can't decompose fails the same way in either UI —
       // surface that instead of falling back.
@@ -181,11 +227,17 @@ async function launch() {
         runQueries,
         note: `in-place mode unavailable: ${bridgeErr.message} — using card view`,
         onClose,
+        auth: authView,
       });
     }
   } catch (e) {
     overlayOpen = false;
-    alert(`Dive Arranger: ${e.message}\n(token source: ${auth.source})`);
+    const kind = classifyAuthError(e?.message);
+    alert(
+      kind === "unknown"
+        ? `Dive Arranger: ${e.message}\n(auth: ${sourceLabel(authState.source)})`
+        : `Dive Arranger: ${authMessage(kind)}`,
+    );
   } finally {
     btn.textContent = BTN_LABEL;
   }
