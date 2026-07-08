@@ -1,39 +1,35 @@
 # Vibes
 
-Interactive audio synthesis collection powered by hand tracking and web audio.
+**[jnakagawa.github.io/vibes](https://jnakagawa.github.io/vibes/)** — a field guide to things I've built, so I don't forget.
 
-## 🎵 Consolidated Collection
+Sound installations, hand-tracked instruments, iOS apps, and web experiments — mostly about music, gesture, and making computers feel less like computers.
 
-```
-📁 Vibes (Single Repository)
-├── 🎵 synths/          # All interactive audio instruments
-│   ├── enhanced_theremin_gestures_v5_complete.html
-│   ├── enhanced_theremin_gestures_v4_psychedelic.html
-│   ├── fm_synth_v3.html
-│   ├── fm_synth_v2.html
-│   ├── fm_synth_v1.html
-│   ├── visual_eno_loops_glow.html
-│   ├── visual_eno_loops_final.html
-│   ├── hrv_monitor.html
-│   ├── theremin_dual_sine_sorted.html
-│   └── index.html
-├── 🔧 tools/           # Development scripts
-│   ├── prompt.py
-│   └── userinput.py
-├── 📄 docs/            # Documentation
-│   ├── vibes-README.md
-│   ├── user_tasks.log
-│   └── project_structure.md
-└── 📁 root/            # Main project files
-    ├── index.html
-    ├── README.md
-    ├── LICENSE
-    ├── DEPLOYMENT.md
-    └── package.json
+## Featured
+
+| App | What it is | Where |
+|---|---|---|
+| **Nearfield** 👑 | UWB sound installation — phones create richer harmonics as people get closer | [repo](https://github.com/jnakagawa/nearfield-ios) · iOS |
+| **YomiScan** | Photograph Japanese → furigana + dictionary + translation, 100% on-device | [repo](https://github.com/jnakagawa/yomiscan) · TestFlight |
+| **Glass Conductor v3** | Conduct Philip Glass with your hands — gestural particle instrument | [live](https://jnakagawa.github.io/vibes/synths/glass-conductor-v3.html) |
+| **Stackify Social** | The mailing list for Instagram | [stackify.social](https://stackify.social) |
+| **Stackify Calendar** | The events come to you | [calendar.stackify.social](https://calendar.stackify.social) |
+| **Petal Picker** | Photo → 3D flower; pinch the petals off with your hands | [live](https://jnakagawa.github.io/vibes/petal-picker/) |
+| **Sound Catcher** | Pocket granular sampler with a TE-inspired UI | [live](https://jnakagawa.github.io/vibes/synths/sound_catcher.html) |
+| **Dive Arranger** | Chrome extension: drag-and-drop layout for MotherDuck dives, written back to JSX source | [about](https://jnakagawa.github.io/vibes/tools/dive-arranger.html) |
+
+## The lab
+
+Everything else lives in [`synths/`](./synths) — theremins, FM synths, Eno loop machines, a climbing RPG, an ASCII webcam, and other experiments. The [showcase page](https://jnakagawa.github.io/vibes/) auto-discovers them from `files.json`.
+
+## Development
+
+```bash
+npm run build   # regenerate files.json after adding a synth
+npm run dev     # build + serve on :8000
 ```
 
-**🎶 Visit [index.html](./index.html) to browse all synths**
+Each instrument is a standalone HTML file with everything inlined — no build step, no external dependencies. See [CLAUDE.md](./CLAUDE.md) for architecture notes and [DEPLOYMENT.md](./DEPLOYMENT.md) for hosting.
 
 ---
 
-*Hand-tracked synthesizers • Real-time audio • Browser-based • Good vibes only* 
+*Hand-tracked synthesizers • Real-time audio • Browser-based • Good vibes only*
