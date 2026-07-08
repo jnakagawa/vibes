@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Petal Picker — loves me, loves me not</title>
+<link rel="stylesheet" href="css/style.css">
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js"
+  }
+}
+</script>
+</head>
+<body>
+
+<canvas id="scene"></canvas>
+
+<!-- heads-up display -->
+<div id="hud">
+  <div id="phrase">&nbsp;</div>
+  <div id="petals-left"></div>
+</div>
+
+<!-- landing / upload -->
+<div id="landing">
+  <div class="card">
+    <h1>Petal&nbsp;Picker <span class="flower">🌼</span></h1>
+    <p class="tagline">loves me, loves me not…</p>
+    <div id="dropzone">
+      <p>Drop a flower photo here</p>
+      <div class="row">
+        <button id="btn-upload" class="btn primary">Upload a photo</button>
+        <button id="btn-sample" class="btn">Try the sunflower</button>
+      </div>
+    </div>
+    <p class="hint">Your photo becomes a 3D flower. Pinch petals with your fingers
+    (webcam) or drag them with the mouse — pull until they tear off.</p>
+  </div>
+</div>
+
+<!-- loading overlay -->
+<div id="loader" hidden>
+  <div class="card small">
+    <div class="spinner"></div>
+    <p id="loader-step">reading photo…</p>
+  </div>
+</div>
+
+<!-- end card -->
+<div id="endcard" hidden>
+  <div class="card">
+    <div id="end-emoji">🌼</div>
+    <h2 id="end-verdict">LOVES ME</h2>
+    <p id="end-sub"></p>
+    <div class="row">
+      <button id="btn-replay" class="btn primary">Same flower again</button>
+      <button id="btn-new" class="btn">New photo</button>
+    </div>
+  </div>
+</div>
+
+<!-- toolbar -->
+<div id="toolbar" hidden>
+  <button id="tb-new" class="tbtn" title="New photo">📷</button>
+  <button id="tb-replay" class="tbtn" title="Regrow flower">🔄</button>
+  <button id="tb-hand" class="tbtn" title="Toggle hand tracking">✋</button>
+  <button id="tb-gear" class="tbtn" title="Settings">⚙️</button>
+</div>
+
+<!-- settings panel -->
+<div id="panel" hidden></div>
+
+<!-- webcam preview -->
+<div id="camwrap" hidden>
+  <video id="cam" playsinline muted autoplay></video>
+  <canvas id="camoverlay"></canvas>
+</div>
+
+<!-- hand / drag cursors -->
+<div id="cursors"></div>
+
+<div id="toasts"></div>
+
+<input id="file-input" type="file" accept="image/*" hidden>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
