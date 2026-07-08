@@ -15,6 +15,7 @@ Sound installations, hand-tracked instruments, iOS apps, and web experiments —
 | **Stackify Calendar** | The events come to you | [calendar.stackify.social](https://calendar.stackify.social) |
 | **Petal Picker** | Photo → 3D flower; pinch the petals off with your hands | [live](https://jnakagawa.github.io/vibes/petal-picker/) |
 | **Sound Catcher** | Pocket granular sampler with a TE-inspired UI | [live](https://jnakagawa.github.io/vibes/synths/sound_catcher.html) |
+| **Dive Arranger** | Chrome extension: drag-and-drop layout for MotherDuck dives, written back to JSX source | [about](https://jnakagawa.github.io/vibes/tools/dive-arranger.html) |
 
 ## The lab
 

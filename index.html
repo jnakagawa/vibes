@@ -228,6 +228,32 @@
         50% { transform: scaleY(1); }
     }
 
+    /* dive arranger */
+    .v-duck { --accent: #38bdf8; background: linear-gradient(160deg, #0c1720 0%, #12121a 100%); }
+    .v-duck .tiles {
+        position: absolute; inset: 0; display: grid; place-content: center;
+        grid-template-columns: 64px 64px; gap: 10px;
+    }
+    .v-duck .t {
+        width: 64px; height: 40px; border-radius: 8px;
+        background: #16222e; border: 1px solid rgba(56,189,248,0.25);
+    }
+    .v-duck .t.slot { background: transparent; border: 1px dashed rgba(56,189,248,0.4); }
+    .v-duck .t.mover {
+        position: relative; z-index: 2;
+        background: linear-gradient(160deg, #1b3346, #12202c);
+        animation: duck-swap 3.8s ease-in-out infinite;
+    }
+    .v-duck .t.mover::after {
+        content: '🦆'; position: absolute; inset: 0; display: flex;
+        align-items: center; justify-content: center; font-size: 18px;
+    }
+    @keyframes duck-swap {
+        0%, 15% { transform: translate(0, 0); }
+        45%, 65% { transform: translate(74px, 50px); }
+        95%, 100% { transform: translate(0, 0); }
+    }
+
     /* glass conductor link is in-repo; visuals share sizing */
     .visual .hint {
         position: absolute; right: 12px; bottom: 10px; z-index: 2;
@@ -472,6 +498,31 @@
             </div>
         </a>
 
+        <a class="card" href="tools/dive-arranger.html" style="--accent:#38bdf8">
+            <div class="visual v-duck">
+                <div class="tiles">
+                    <div class="t mover"></div>
+                    <div class="t"></div>
+                    <div class="t"></div>
+                    <div class="t slot"></div>
+                </div>
+                <span class="hint">chrome ext</span>
+            </div>
+            <div class="card-body">
+                <h3>Dive Arranger</h3>
+                <div class="tagline">Drag-and-drop layout for MotherDuck dives.</div>
+                <p class="desc">A Chrome extension that visually rearranges any MotherDuck dive —
+                   reorder blocks, place them side-by-side, resize — then writes the new layout
+                   back to the dive's JSX source. Works on arbitrary dives by parsing the source,
+                   no widget manifest needed.</p>
+                <div class="meta">
+                    <span class="tag platform">Chrome · MV3</span>
+                    <span class="tag">JSX parsing</span>
+                    <span class="tag">MotherDuck</span>
+                </div>
+            </div>
+        </a>
+
     </div>
 
     <div class="section-label" id="lab">the lab · everything else</div>
@@ -572,7 +623,8 @@
     (function () {
         // featured above, or not launchable — keep them out of the lab list
         const EXCLUDE = new Set([
-            'index.html', 'glass-conductor-v3.html', 'sound_catcher.html'
+            'synths/index.html', 'synths/glass-conductor-v3.html',
+            'synths/sound_catcher.html', 'tools/dive-arranger.html'
         ]);
         const grid = document.getElementById('lab-grid');
 
@@ -586,14 +638,15 @@
         fetch('./files.json')
             .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
             .then(data => {
-                const files = (data.synths || [])
-                    .filter(f => f.name.endsWith('.html') && !EXCLUDE.has(f.name))
+                const files = ['synths', 'tools']
+                    .flatMap(dir => (data[dir] || []).map(f => ({ ...f, path: `${dir}/${f.name}` })))
+                    .filter(f => f.name.endsWith('.html') && !EXCLUDE.has(f.path))
                     .sort((a, b) => a.name.localeCompare(b.name));
                 grid.innerHTML = '';
                 files.forEach(f => {
                     const a = document.createElement('a');
                     a.className = 'lab-item';
-                    a.href = `synths/${f.name}`;
+                    a.href = f.path;
                     a.innerHTML = `<span class="dot"></span><span class="name"></span><span class="file"></span>`;
                     a.querySelector('.name').textContent = prettyName(f.name);
                     a.querySelector('.file').textContent = `${Math.round(f.size / 1024)}kb`;
