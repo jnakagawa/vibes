@@ -7,8 +7,10 @@ import assert from "node:assert/strict";
 import {
   decodeJwt,
   isMdJwt,
+  extractMdJwt,
   tokenInfo,
   resolveToken,
+  sourceLabel,
   classifyAuthError,
   authMessage,
   fmtExpiry,
@@ -51,6 +53,46 @@ test("isMdJwt: matches the mdRegion/tokenType/tokenId heuristic", () => {
   assert.equal(isMdJwt({ sub: "someone", iss: "other-idp" }), false);
   assert.equal(isMdJwt(null), false);
   assert.equal(isMdJwt({}), false);
+});
+
+// ── extractMdJwt ──────────────────────────────────────────────────────
+
+test("extractMdJwt: finds an MD JWT inside a Bearer authorization header", () => {
+  const jwt = makeJwt({ mdRegion: "us-east-1", exp: 1234 });
+  assert.equal(extractMdJwt(`Bearer ${jwt}`), jwt);
+});
+
+test("extractMdJwt: finds an MD JWT inside a JSON response body", () => {
+  const jwt = makeJwt({ tokenId: "abc", exp: 1234 });
+  const body = JSON.stringify({ ok: true, access_token: jwt, ttl: 3600 });
+  assert.equal(extractMdJwt(body), jwt);
+});
+
+test("extractMdJwt: finds an MD JWT in a WebSocket connect URL query param", () => {
+  const jwt = makeJwt({ tokenType: "read_write" });
+  assert.equal(extractMdJwt(`wss://flight.motherduck.com/?database=x&token=${jwt}&v=2`), jwt);
+});
+
+test("extractMdJwt: returns null for garbage / non-JWT strings", () => {
+  assert.equal(extractMdJwt("no token here"), null);
+  assert.equal(extractMdJwt("Bearer eyJhbGc"), null); // truncated, one segment
+  assert.equal(extractMdJwt(""), null);
+  assert.equal(extractMdJwt(null), null);
+  assert.equal(extractMdJwt(undefined), null);
+  assert.equal(extractMdJwt(12345), null);
+});
+
+test("extractMdJwt: ignores non-MD JWTs (Auth0/other-IdP tokens)", () => {
+  const auth0 = makeJwt({ sub: "user|123", iss: "auth0", aud: "md-app" });
+  assert.equal(extractMdJwt(`Bearer ${auth0}`), null);
+});
+
+test("extractMdJwt: skips a leading non-MD JWT and returns the MD one", () => {
+  const auth0 = makeJwt({ sub: "user|123", iss: "auth0" });
+  const md = makeJwt({ mdRegion: "eu-west-1", exp: 9999 });
+  // Both present in one blob (e.g. a token-exchange response) — MD one wins.
+  const body = JSON.stringify({ id_token: auth0, md_token: md });
+  assert.equal(extractMdJwt(body), md);
 });
 
 // ── tokenInfo ─────────────────────────────────────────────────────────
@@ -150,6 +192,41 @@ test("resolveToken: tolerates malformed candidate entries", () => {
   const good = cand({ tokenId: "g", exp: secs(NOW + 3_600_000) }, "page");
   const best = resolveToken([{}, { source: "page" }, null, good], NOW);
   assert.equal(best.token, good.token);
+});
+
+test("resolveToken: live beats an equally-fresh page token (live is preferred)", () => {
+  const expMs = secs(NOW + 30 * 60_000);
+  const live = cand({ tokenId: "L", exp: expMs }, "live");
+  const page = cand({ tokenId: "P", exp: expMs }, "page");
+  const best = resolveToken([page, live], NOW);
+  assert.equal(best.source, "live");
+  assert.equal(best.token, live.token);
+});
+
+test("resolveToken: live beats page even when page lives longer (source ranks first)", () => {
+  const live = cand({ tokenId: "L", exp: secs(NOW + 6 * 60_000) }, "live");
+  const page = cand({ tokenId: "P", exp: secs(NOW + 60 * 60_000) }, "page");
+  assert.equal(resolveToken([page, live], NOW).source, "live");
+});
+
+test("resolveToken: an expired live token is dropped for a valid page/fallback token", () => {
+  const deadLive = cand({ tokenId: "L", exp: secs(NOW - 1000) }, "live");
+  const page = cand({ tokenId: "P", exp: secs(NOW + 30 * 60_000) }, "page");
+  const fallback = cand({ tokenId: "F", exp: secs(NOW + 90 * 60_000) }, "fallback");
+  const best = resolveToken([deadLive, page, fallback], NOW);
+  assert.equal(best.source, "page"); // page still ranks above fallback
+  assert.equal(best.token, page.token);
+  // with only the dead live + fallback, fallback wins
+  assert.equal(resolveToken([deadLive, fallback], NOW).source, "fallback");
+});
+
+// ── sourceLabel ───────────────────────────────────────────────────────
+
+test("sourceLabel: distinct, token-free labels for each source", () => {
+  assert.equal(sourceLabel("live"), "live session");
+  assert.equal(sourceLabel("page"), "page session");
+  assert.equal(sourceLabel("fallback"), "options token");
+  assert.equal(sourceLabel(undefined), "options token"); // anything unknown → options
 });
 
 // ── classifyAuthError ─────────────────────────────────────────────────

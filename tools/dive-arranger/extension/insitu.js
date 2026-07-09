@@ -19,7 +19,7 @@ import {
   sqlStatementsForUpdate,
 } from "../engine/index.mjs";
 import { deepCopyModel } from "./layout-model.mjs";
-import { classifyAuthError, authMessage, fmtExpiry } from "./token.mjs";
+import { classifyAuthError, authMessage, fmtExpiry, sourceLabel } from "./token.mjs";
 
 const BRIDGE = "dive-arranger-bridge";
 const FRAME_ORIGIN = "https://motherduckusercontent.com";
@@ -207,8 +207,7 @@ export async function openInSitu({ diveId, source, runQueries, onClose, auth }) 
       $auth.textContent = "";
       return;
     }
-    const label = auth.source === "page" ? "page session" : "options token";
-    $auth.textContent = `auth: ${label} · exp ${fmtExpiry(auth.exp)}`;
+    $auth.textContent = `auth: ${sourceLabel(auth.source)} · exp ${fmtExpiry(auth.exp)}`;
     const msLeft = auth.exp == null ? Infinity : auth.exp - Date.now();
     $auth.className = `auth${msLeft < 5 * 60_000 ? " warn" : ""}`;
   };

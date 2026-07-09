@@ -48,6 +48,7 @@ const common = {
   },
 };
 
+await build({ ...common, entryPoints: ["extension/token-sniffer.js"], outfile: "dist/token-sniffer.js" });
 await build({ ...common, entryPoints: ["extension/content.js"], outfile: "dist/content.js" });
 await build({ ...common, entryPoints: ["extension/frame.js"], outfile: "dist/frame.js" });
 await build({ ...common, entryPoints: ["extension/md-main.js"], outfile: "dist/md-main.js" });

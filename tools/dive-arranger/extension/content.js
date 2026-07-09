@@ -12,7 +12,7 @@
 import { openArranger } from "./overlay.js";
 import { openInSitu } from "./insitu.js";
 import { sqlGetDive, DiveShapeError } from "../engine/index.mjs";
-import { resolveToken, classifyAuthError, authMessage } from "./token.mjs";
+import { resolveToken, classifyAuthError, authMessage, sourceLabel } from "./token.mjs";
 
 const SOURCE = "dive-arranger";
 const UUID_RE = /\b([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/i;
@@ -28,14 +28,33 @@ try {
 
 const diveIdFromUrl = () => location.pathname.match(UUID_RE)?.[1]?.toLowerCase() ?? null;
 
+// ── Live token capture ────────────────────────────────────────────────
+// The MAIN-world token-sniffer (dist/token-sniffer.js, injected at
+// document_start via the manifest) intercepts the MD app's OWN auth traffic
+// and relays any MotherDuck-shaped JWT here over same-origin postMessage. The
+// app fetches this token at load and auto-refreshes it, so a captured 'live'
+// token is the freshest, self-rotating credential — preferred over storage
+// scans (which find nothing on the current cookie-auth app). The token is held
+// only in this in-memory variable; it is never logged or persisted here.
+let liveToken = null;
+window.addEventListener("message", (ev) => {
+  // Same-origin, same-window only — reject anything cross-origin or reposted
+  // from another frame/window.
+  if (ev.source !== window || ev.origin !== location.origin) return;
+  const d = ev.data;
+  if (!d || d.source !== "dive-arranger-token" || typeof d.token !== "string") return;
+  liveToken = d.token;
+});
+
 // ── Token discovery ───────────────────────────────────────────────────
 // The resolver core (token.mjs, pure + unit-tested) picks the best token from
-// ALL candidates: every MotherDuck-shaped JWT in the page's local/session-
-// Storage (the content script shares the page origin's storage) tagged
-// 'page', plus the Options fallback (chrome.storage.local) tagged 'fallback'.
-// Expired and near-expiry tokens are dropped BEFORE selection, and the query
-// path re-resolves once on an auth failure — the MD app rotates its session
-// token, so a fresh one may have appeared in storage since launch.
+// ALL candidates: the live captured token (tagged 'live', preferred), every
+// MotherDuck-shaped JWT in the page's local/sessionStorage (the content script
+// shares the page origin's storage) tagged 'page', plus the Options fallback
+// (chrome.storage.local) tagged 'fallback'. Expired and near-expiry tokens are
+// dropped BEFORE selection, and the query path re-resolves once on an auth
+// failure — the MD app rotates its token, so a fresher one may have arrived
+// (via the sniffer) since launch.
 
 function scanStorageForTokens() {
   const seen = new Set();
@@ -66,13 +85,16 @@ function scanStorageForTokens() {
 }
 
 async function gatherCandidates() {
-  const candidates = scanStorageForTokens().map((token) => ({ token, source: "page" }));
+  const candidates = [];
+  // Live captured token FIRST — the resolver prefers source 'live'.
+  if (liveToken) candidates.push({ token: liveToken, source: "live" });
+  for (const token of scanStorageForTokens()) candidates.push({ token, source: "page" });
   try {
     const { mdToken } = await chrome.storage.local.get("mdToken");
     if (mdToken) candidates.push({ token: mdToken, source: "fallback" });
   } catch {
     // chrome.storage unreachable (e.g. the extension was just reloaded and
-    // this content script is orphaned) — page candidates only.
+    // this content script is orphaned) — live/page candidates only.
   }
   return candidates;
 }
@@ -82,7 +104,8 @@ async function resolveAuth(nowMs) {
   return resolveToken(await gatherCandidates(), nowMs);
 }
 
-const sourceLabel = (source) => (source === "page" ? "page session" : "options token");
+// sourceLabel (live session / page session / options token) is shared from
+// token.mjs so the toolbar and error strings stay in sync.
 
 // ── Main-world bridge ─────────────────────────────────────────────────
 

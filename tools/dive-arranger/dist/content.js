@@ -32102,9 +32102,12 @@
       if (info && !info.expired) usable.push(info);
     }
     if (usable.length === 0) return null;
-    const srcRank = (s) => s === "page" ? 0 : 1;
+    const srcRank = (s) => s === "live" ? 0 : s === "page" ? 1 : 2;
     usable.sort((a, b2) => srcRank(a.source) - srcRank(b2.source) || b2.msLeft - a.msLeft);
     return usable[0];
+  }
+  function sourceLabel(source) {
+    return source === "live" ? "live session" : source === "page" ? "page session" : "options token";
   }
   function classifyAuthError(message) {
     const s = String(message ?? "");
@@ -32285,8 +32288,7 @@
         $auth.textContent = "";
         return;
       }
-      const label = auth.source === "page" ? "page session" : "options token";
-      $auth.textContent = `auth: ${label} \xB7 exp ${fmtExpiry(auth.exp)}`;
+      $auth.textContent = `auth: ${sourceLabel(auth.source)} \xB7 exp ${fmtExpiry(auth.exp)}`;
       const msLeft = auth.exp == null ? Infinity : auth.exp - Date.now();
       $auth.className = `auth${msLeft < 5 * 6e4 ? " warn" : ""}`;
     };
@@ -32689,8 +32691,7 @@
         $auth.textContent = "";
         return;
       }
-      const label = auth.source === "page" ? "page session" : "options token";
-      $auth.textContent = `auth: ${label} \xB7 exp ${fmtExpiry(auth.exp)}`;
+      $auth.textContent = `auth: ${sourceLabel(auth.source)} \xB7 exp ${fmtExpiry(auth.exp)}`;
       const msLeft = auth.exp == null ? Infinity : auth.exp - Date.now();
       $auth.className = `auth${msLeft < 5 * 6e4 ? " warn" : ""}`;
     };
@@ -32790,6 +32791,13 @@
   } catch {
   }
   var diveIdFromUrl = () => location.pathname.match(UUID_RE2)?.[1]?.toLowerCase() ?? null;
+  var liveToken = null;
+  window.addEventListener("message", (ev) => {
+    if (ev.source !== window || ev.origin !== location.origin) return;
+    const d = ev.data;
+    if (!d || d.source !== "dive-arranger-token" || typeof d.token !== "string") return;
+    liveToken = d.token;
+  });
   function scanStorageForTokens() {
     const seen = /* @__PURE__ */ new Set();
     const tokens2 = [];
@@ -32815,7 +32823,9 @@
     return tokens2;
   }
   async function gatherCandidates() {
-    const candidates = scanStorageForTokens().map((token) => ({ token, source: "page" }));
+    const candidates = [];
+    if (liveToken) candidates.push({ token: liveToken, source: "live" });
+    for (const token of scanStorageForTokens()) candidates.push({ token, source: "page" });
     try {
       const { mdToken } = await chrome.storage.local.get("mdToken");
       if (mdToken) candidates.push({ token: mdToken, source: "fallback" });
@@ -32826,7 +32836,6 @@
   async function resolveAuth(nowMs) {
     return resolveToken(await gatherCandidates(), nowMs);
   }
-  var sourceLabel = (source) => source === "page" ? "page session" : "options token";
   var mainWorldReady = null;
   function ensureMainWorld() {
     if (mainWorldReady) return mainWorldReady;

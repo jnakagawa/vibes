@@ -42,6 +42,28 @@ export function isMdJwt(payload) {
 }
 
 /**
+ * Find the first MotherDuck-shaped JWT inside an arbitrary string — an
+ * `Authorization: Bearer …` header, an `x-motherduck-*` header, a JSON
+ * response body, or a WebSocket connect URL. Scans every JWT-looking
+ * substring and returns the first whose payload passes `isMdJwt`, or null
+ * when there is none (non-MD JWTs and garbage are ignored). Never throws.
+ *
+ * This is what the MAIN-world token-sniffer uses to lift the MD app's OWN
+ * live, auto-rotating access token out of its network traffic — the app keeps
+ * that token in memory (no localStorage JWT to scan), so intercepting the
+ * transport is the only way to see it.
+ */
+export function extractMdJwt(str) {
+  if (typeof str !== "string" || !str.includes("eyJ")) return null;
+  const matches = str.match(/eyJ[\w-]+\.[\w-]+\.[\w-]+/g);
+  if (!matches) return null;
+  for (const candidate of matches) {
+    if (isMdJwt(decodeJwt(candidate))) return candidate;
+  }
+  return null;
+}
+
+/**
  * Inspect one token: `{ token, source?, exp, expired, msLeft }`, or null if
  * it isn't a MotherDuck JWT.
  *  - `exp` — ms since epoch (JWT `exp` is in SECONDS → ×1000), or null when
@@ -62,10 +84,12 @@ export function tokenInfo(token, nowMs, source) {
 
 /**
  * Pick the best usable token from `candidates` = [{ token, source }] where
- * source is 'page' (found in the MD tab's storage) or 'fallback' (Options).
- * Non-MD/garbage candidates and expired/near-expiry tokens are dropped; the
- * survivors rank by source ('page' before 'fallback' — the page token is the
- * one the app itself keeps fresh), then by msLeft descending. Returns the
+ * source is 'live' (captured from the MD app's OWN network traffic by the
+ * token-sniffer), 'page' (found in the MD tab's storage), or 'fallback'
+ * (Options). Non-MD/garbage candidates and expired/near-expiry tokens are
+ * dropped; the survivors rank by source ('live' before 'page' before
+ * 'fallback' — the live token is the credential the app itself fetched and
+ * auto-rotates, so it's the freshest), then by msLeft descending. Returns the
  * winning tokenInfo (with source) or null when nothing valid remains.
  */
 export function resolveToken(candidates, nowMs) {
@@ -75,9 +99,18 @@ export function resolveToken(candidates, nowMs) {
     if (info && !info.expired) usable.push(info);
   }
   if (usable.length === 0) return null;
-  const srcRank = (s) => (s === "page" ? 0 : 1);
+  const srcRank = (s) => (s === "live" ? 0 : s === "page" ? 1 : 2);
   usable.sort((a, b) => srcRank(a.source) - srcRank(b.source) || b.msLeft - a.msLeft);
   return usable[0];
+}
+
+/**
+ * Human-readable label for a token source, for the UI's token-free auth line:
+ * 'live' → "live session" (the app's own auto-rotating token), 'page' →
+ * "page session", anything else → "options token".
+ */
+export function sourceLabel(source) {
+  return source === "live" ? "live session" : source === "page" ? "page session" : "options token";
 }
 
 /**

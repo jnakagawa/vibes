@@ -118,16 +118,33 @@ app.motherduck.com page itself (main world), under the same CSP the MotherDuck
 app uses for its own duckdb-wasm workers. Tokens are picked by an
 **expiry-aware resolver** (`extension/token.mjs`, pure and unit-tested):
 
-- **Candidates**: every MotherDuck-shaped JWT (payload containing
-  `mdRegion`/`tokenType`/`tokenId`) in the tab's
-  `localStorage`/`sessionStorage` (source `page`), plus the token pasted in
-  the extension's Options page (`chrome.storage.local` only, source
+- **Live capture (primary).** The MotherDuck app authenticates via Auth0
+  **httpOnly cookies** and keeps its DuckDB/MD access token **in memory** —
+  there is no JWT in `localStorage`/`sessionStorage`/IndexedDB to scan on the
+  current app, so a storage scan alone finds nothing usable. Instead a
+  **MAIN-world, `document_start` content script** (`extension/token-sniffer.js`,
+  injected via the manifest so it runs *before* the app's own scripts)
+  intercepts the app's OWN network traffic — `fetch`, `XMLHttpRequest`, and
+  `WebSocket` — and lifts the MotherDuck-shaped JWT out of request
+  `Authorization`/`x-motherduck-*` headers, token-endpoint response bodies, and
+  flight/query socket URLs. It relays the token to the isolated content script
+  over **same-origin `postMessage`** (source `live`). Because the app fetches
+  and auto-refreshes this token, a captured `live` token is the freshest,
+  self-rotating credential and removes the expiry treadmill. The sniffer patches
+  defensively (install-once guard, everything in `try/catch`, always delegates
+  to the original fetch/XHR/WebSocket, never awaits on the hot path, never
+  throws) so it can run on every app.motherduck.com page without breaking it.
+- **Candidates**: the live captured token (source `live`), plus every
+  MotherDuck-shaped JWT (payload containing `mdRegion`/`tokenType`/`tokenId`) in
+  the tab's `localStorage`/`sessionStorage` (source `page`), plus the token
+  pasted in the extension's Options page (`chrome.storage.local` only, source
   `fallback`; a short-lived read/write token from the MotherDuck MCP
-  `get_short_lived_token` works and is the safest choice).
+  `get_short_lived_token` works and is the safest manual choice).
 - **Selection**: candidates that are expired — or within a 45 s safety skew
   of expiring — are dropped *before* selection (a near-dead token is never
-  picked); survivors rank `page` before `fallback`, then by most time left.
-  A JWT with no `exp` claim counts as non-expiring.
+  picked); survivors rank `live` before `page` before `fallback`, then by most
+  time left. A JWT with no `exp` claim counts as non-expiring. (An expired
+  `live` token is dropped like any other, falling back to `page`/`fallback`.)
 - **Preflight**: before the arranger opens, a `SELECT 1` validates the chosen
   token, so a dead token surfaces as an actionable message ("refresh the
   MotherDuck tab…") instead of a cryptic wasm/DuckDB dump mid-flow.
@@ -137,14 +154,17 @@ app uses for its own duckdb-wasm workers. Tokens are picked by an
   **once** with the fresh token — only if it actually differs from the one
   that just failed. Non-auth errors pass through unchanged.
 - **Transparency**: the arranger toolbar shows an auth line —
-  `auth: page session · exp 3:47pm` — which turns amber when under 5 minutes
-  remain. It shows only the token's source and expiry, never the token.
+  `auth: live session · exp 3:47pm` (or `page session` / `options token`) —
+  which turns amber when under 5 minutes remain. It shows only the token's
+  source and expiry, never the token.
 
 Auth errors are classified (`expired` / `scope` / `network` / `unknown`,
 defaulting to `unknown`) and rendered as short actionable instructions rather
-than raw error dumps. No token is ever hardcoded, committed, logged, or sent
-anywhere other than api.motherduck.com by the wasm client; error strings from
-the wasm bridge are token-scrubbed before they can reach any UI surface.
+than raw error dumps. No token is ever hardcoded, committed, logged, thrown,
+persisted, or sent anywhere other than api.motherduck.com by the wasm client;
+the captured live token travels only inside a same-origin `postMessage` and is
+held in memory, and error strings from the wasm bridge are token-scrubbed
+before they can reach any UI surface.
 
 ## Verifying the engine (Node harness, no browser needed)
 
@@ -154,7 +174,7 @@ end-to-end against a **throwaway dive the harness creates and deletes itself**
 dive ids as a second guard):
 
 ```bash
-npm test                                    # 104 pure tests (engine + frame logic + fake-DOM frame session + token resolver), no network
+npm test                                    # 114 pure tests (engine + frame logic + fake-DOM frame session + token resolver), no network
 MOTHERDUCK_TOKEN=<short-lived token> npm run roundtrip
 ```
 
@@ -196,7 +216,8 @@ the dive — 24 assertions.
   expression is not supported).
 - The in-browser UX (iframe script injection, tile mapping quality on real
   dives, the drag pointer UX, the postMessage bridge, the wasm bridge, token
-  resolution against the real MD app's storage) has **not** been exercised
+  resolution against the real MD app, and the **live token-sniffer capture**
+  from the app's own fetch/XHR/WebSocket traffic) has **not** been exercised
   end-to-end in a real Chrome session —
   the engine, the SQL, the alignment logic, and the frame session protocol are
   verified by the Node harness/tests; the live browser parts are not (see
@@ -226,8 +247,10 @@ engine/              the AST engine (shared by extension + harness)
   mdsql.mjs            MD_GET_DIVE / MD_UPDATE_DIVE_CONTENT SQL builders
 extension/
   content.js           top-frame content script: auth resolution, wasm bridge, launch
-  token.mjs            pure token resolver: expiry-aware JWT selection,
-                       auth-error classification, user-facing auth strings (Node-tested)
+  token-sniffer.js     MAIN-world, document_start: intercepts fetch/XHR/WebSocket
+                       to capture the app's OWN live MD token (relayed via postMessage)
+  token.mjs            pure token resolver: expiry-aware JWT selection (live>page>fallback),
+                       MD-JWT extraction, auth-error classification, user-facing strings (Node-tested)
   insitu.js            top-frame controller for in-place mode (toolbar, Submit)
   frame.js             IN-IFRAME script: tile mapping + drag/resize on real tiles
   frame-map.mjs        pure tile↔block alignment (Node-tested)
@@ -236,5 +259,5 @@ extension/
   snapshot.js          DOM snapshot helpers (fallback overlay only)
   md-main.js           MAIN-world wasm client bridge
 harness/             engine + frame-logic + fake-DOM tests, live MD round-trip
-build.mjs            esbuild bundling → dist/ (content, frame, md-main, background)
+build.mjs            esbuild bundling → dist/ (token-sniffer, content, frame, md-main, background)
 ```

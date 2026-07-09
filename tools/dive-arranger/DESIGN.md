@@ -12,6 +12,10 @@ doesn't understand.
 
 ```
 app.motherduck.com tab (TOP frame)
+├─ dist/token-sniffer.js  (MAIN world, document_start, via manifest)
+│   └─ patches fetch/XHR/WebSocket BEFORE the app's scripts run; lifts the
+│       app's OWN live MD token out of its auth traffic and relays it to
+│       content.js via same-origin postMessage (source `live`)
 ├─ dist/content.js  (isolated world)
 │   ├─ engine/ (bundled): discover → validate → apply → print
 │   ├─ insitu.js: in-place mode controller — toolbar, proposal validation,
@@ -19,7 +23,8 @@ app.motherduck.com tab (TOP frame)
 │   ├─ overlay.js + snapshot.js: card-overlay FALLBACK (only when the iframe
 │   │   bridge / tile mapping fails)
 │   └─ token resolver (token.mjs, pure): expiry-aware selection over ALL
-│       page-storage JWTs + the Options fallback; SELECT 1 preflight; one
+│       candidates — the live captured token, page-storage JWTs, the Options
+│       fallback (ranked live>page>fallback); SELECT 1 preflight; one
 │       re-resolve retry on auth failure (token rotation)
 ├─ dist/md-main.js  (MAIN world, injected on demand)
 │   └─ @motherduck/wasm-client: runs MD_GET_DIVE / MD_UPDATE_DIVE_CONTENT
@@ -265,6 +270,51 @@ parameter — `Date.now()` stays in content.js so the module is deterministic):
   verbatim. The md-main bridge already scrubs the token out of error text
   before it can reach any of these surfaces.
 
+**13. Live token capture via a MAIN-world transport interceptor.**
+Live recon of the current MotherDuck app found that decision 9/12's storage
+scan has a fatal blind spot: the app authenticates via Auth0 **httpOnly
+cookies** (invisible to JS) and keeps its DuckDB/MD access token **in memory** —
+there is **no JWT in localStorage/sessionStorage/IndexedDB to scan**. The app
+fetches its token once at page load and hands it straight to
+`@motherduck/wasm-client`. So the storage-scan primary path silently finds
+nothing on the real app and falls back to the (often expired) Options token —
+the exact expiry treadmill decision 12 tried to escape. The only place the
+token is observable is the transport layer, as the app fetches (and
+auto-refreshes) it.
+- **`extension/token-sniffer.js`** — a **MAIN-world, `document_start` content
+  script injected via the manifest** (not the on-demand `<script>` tag from
+  decision 9, which runs post-load and would miss the load-time token fetch).
+  Running in the app's own realm before its scripts, it patches `window.fetch`,
+  `XMLHttpRequest` (`open`/`setRequestHeader`/`send` + `responseText` on load),
+  and `WebSocket` (connect URL). It inspects request `Authorization` /
+  `x-motherduck-*` headers, token-endpoint response bodies (via a fire-and-
+  forget `clone()`), and flight/query socket URLs for a MotherDuck-shaped JWT.
+- **`extractMdJwt(str)`** (token.mjs, pure + unit-tested) does the lifting:
+  scan every JWT-looking substring, return the first whose payload passes
+  `isMdJwt` (`mdRegion || tokenType || tokenId`) — so Auth0/other-IdP JWTs in
+  the same traffic are ignored. The sniffer keeps the longest-lived token seen
+  (the app's refresh issues a later-`exp` token) and relays it to content.js
+  over **same-origin `postMessage`** (`{source:"dive-arranger-token", token}`,
+  `location.origin`). content.js validates `event.source === window` and
+  `event.origin === location.origin`, holds it in memory tagged `live`, and
+  `gatherCandidates()` offers it first.
+- **`resolveToken` ranks `live` > `page` > `fallback`.** The live token is the
+  app's own auto-rotating credential, so it's the freshest and removes the
+  expiry treadmill — but it goes through the SAME expiry gate, so an expired
+  `live` token is dropped in favor of a valid `page`/`fallback` one. The
+  toolbar shows `auth: live session · exp …` when it wins.
+- **Non-breaking is a hard requirement** — the sniffer runs on EVERY
+  app.motherduck.com page for all public-beta users. It installs once (guard
+  flag), wraps every patch in `try/catch`, ALWAYS delegates to the original
+  fetch/XHR/WebSocket, never awaits response clones inline (zero added latency
+  on the hot path), and never throws. If any patch fails to install it leaves
+  that API untouched.
+- **Security posture:** the captured token is NEVER logged (`console.*`),
+  persisted, thrown, or placed in any user-visible string. It lives only in
+  the sniffer's `bestToken` closure and content.js's `liveToken` variable, and
+  moves only via the same-origin `postMessage`. The UI auth descriptor stays
+  `{source, exp}` — token-free — exactly as decision 12 established.
+
 ## Verification status (honest)
 
 **Verified (live, against a throwaway MotherDuck dive — created and deleted
@@ -278,7 +328,7 @@ wrappers → `MD_DELETE_DIVE` confirmed. 24 assertions, plus 13 offline engine
 tests, plus the engine executing correctly from the browser-target esbuild
 bundle in a bare (Node-builtin-free) VM.
 
-**Verified (Node, offline — `npm test`, 104 tests):** the engine suite
+**Verified (Node, offline — `npm test`, 114 tests):** the engine suite
 (including source-row decomposition: grid-cols-2/4, inline repeat(N,…), flex
 rows, col-span scaling, spacer columns, dynamic-child and wrapping vetoes,
 pin-crossing still rejected, and discover→apply→discover stability on a
@@ -304,10 +354,13 @@ windows ignored; teardown mid-drag leaves the surviving pointer listeners
 inert; a superseded INIT's mapping-retry loop goes dead instead of clobbering
 the newer session); and the token resolver core (token.mjs: JWT decode on
 valid/garbage input, sec→ms exp parsing, near-expiry-within-skew treated as
-expired, no-exp ⇒ non-expiring, expired candidates dropped, page-over-fallback
-then max-msLeft ranking, null on nothing usable, every classifyAuthError
-bucket incl. the unknown default on the arranger's own error strings, and the
-local-time expiry formatting).
+expired, no-exp ⇒ non-expiring, expired candidates dropped, `live`-over-`page`-
+over-`fallback` then max-msLeft ranking incl. live beating an equally-fresh
+page token and an expired live token dropped for a valid page/fallback,
+`extractMdJwt` lifting an MD JWT from a Bearer header / JSON body / ws URL and
+ignoring non-MD JWTs, `sourceLabel` mapping, null on nothing usable, every
+classifyAuthError bucket incl. the unknown default on the arranger's own error
+strings, and the local-time expiry formatting).
 
 **Not verified (needs a live Chrome session):** frame.js actually being
 injected into the sandbox iframe by Chrome (manifest match patterns vs. the
@@ -315,9 +368,14 @@ real sandbox URL); tile-mapping quality against real rendered dives; the
 in-place drag/resize pointer UX and chrome positioning; the top↔iframe
 postMessage handshake timing on a real page; how gracefully the preview
 survives a mid-session React re-render; token resolution against the real MD
-app's storage (incl. whether the rotated session token actually lands in
-local/sessionStorage for the re-resolve path to find); the main-world wasm
-bridge under the app's CSP; and `classifyAuthError`'s string heuristics
+app (incl. whether the rotated session token actually lands in
+local/sessionStorage for the re-resolve path to find); the **live token-sniffer
+capture** — whether the MAIN-world `document_start` script actually intercepts
+the app's token fetch and relays a working `live` token end-to-end (the
+extraction logic is unit-tested, but the DOM/network patching and the app's
+real token-endpoint shape need a live-browser reload to validate); the
+main-world wasm bridge under the app's CSP; and `classifyAuthError`'s string
+heuristics
 against real MotherDuck/wasm error text (the buckets are regex guesses —
 expired ≈ /expired|jwt|unauthor|invalid token|401/, scope ≈
 /read-?only|permission|forbidden|not allowed|403|write/, network ≈
