@@ -18,6 +18,7 @@
             --te-orange:  #ff6b35;      /* reserved: record/armed */
             --te-green:   #43c66a;      /* play */
             --te-red:     #ef3e3e;      /* destructive (clear) */
+            --te-lock:    #f2c14e;      /* latched tilt state */
 
             /* Layer hues: coral, amber, mint, sky, magenta */
             --layer-0:    hsl(5,  85%, 62%);
@@ -41,6 +42,9 @@
             padding: 0;
             box-sizing: border-box;
             -webkit-tap-highlight-color: transparent;
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-touch-callout: none;
         }
 
         body {
@@ -367,6 +371,16 @@
             opacity: 1;
         }
 
+        #tilt-compass-ring {
+            transition: stroke 0.18s ease, stroke-width 0.18s ease, filter 0.18s ease;
+        }
+
+        #playback-indicator.tilt-locked #tilt-compass-ring {
+            stroke: var(--te-lock);
+            stroke-width: 3;
+            filter: drop-shadow(0 0 5px rgba(242, 193, 78, 0.55));
+        }
+
         #toolbar {
             position: fixed;
             bottom: 0;
@@ -399,10 +413,18 @@
             align-items: center;
             justify-content: center;
             gap: 2px;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
             box-shadow:
                 inset 0 1px 0 rgba(255, 255, 255, 0.08),
                 0 1px 2px rgba(0, 0, 0, 0.55);
             overflow: hidden;
+        }
+
+        .toolbar-button.tilt,
+        .toolbar-button.clr {
+            touch-action: none;
         }
 
         .toolbar-button:active {
@@ -430,6 +452,44 @@
         .toolbar-button.playing {
             background: #0f2416;
             border-color: #1e4a2a;
+        }
+
+        /* TLT — tap to recenter, hold to freeze the current tilt. */
+        .toolbar-button.tilt::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: var(--te-lock);
+            transform-origin: left center;
+            transform: scaleX(0);
+            transition: transform 60ms linear;
+            z-index: 0;
+            opacity: 0.48;
+        }
+        .toolbar-button.tilt.arming::before {
+            transform: scaleX(1);
+            transition: transform 900ms linear;
+        }
+        .toolbar-button.tilt .button-icon,
+        .toolbar-button.tilt .button-label {
+            position: relative;
+            z-index: 1;
+        }
+        .toolbar-button.tilt.locked {
+            background: var(--te-lock);
+            border-color: #b88a22;
+            color: #211704;
+            box-shadow:
+                inset 0 1px 0 rgba(255, 241, 194, 0.62),
+                0 1px 2px rgba(0, 0, 0, 0.55);
+        }
+        .toolbar-button.tilt.locked::before {
+            background: #211704;
+            opacity: 0.22;
+        }
+        .toolbar-button.tilt.locked .button-label,
+        .toolbar-button.tilt.locked .button-icon {
+            color: #211704;
         }
 
         /* CLR — red intent, radial fill on long-press. */
@@ -650,7 +710,7 @@
 
         <svg id="playback-indicator" width="300" height="300" viewBox="0 0 300 300" overflow="visible">
             <g id="reverb-circles"></g>
-            <circle cx="150" cy="150" r="140" fill="none"
+            <circle id="tilt-compass-ring" cx="150" cy="150" r="140" fill="none"
                     stroke="rgba(232, 225, 211, 0.35)" stroke-width="2"/>
             <g id="yaw-indicator"></g>
             <g id="filter-label"></g>
@@ -667,7 +727,8 @@
                 <div class="button-icon">▶</div>
                 <div class="button-label">PLY</div>
             </button>
-            <button class="toolbar-button" id="reset-orientation-btn">
+            <button class="toolbar-button tilt" id="reset-orientation-btn"
+                    aria-pressed="false" aria-label="Recenter tilt; hold to lock">
                 <div class="button-icon">⊙</div>
                 <div class="button-label">TLT</div>
             </button>
@@ -696,7 +757,7 @@
     </div>
 
     <div id="permissions-overlay" class="active">
-        <button class="modal-button primary" id="request-mic-btn" style="font-size: 16px; padding: 16px 32px;">Enable Microphone</button>
+        <button class="modal-button primary" id="request-controls-btn" style="font-size: 16px; padding: 16px 32px;">Enable Tilt</button>
     </div>
 
     <script>
@@ -709,6 +770,8 @@
         const FFT_SIZE = 4096;
         const MIN_FREQ = 40;
         const MAX_FREQ = 10000;
+        const ONBOARDING_STORAGE_KEY = 'soundcatcher:onboarded:v1';
+        const ORIENTATION_PERMISSION_CHECK_MS = 2000;
 
         let audioContext;
         let analyser;
@@ -719,9 +782,19 @@
         let currentRecordingLayer = null;
         let mediaStream = null;
         let isInitialized = false;
+        let isStartingRecording = false;
+        let isProcessingRecording = false;
+        let resumePlaybackAfterRecording = false;
+        let microphoneSetupPromise = null;
+        let microphoneGeneration = 0;
+        let recordPrewarmCleanupTimeout = null;
+        let orientationListenerAttached = false;
+        let hasReceivedOrientationEvent = false;
+        let orientationPermissionCheckTimer = null;
 
         // Raw capture: echo cancellation & friends are voice-call processing that
-        // mangles music/ambient sound AND makes iOS duck the output volume.
+        // mangles music/ambient sound. iOS audio-session routing is handled
+        // separately when capture begins and ends.
         const MIC_CONSTRAINTS = {
             echoCancellation: false,
             noiseSuppression: false,
@@ -730,13 +803,15 @@
 
         let layers = [];
         let isPlaying = false;
+        let isStartingPlayback = false;
         let playbackStartTime = 0;
         let animationFrameId = null;
         let lastVisualPosition = 0;
         let lastPositionUpdateTime = 0;
+        let isTiltLocked = false;
 
         let orientationData = {
-            speed: 1.0,  // 0.1 to 10
+            speed: 1.0,  // 0.005 to 20
             reverb: 0.0, // 0 to 1
             filterType: 'allpass', // 'lowpass', 'highpass', 'allpass'
             filterFreq: 1000 // Hz
@@ -749,7 +824,8 @@
             alpha: null   // Initial yaw
         };
 
-        let convolver;
+        let reverbConvolver;
+        let reverbWetGain;
         let masterGain;
         let recorderMime = '';
 
@@ -768,16 +844,25 @@
                 : `hsl(${h}, ${s}%, ${light}%)`;
         }
 
+        // This is an instrument surface, not a document. Prevent Safari from
+        // starting a native selection range when a hold begins between controls
+        // or drifts off a small target; the app's own pointer gestures still run.
+        document.addEventListener('selectstart', (event) => event.preventDefault());
+
         // ============================================================================
         // INITIALIZATION
         // ============================================================================
 
-        // Convert linear slider value (0-100) to logarithmic gain (0-1)
-        // Human hearing is logarithmic, so this provides better volume control
+        // Convert the 0-100 fader to logarithmic gain. 80 is unity (0 dB),
+        // leaving the top fifth as intentional make-up gain up to +12 dB.
         function sliderToGain(sliderValue) {
             if (sliderValue === 0) return 0;
-            // Exponential curve: 50% slider = -20dB, 75% = -10dB, 100% = 0dB
-            return Math.pow(10, ((sliderValue / 100) - 1) * 2);
+            if (sliderValue <= 80) {
+                // 40 = -20 dB, 60 = -10 dB, 80 = 0 dB
+                return Math.pow(10, ((sliderValue / 80) - 1) * 2);
+            }
+            // 80 = 0 dB, 100 = +12 dB
+            return Math.pow(10, ((sliderValue - 80) / 20) * 0.6);
         }
 
         // Helper for debug logging (safe if debug overlay is commented out)
@@ -790,6 +875,7 @@
         }
 
         async function init() {
+            if (audioContext) return true;
             try {
                 // Initialize audio context (doesn't require user permission).
                 // No forced sampleRate: let it match the hardware rate. Forcing 44.1kHz
@@ -805,23 +891,31 @@
 
                 // Safety limiter so stacked layers stay loud without clipping
                 const limiter = audioContext.createDynamicsCompressor();
-                limiter.threshold.value = -6;
-                limiter.knee.value = 6;
-                limiter.ratio.value = 12;
-                limiter.attack.value = 0.003;
-                limiter.release.value = 0.25;
+                limiter.threshold.value = -1;
+                limiter.knee.value = 0;
+                limiter.ratio.value = 20;
+                limiter.attack.value = 0.002;
+                limiter.release.value = 0.15;
 
                 masterGain.connect(limiter);
                 limiter.connect(audioContext.destination);
 
-                // Create convolver for reverb
-                convolver = audioContext.createConvolver();
-                convolver.buffer = createReverbImpulse();
+                // One shared reverb bus. Layers feed this convolver, whose output
+                // has exactly one route to the master. The previous graph connected
+                // the shared output once per layer, multiplying the entire wet mix.
+                reverbConvolver = audioContext.createConvolver();
+                reverbConvolver.buffer = createReverbImpulse();
+                reverbWetGain = audioContext.createGain();
+                reverbWetGain.gain.value = 0;
+                reverbConvolver.connect(reverbWetGain);
+                reverbWetGain.connect(masterGain);
 
                 console.log('Sound Catcher UI initialized');
+                return true;
             } catch (error) {
                 console.error('Failed to initialize audio:', error);
                 alert('Failed to initialize audio system. Please refresh the page.');
+                return false;
             }
         }
 
@@ -863,6 +957,22 @@
             }
         }
 
+        // WebKit's Audio Session API maps these values onto the native iOS
+        // playback / play-and-record categories. getUserMedia can otherwise leave
+        // the page on the voice-call volume curve after its tracks have stopped.
+        function setAudioSessionType(type) {
+            try {
+                if (navigator.audioSession && 'type' in navigator.audioSession) {
+                    navigator.audioSession.type = type;
+                    console.log('Audio session type:', type);
+                    return true;
+                }
+            } catch (error) {
+                console.warn(`Audio session could not switch to ${type}:`, error);
+            }
+            return false;
+        }
+
         // Pick the first MIME the browser actually supports. iOS Safari only
         // records audio/mp4; Chrome/Firefox prefer webm/opus. The default
         // (no MIME) chooses webm on iOS, which then fails to record.
@@ -882,6 +992,83 @@
                 }
             }
             return '';
+        }
+
+        function hasCompletedOnboarding() {
+            try {
+                return typeof localStorage !== 'undefined' &&
+                    localStorage.getItem(ONBOARDING_STORAGE_KEY) === '1';
+            } catch (error) {
+                console.warn('Onboarding state could not be read:', error);
+                return false;
+            }
+        }
+
+        function rememberCompletedOnboarding() {
+            try {
+                if (typeof localStorage !== 'undefined') {
+                    localStorage.setItem(ONBOARDING_STORAGE_KEY, '1');
+                }
+            } catch (error) {
+                console.warn('Onboarding state could not be saved:', error);
+            }
+        }
+
+        function attachOrientationListener() {
+            if (typeof DeviceOrientationEvent === 'undefined') return false;
+            if (!orientationListenerAttached) {
+                window.addEventListener('deviceorientation', handleOrientation, true);
+                orientationListenerAttached = true;
+            }
+            return true;
+        }
+
+        function cancelOrientationPermissionCheck() {
+            if (orientationPermissionCheckTimer) {
+                clearTimeout(orientationPermissionCheckTimer);
+                orientationPermissionCheckTimer = null;
+            }
+        }
+
+        function hidePermissionSetup() {
+            const overlay = document.getElementById('permissions-overlay');
+            if (overlay) overlay.classList.remove('active');
+        }
+
+        function showPermissionSetup() {
+            isInitialized = false;
+            const button = document.getElementById('request-controls-btn');
+            const overlay = document.getElementById('permissions-overlay');
+            if (button) {
+                button.disabled = false;
+                button.textContent = 'Enable Tilt';
+            }
+            if (overlay) overlay.classList.add('active');
+        }
+
+        function completeOnboarding({ remember = false } = {}) {
+            isInitialized = true;
+            hidePermissionSetup();
+            if (remember) rememberCompletedOnboarding();
+        }
+
+        // A stored flag only means this origin completed onboarding before; it
+        // is not treated as a permission grant. On returning iOS visits, listen
+        // immediately, then restore the real prompt if no sensor events arrive.
+        function scheduleOrientationPermissionCheck() {
+            cancelOrientationPermissionCheck();
+            if (hasReceivedOrientationEvent || document.hidden ||
+                typeof DeviceOrientationEvent === 'undefined' ||
+                typeof DeviceOrientationEvent.requestPermission !== 'function') {
+                return;
+            }
+            orientationPermissionCheckTimer = setTimeout(() => {
+                orientationPermissionCheckTimer = null;
+                if (!hasReceivedOrientationEvent && !document.hidden) {
+                    console.log('Stored tilt onboarding needs fresh browser permission');
+                    showPermissionSetup();
+                }
+            }, ORIENTATION_PERMISSION_CHECK_MS);
         }
 
         async function requestOrientationPermission() {
@@ -908,7 +1095,7 @@
                     console.log('   ✓ Response:', response);
 
                     if (response === 'granted') {
-                        window.addEventListener('deviceorientation', handleOrientation, true);
+                        attachOrientationListener();
                         console.log('✅ Orientation enabled (iOS)');
                         debugLog('debug-orientation', 'Orient: ✓ granted (iOS)');
                         debugLog('debug-orientation', null, 'debug-line debug-success');
@@ -928,7 +1115,7 @@
                 }
             } else {
                 // Android and older iOS
-                window.addEventListener('deviceorientation', handleOrientation, true);
+                attachOrientationListener();
                 console.log('✅ Orientation enabled (no permission)');
                 debugLog('debug-orientation', 'Orient: ✓ auto (Android)');
                 debugLog('debug-orientation', null, 'debug-line debug-success');
@@ -953,7 +1140,7 @@
             const layer = {
                 id: Date.now() + layerIndex,
                 audioBuffer: audioBuffer,
-                volume: sliderToGain(80), // Default to 80% slider position (~0.4 gain)
+                volume: sliderToGain(80), // Default to unity; top 20% is make-up gain
                 selection: { start: 0, end: 1 }, // Normalized 0-1
                 sourceNode: null,
                 gainNode: null,
@@ -1051,6 +1238,7 @@
                 handleStart.dataset.handle = 'start';
                 handleStart.style.setProperty('--handle-color', layer.color);
                 handleStart.innerHTML = '<span class="cap top"></span><span class="cap bot"></span>';
+                layer.handleStartEl = handleStart;
 
                 const handleEnd = document.createElement('div');
                 handleEnd.className = 'selection-handle';
@@ -1058,6 +1246,7 @@
                 handleEnd.dataset.handle = 'end';
                 handleEnd.style.setProperty('--handle-color', layer.color);
                 handleEnd.innerHTML = '<span class="cap top"></span><span class="cap bot"></span>';
+                layer.handleEndEl = handleEnd;
 
                 selectionOverlay.appendChild(dimLeft);
                 selectionOverlay.appendChild(dimRight);
@@ -1092,19 +1281,17 @@
             // Wire the left number-gutter as a vertical gain fader.
             attachNumberGainGesture(layer, numberEl);
 
-            // Draw spectrogram (waveform scales with layer.volumeSlider)
+            // Draw the recorded signal; the playback fader does not alter it.
             drawSpectrogram(layer, canvas);
 
             adjustLayerHeights();
         }
 
         // Vertical drag on the layer-number acts as a fader.
-        // Updates gain node smoothly, repaints the amplitude waveform so its
-        // visible height tracks the level, and shows a transient dB chip.
-        // Multitouch safe: track the SPECIFIC touch that started this gesture
-        // by its identifier. Without this, `e.touches[0]` would point at
-        // whichever finger touched the screen first globally — so scrubbing
-        // on layer A would warp the gain fader on layer B while you adjust it.
+        // Updates the playback gain node smoothly and shows a transient chip.
+        // The waveform remains an honest view of the recorded signal.
+        // Pointer capture keeps each fader bound to the finger/mouse/pen that
+        // started it, including when that pointer leaves the narrow gutter.
         function attachNumberGainGesture(layer, el) {
             let pointerId = null;
 
@@ -1125,37 +1312,31 @@
                 return Math.max(0, Math.min(100, Math.round(t * 100)));
             }
 
-            function findOurTouch(touchList) {
-                for (let i = 0; i < touchList.length; i++) {
-                    if (touchList[i].identifier === pointerId) return touchList[i];
-                }
-                return null;
-            }
-
-            el.addEventListener('touchstart', (e) => {
-                if (pointerId !== null) return;       // already tracking a touch
-                const touch = e.changedTouches[0];
-                if (!touch) return;
+            el.addEventListener('pointerdown', (e) => {
+                if (pointerId !== null) return;
                 e.preventDefault();
-                pointerId = touch.identifier;
+                pointerId = e.pointerId;
+                if (el.setPointerCapture) el.setPointerCapture(pointerId);
                 el.classList.add('dragging');
-                commit(valueFromTouch(touch.clientY));
-            }, { passive: false });
+                commit(valueFromTouch(e.clientY));
+            });
 
-            el.addEventListener('touchmove', (e) => {
-                const touch = findOurTouch(e.changedTouches);
-                if (!touch) return;                    // a different finger moved; ignore
+            el.addEventListener('pointermove', (e) => {
+                if (e.pointerId !== pointerId) return;
                 e.preventDefault();
-                commit(valueFromTouch(touch.clientY));
-            }, { passive: false });
+                commit(valueFromTouch(e.clientY));
+            });
 
             function end(e) {
-                if (!findOurTouch(e.changedTouches)) return;
+                if (e.pointerId !== pointerId) return;
+                if (el.hasPointerCapture && el.hasPointerCapture(pointerId)) {
+                    el.releasePointerCapture(pointerId);
+                }
                 pointerId = null;
                 el.classList.remove('dragging');
             }
-            el.addEventListener('touchend', end);
-            el.addEventListener('touchcancel', end);
+            el.addEventListener('pointerup', end);
+            el.addEventListener('pointercancel', end);
         }
 
 
@@ -1213,9 +1394,8 @@
         // that way the grip targets can stay precise while scrub is allowed
         // anywhere else in the layer's canvas area.
         //
-        // Multitouch safe: each gesture tracks its own touch identifier, so
-        // dragging gain with one finger and scrubbing with another on the
-        // same layer don't fight each other.
+        // Pointer capture makes this work consistently for touch, pen, mouse,
+        // and trackpad while keeping simultaneous layer gestures independent.
         function setupSelectionHandles(layer, overlay) {
             const canvasContainer = overlay.parentElement;
             const handleStart = overlay.querySelector('[data-handle="start"]');
@@ -1229,13 +1409,6 @@
             let startSelStart = 0, startSelEnd = 0;
             const DOT_RADIUS = 26;   // generous — the visible dot is 22, plus buffer
 
-            function findOurTouch(touchList) {
-                for (let i = 0; i < touchList.length; i++) {
-                    if (touchList[i].identifier === pointerId) return touchList[i];
-                }
-                return null;
-            }
-
             function hitDot(clientX, clientY) {
                 for (const h of [handleStart, handleEnd]) {
                     const r = h.getBoundingClientRect();
@@ -1246,33 +1419,32 @@
                 return null;
             }
 
-            canvasContainer.addEventListener('touchstart', (e) => {
+            canvasContainer.addEventListener('pointerdown', (e) => {
                 if (pointerId !== null) return;
                 // Let the corner re-record chip handle its own taps.
-                if (e.target.closest('.corner-btn')) return;
-
-                const touch = e.changedTouches[0];
-                if (!touch) return;
+                if (e.target.closest && e.target.closest('.corner-btn')) return;
                 e.preventDefault();
 
-                const hit = hitDot(touch.clientX, touch.clientY);
-                pointerId = touch.identifier;
+                const hit = hitDot(e.clientX, e.clientY);
+                pointerId = e.pointerId;
+                if (canvasContainer.setPointerCapture) {
+                    canvasContainer.setPointerCapture(pointerId);
+                }
                 mode = hit ? 'handle' : 'pan';
                 activeHandle = hit;
 
                 const oRect = overlay.getBoundingClientRect();
-                startRelX = (touch.clientX - oRect.left) / oRect.width;
+                startRelX = (e.clientX - oRect.left) / oRect.width;
                 startSelStart = layer.selection.start;
                 startSelEnd   = layer.selection.end;
-            }, { passive: false });
+            });
 
-            canvasContainer.addEventListener('touchmove', (e) => {
-                const touch = findOurTouch(e.changedTouches);
-                if (!touch) return;
+            canvasContainer.addEventListener('pointermove', (e) => {
+                if (e.pointerId !== pointerId) return;
                 e.preventDefault();
 
                 const oRect = overlay.getBoundingClientRect();
-                const currentRelX = (touch.clientX - oRect.left) / oRect.width;
+                const currentRelX = (e.clientX - oRect.left) / oRect.width;
                 const meshStart = 0.05;
                 const meshSpan  = 0.9;
                 const toMesh = (rx) =>
@@ -1297,16 +1469,19 @@
                 }
 
                 updateSelectionUI(layer, overlay);
-            }, { passive: false });
+            });
 
             function endHandler(e) {
-                if (!findOurTouch(e.changedTouches)) return;
+                if (e.pointerId !== pointerId) return;
+                if (canvasContainer.hasPointerCapture && canvasContainer.hasPointerCapture(pointerId)) {
+                    canvasContainer.releasePointerCapture(pointerId);
+                }
                 pointerId = null;
                 mode = null;
                 activeHandle = null;
             }
-            canvasContainer.addEventListener('touchend',    endHandler);
-            canvasContainer.addEventListener('touchcancel', endHandler);
+            canvasContainer.addEventListener('pointerup', endHandler);
+            canvasContainer.addEventListener('pointercancel', endHandler);
         }
 
         function updateSelectionUI(layer, overlay) {
@@ -1351,6 +1526,26 @@
         // Remove a single layer: tear down its audio nodes, drop its dot from
         // the tilt scope, strip its DOM, renumber the remaining layers so the
         // serialized gutters stay sequential (01..0N).
+        function updateLayerIdentity(layer, index) {
+            layer.colorIndex = index;
+            layer.color = layerColor(index);
+            layer.colorDim = layerColor(index, 50, 0.85);
+
+            if (layer.numberEl) {
+                layer.numberEl.style.setProperty('--layer-fill', layer.color);
+            }
+            if (layer.handleStartEl) {
+                layer.handleStartEl.style.setProperty('--handle-color', layer.color);
+            }
+            if (layer.handleEndEl) {
+                layer.handleEndEl.style.setProperty('--handle-color', layer.color);
+            }
+
+            const dotsGroup = document.getElementById('layer-dots');
+            const dot = dotsGroup && dotsGroup.querySelector(`[data-layer-id="${layer.id}"]`);
+            if (dot) dot.setAttribute('fill', layer.color);
+        }
+
         function deleteLayer(layer) {
             const idx = layers.indexOf(layer);
             if (idx === -1) return;
@@ -1359,7 +1554,7 @@
                 clearTimeout(layer.grainScheduleId);
                 layer.grainScheduleId = null;
             }
-            ['gainNode', 'filterNode', 'dryGain', 'wetGain'].forEach(k => {
+            ['gainNode', 'filterNode', 'dryGain'].forEach(k => {
                 if (layer[k]) {
                     try { layer[k].disconnect(); } catch (_) {}
                     layer[k] = null;
@@ -1377,12 +1572,14 @@
 
             layers.splice(idx, 1);
 
-            // Renumber so gutters stay sequential after a middle-layer delete.
+            // Renumber and recolor every surviving visual as one operation. The
+            // canvas is redrawn by adjustLayerHeights below; update the inline
+            // fader/handle colors and existing orbit dots here as well.
             document.querySelectorAll('.layer').forEach((div, i) => {
                 const numText = div.querySelector('.layer-number .num-text');
                 if (numText) numText.textContent = String(i + 1).padStart(2, '0');
             });
-            layers.forEach((l, i) => { l.colorIndex = i; });
+            layers.forEach(updateLayerIdentity);
 
             if (layers.filter(l => l.audioBuffer).length === 0 && isPlaying) {
                 stopPlayback();
@@ -1393,13 +1590,19 @@
             updateDebugLayerInfo();
         }
 
-        function reRecordLayer(layer) {
+        async function reRecordLayer(layer) {
+            resumePlaybackAfterRecording = isPlaying;
             if (isPlaying) {
-                stopPlayback();
+                await stopPlayback({ suspend: false });
+                pauseSilentLoop();
             }
 
             currentRecordingLayer = layer;
-            startRecording();
+            const started = await startRecording();
+            if (!started && resumePlaybackAfterRecording && !document.hidden) {
+                resumePlaybackAfterRecording = false;
+                await startPlayback();
+            }
         }
 
         // Deprecated — replaced by the long-press CLR handler. Left for safety
@@ -1414,20 +1617,27 @@
             // Acquire the mic just for this recording. Holding a live mic stream
             // between recordings keeps iOS in its ducked "play-and-record" output
             // mode (quiet!) and burns battery while idle.
-            if (mediaRecorder && mediaRecorder.state === 'recording') {
+            if (isStartingRecording || isProcessingRecording ||
+                (mediaRecorder && mediaRecorder.state === 'recording')) {
                 console.log('Already recording, ignoring start request');
-                return;
+                return false;
             }
 
+            isStartingRecording = true;
+            updateToolbarState();
             try {
                 if (!mediaRecorder || !mediaStream) {
                     const ok = await setupMicrophone();
                     if (!ok) {
                         alert('Microphone could not be enabled. Check permissions and try again.');
-                        return;
+                        return false;
                     }
                 }
 
+                // Pointerdown can finish opening the mic before the click handler
+                // briefly primes this helper for future iOS output. Ensure it is
+                // silent again at the exact capture boundary.
+                pauseSilentLoop();
                 recordingChunks = [];
                 recordingStartTime = Date.now();
                 mediaRecorder.start();
@@ -1444,29 +1654,44 @@
                 }, MAX_RECORDING_TIME);
 
                 console.log('Recording started');
+                return true;
             } catch (error) {
                 console.error('Recording failed:', error);
                 releaseMicrophone();
+                alert('Recording could not start. Check microphone permissions and try again.');
+                return false;
+            } finally {
+                isStartingRecording = false;
+                updateToolbarState();
             }
         }
 
         // Stop mic capture and drop the recorder so iOS returns to
         // full-volume media output and the mic hardware powers down
         function releaseMicrophone() {
+            microphoneGeneration++;
             if (mediaStream) {
                 mediaStream.getTracks().forEach(track => track.stop());
                 mediaStream = null;
             }
             mediaRecorder = null;
+            setAudioSessionType('playback');
         }
 
         // After mic use, iOS can leave the output route ducked until the context
         // is cycled — the same suspend/resume a tab switch triggers, which is why
         // the app used to get louder after switching tabs. Do it deliberately.
         async function restoreLoudOutput() {
+            // Do not let the silent helper hold onto the capture-era route.
+            pauseSilentLoop();
+            setAudioSessionType('playback');
+
             if (audioContext && audioContext.state === 'running' && !document.hidden) {
                 try {
                     await audioContext.suspend();
+                    // Give WebKit one task to apply the native category/route change
+                    // before Web Audio becomes active again.
+                    await new Promise(resolve => setTimeout(resolve, 50));
                     await audioContext.resume();
                     console.log('Output route reset after mic release');
                 } catch (error) {
@@ -1478,19 +1703,28 @@
         function stopRecording() {
             if (mediaRecorder && mediaRecorder.state === 'recording') {
                 clearTimeout(recordingTimeout);
+                isProcessingRecording = true;
                 mediaRecorder.stop();
 
                 const recordBtn = document.getElementById('record-btn');
                 recordBtn.classList.remove('recording');
                 recordBtn.querySelector('.button-label').textContent = 'REC';
+                updateToolbarState();
 
                 console.log('Recording stopped');
             }
         }
 
         async function handleRecordingComplete() {
+            isProcessingRecording = true;
+            updateToolbarState();
+
             // Capture the recorder's MIME before releasing it
             const blobType = (mediaRecorder && mediaRecorder.mimeType) || recorderMime || 'audio/webm';
+            // Snapshot this session's chunks before any await. Otherwise a fast
+            // next recording can reset the shared array while this one decodes.
+            const completedChunks = recordingChunks.slice();
+            recordingChunks = [];
 
             // Release the mic first — chunks are already delivered by onstop time,
             // and holding the stream keeps output volume ducked on iOS
@@ -1502,10 +1736,10 @@
                     throw new Error('Audio context not initialized');
                 }
 
-                if (!recordingChunks.length) {
+                if (!completedChunks.length) {
                     throw new Error('Recording was empty');
                 }
-                const blob = new Blob(recordingChunks, { type: blobType });
+                const blob = new Blob(completedChunks, { type: blobType });
                 const arrayBuffer = await blob.arrayBuffer();
                 const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
 
@@ -1524,15 +1758,17 @@
                 } else {
                     // Add new layer with audio
                     createLayer(audioBuffer);
+                }
 
-                    // Auto-start or restart playback to include new layer —
-                    // but never start audio while backgrounded
-                    if (!document.hidden) {
-                        if (isPlaying) {
-                            stopPlayback();
-                        }
-                        startPlayback();
+                // Playback is deliberately stopped before capture so the phone
+                // speaker cannot bleed into the microphone. Restart once the new
+                // recording is decoded, but never while backgrounded.
+                if (!document.hidden) {
+                    if (isPlaying) {
+                        await stopPlayback({ suspend: false });
                     }
+                    resumePlaybackAfterRecording = false;
+                    await startPlayback();
                 }
 
                 updateToolbarState();
@@ -1540,7 +1776,15 @@
                 console.log('Recording processed successfully');
             } catch (error) {
                 console.error('Failed to process recording:', error);
+                currentRecordingLayer = null;
                 alert(`Recording failed: ${error.message}`);
+                if (resumePlaybackAfterRecording && !document.hidden) {
+                    resumePlaybackAfterRecording = false;
+                    await startPlayback();
+                }
+            } finally {
+                isProcessingRecording = false;
+                updateToolbarState();
             }
         }
 
@@ -1660,6 +1904,14 @@
             }
         }
 
+        const WAVEFORM_FLOOR_DB = -60;
+
+        function amplitudeToDisplayLevel(amplitude) {
+            if (amplitude <= 0) return 0;
+            const db = 20 * Math.log10(amplitude);
+            return Math.max(0, Math.min(1, (db - WAVEFORM_FLOOR_DB) / -WAVEFORM_FLOOR_DB));
+        }
+
         function drawAmplitudeWaveform(ctx, audioBuffer, width, height, colorIndex = 0) {
             if (!audioBuffer) return;
 
@@ -1685,7 +1937,10 @@
                 for (let i = startSample; i < endSample; i++) {
                     max = Math.max(max, Math.abs(channelData[i]));
                 }
-                amplitudes.push(max);
+                // Human loudness perception is logarithmic. Map the raw peak from
+                // -60 dBFS..0 dBFS into 0..1 so ordinary recordings remain visible
+                // without normalizing or changing the underlying audio.
+                amplitudes.push(amplitudeToDisplayLevel(max));
             }
 
             // Draw waveform
@@ -1761,53 +2016,74 @@
         // PLAYBACK
         // ============================================================================
 
-        function togglePlayback() {
+        async function togglePlayback() {
+            if (isStartingPlayback) return;
             if (isPlaying) {
-                stopPlayback();
+                await stopPlayback();
             } else {
-                startPlayback();
+                await startPlayback();
             }
         }
 
-        function startPlayback() {
-            // Always resume: a suspend from stopPlayback/visibility handling may
-            // still be settling, so don't trust a synchronous state check here
-            audioContext.resume();
-
-            // Re-prime the silent loop (paused while idle) so the hardware
-            // silent switch keeps being bypassed during playback
-            unlockSilentMode();
-
-            isPlaying = true;
-            playbackStartTime = audioContext.currentTime;
-
+        async function startPlayback() {
             // Find longest selection duration
             const maxDuration = getMaxSelectionDuration();
 
-            if (maxDuration === 0) return;
+            if (maxDuration === 0 || document.hidden || isPlaying || isStartingPlayback) {
+                return false;
+            }
 
-            // Start all layers
-            layers.forEach(layer => {
-                if (layer.audioBuffer) {
-                    scheduleLayerPlayback(layer, maxDuration);
+            isStartingPlayback = true;
+            try {
+                // Wait for the context transition before scheduling. Scheduling
+                // against a still-suspended currentTime can bunch grains together
+                // when a rapid stop/start finally resumes the context.
+                await audioContext.resume();
+                if (audioContext.state !== 'running' || document.hidden) {
+                    return false;
                 }
-            });
 
-            // Update UI
-            const playBtn = document.getElementById('play-btn');
-            playBtn.classList.add('playing');
-            playBtn.querySelector('.button-icon').textContent = '⏸';
-            playBtn.querySelector('.button-label').textContent = 'PAU';
+                // Re-prime the silent loop (paused while idle) so the hardware
+                // silent switch keeps being bypassed during playback.
+                unlockSilentMode();
 
-            document.getElementById('playback-indicator').classList.add('active');
+                isPlaying = true;
+                playbackStartTime = audioContext.currentTime;
 
-            // Start animation loop
-            animatePlayback();
+                // Start all layers
+                layers.forEach(layer => {
+                    if (layer.audioBuffer) {
+                        scheduleLayerPlayback(layer);
+                    }
+                });
 
-            console.log('Playback started');
+                // Update UI
+                const playBtn = document.getElementById('play-btn');
+                playBtn.classList.add('playing');
+                playBtn.querySelector('.button-icon').textContent = '⏸';
+                playBtn.querySelector('.button-label').textContent = 'PAU';
+
+                document.getElementById('playback-indicator').classList.add('active');
+
+                // Start animation loop
+                animatePlayback();
+
+                console.log('Playback started');
+                return true;
+            } catch (error) {
+                console.error('Playback could not start:', error);
+                pauseSilentLoop();
+                if (audioContext && audioContext.state === 'running' &&
+                    !(mediaRecorder && mediaRecorder.state === 'recording')) {
+                    try { await audioContext.suspend(); } catch (_) {}
+                }
+                return false;
+            } finally {
+                isStartingPlayback = false;
+            }
         }
 
-        function stopPlayback() {
+        async function stopPlayback({ suspend = true } = {}) {
             isPlaying = false;
 
             // Reset visual position tracking
@@ -1824,18 +2100,12 @@
                     layer.gainNode.disconnect();
                     layer.gainNode = null;
                 }
-                if (layer.filterNode) {
-                    layer.filterNode.disconnect();
-                    layer.filterNode = null;
-                }
-                if (layer.dryGain) {
-                    layer.dryGain.disconnect();
-                    layer.dryGain = null;
-                }
-                if (layer.wetGain) {
-                    layer.wetGain.disconnect();
-                    layer.wetGain = null;
-                }
+                ['filterNode', 'dryGain'].forEach(k => {
+                    if (layer[k]) {
+                        try { layer[k].disconnect(); } catch (_) {}
+                        layer[k] = null;
+                    }
+                });
                 // Reset orbit phase so next play starts from current audio pos
                 layer.orbitLastTime = undefined;
                 layer.orbitPhase = undefined;
@@ -1862,15 +2132,26 @@
             // and pause the silent-unlock loop (unless a recording is running).
             // startPlayback resumes unconditionally, so back-to-back stop/start
             // — e.g. the restart in handleRecordingComplete — is safe.
-            if (audioContext && !(mediaRecorder && mediaRecorder.state === 'recording')) {
-                audioContext.suspend();
+            if (suspend && audioContext && !(mediaRecorder && mediaRecorder.state === 'recording')) {
                 pauseSilentLoop();
+                try { await audioContext.suspend(); } catch (error) {
+                    console.warn('Audio context could not suspend:', error);
+                }
             }
 
             console.log('Playback stopped');
         }
 
-        function scheduleLayerPlayback(layer, loopDuration) {
+        function getReverbMix(amount) {
+            const clamped = Math.max(0, Math.min(1, amount));
+            const angle = clamped * Math.PI / 2;
+            return {
+                dry: Math.cos(angle),
+                wet: Math.sin(angle)
+            };
+        }
+
+        function scheduleLayerPlayback(layer) {
             // Create gain nodes for this layer
             const layerGain = audioContext.createGain();
             layerGain.gain.value = layer.volume;
@@ -1881,27 +2162,25 @@
             filterNode.frequency.value = orientationData.filterFreq;
             filterNode.Q.value = 1.0; // Standard Q value
 
-            // Apply reverb with dry/wet mix
+            // Apply reverb with a constant-power dry/wet mix. Each filter feeds
+            // the shared reverb bus, which has one (and only one) master output.
             const dryGain = audioContext.createGain();
-            const wetGain = audioContext.createGain();
+            const mix = getReverbMix(orientationData.reverb);
 
-            dryGain.gain.value = 1 - orientationData.reverb;
-            wetGain.gain.value = orientationData.reverb;
+            dryGain.gain.value = mix.dry;
+            reverbWetGain.gain.value = mix.wet;
 
-            // Audio routing: layer gain -> filter -> dry/wet split -> master
+            // Audio routing: layer gain -> filter -> dry master + shared wet bus
             layerGain.connect(filterNode);
             filterNode.connect(dryGain);
-            filterNode.connect(convolver);
-            convolver.connect(wetGain);
+            filterNode.connect(reverbConvolver);
 
             dryGain.connect(masterGain);
-            wetGain.connect(masterGain);
 
             // Store nodes and playback state
             layer.gainNode = layerGain;
             layer.filterNode = filterNode;
             layer.dryGain = dryGain;
-            layer.wetGain = wetGain;
             layer.playbackPosition = 0; // Position in seconds within selection
             layer.nextGrainTime = audioContext.currentTime;
             layer.grainScheduleId = null;
@@ -1919,17 +2198,19 @@
             const selectionStart = layer.selection.start * layer.audioBuffer.duration;
             const selectionEnd = layer.selection.end * layer.audioBuffer.duration;
             const selectionDuration = selectionEnd - selectionStart;
+            if (selectionDuration <= 0) return;
 
-            // Schedule grains ahead of time
-            while (layer.nextGrainTime < now + 0.2) { // Schedule 200ms ahead
+            // Schedule grains ahead of time. Tilt speed intentionally changes
+            // density as well as traversal: sparse droplets when slow, dense
+            // overlap when fast.
+            while (layer.nextGrainTime < now + 0.2) {
                 createGrain(layer, selectionStart, selectionEnd, layer.nextGrainTime);
 
-                // Calculate spacing based on speed (pitch-preserving)
                 const grainSpacing = GRAIN_SIZE * (1 - GRAIN_OVERLAP) / orientationData.speed;
                 layer.nextGrainTime += grainSpacing;
 
-                // Advance playback position by grain spacing (not grain size!)
-                // This is how much audio time we consume per grain
+                // Advance by one analysis hop; varying the output spacing above
+                // is what gives the original grain-density character.
                 layer.playbackPosition += (GRAIN_SIZE * (1 - GRAIN_OVERLAP)) / selectionDuration;
 
                 // Loop back to start
@@ -2246,6 +2527,10 @@
             let speedText;
             if (speed >= 10) {
                 speedText = `${Math.round(speed)}x`;
+            } else if (speed < 0.01) {
+                speedText = `${speed.toFixed(3)}x`;
+            } else if (speed < 0.1) {
+                speedText = `${speed.toFixed(2)}x`;
             } else {
                 speedText = `${speed.toFixed(1)}x`;
             }
@@ -2291,8 +2576,12 @@
         const ORIENTATION_LOG_INTERVAL = 1000; // Log every 1 second
 
         function handleOrientation(event) {
-            // No DOM/audio work while backgrounded
-            if (document.hidden) return;
+            hasReceivedOrientationEvent = true;
+            cancelOrientationPermissionCheck();
+
+            // No DOM/audio work while backgrounded or while the performer has
+            // frozen the current speed, reverb, and filter position.
+            if (document.hidden || isTiltLocked) return;
 
             const rawBeta = event.beta || 0;   // Pitch: -180 to 180
             const rawGamma = event.gamma || 0; // Roll: -90 to 90
@@ -2317,7 +2606,7 @@
             // Speed control (pitch) - full range mapping
             // Face up (beta ~0) = 1x
             // Tilted forward (phone top away, beta -> 180) = 20x (faster)
-            // Tilted toward user (phone top toward you, beta -> -180) = 0.05x (slower)
+            // Tilted toward user (phone top toward you, beta -> -180) = 0.005x (slower)
             const DEAD_ZONE = 5;
             let speed = 1.0;
 
@@ -2329,9 +2618,9 @@
                 const normalizedBeta = Math.min(reversedBeta, 180) / 180;
                 speed = 1 + normalizedBeta * 19;
             } else if (reversedBeta < -DEAD_ZONE) {
-                // Backward tilt: 0 to -180 degrees maps to 1x to 0.05x
+                // Backward tilt: 0 to -180 degrees maps to 1x to 0.005x
                 const normalizedBeta = Math.max(reversedBeta, -180) / 180; // -1 to 0
-                speed = Math.max(0.05, 1 + normalizedBeta * 0.95);
+                speed = Math.max(0.005, 1 + normalizedBeta * 0.995);
             }
 
             orientationData.speed = speed;
@@ -2410,12 +2699,13 @@
             // Update reverb dry/wet mix and filter in real-time.
             // setTargetAtTime ramps smoothly so tilt sweeps don't click.
             const now = audioContext.currentTime;
+            const mix = getReverbMix(orientationData.reverb);
+            if (reverbWetGain) {
+                reverbWetGain.gain.setTargetAtTime(mix.wet, now, 0.03);
+            }
             layers.forEach(layer => {
                 if (layer.dryGain) {
-                    layer.dryGain.gain.setTargetAtTime(1 - orientationData.reverb, now, 0.03);
-                }
-                if (layer.wetGain) {
-                    layer.wetGain.gain.setTargetAtTime(orientationData.reverb, now, 0.03);
+                    layer.dryGain.gain.setTargetAtTime(mix.dry, now, 0.03);
                 }
                 if (layer.filterNode) {
                     layer.filterNode.type = orientationData.filterType;
@@ -2450,92 +2740,209 @@
 
         function updateToolbarState() {
             const hasAudio = layers.some(l => l.audioBuffer !== null);
+            const isRecording = mediaRecorder && mediaRecorder.state === 'recording';
 
             document.getElementById('play-btn').disabled = !hasAudio;
             document.getElementById('nuke-btn').disabled = !hasAudio;
+            document.getElementById('record-btn').disabled = isStartingRecording ||
+                isProcessingRecording ||
+                (layers.length >= MAX_LAYERS && !currentRecordingLayer && !isRecording);
         }
 
         // Acquire the microphone and build a recorder for one recording session.
         // Callers release via releaseMicrophone() as soon as the recording is
         // done — the mic is never held while idle.
         async function setupMicrophone() {
-            try {
-                // Ensure audioContext is initialized first
-                if (!audioContext) {
-                    await init();
-                }
+            const hasLiveTrack = mediaStream &&
+                mediaStream.getAudioTracks().some(track => track.readyState === 'live');
+            if (hasLiveTrack && mediaRecorder) return true;
+            if (microphoneSetupPromise) return microphoneSetupPromise;
 
-                // Resume context (required after user gesture on iOS)
-                if (audioContext.state === 'suspended') {
-                    await audioContext.resume();
-                }
-
-                // Flip iOS audio session category so silent switch is ignored
-                unlockSilentMode();
-
-                // Request microphone
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: MIC_CONSTRAINTS });
-                mediaStream = stream;
-
-                // Setup media recorder with a MIME the browser actually supports
-                recorderMime = pickRecorderMime();
-                mediaRecorder = recorderMime
-                    ? new MediaRecorder(mediaStream, { mimeType: recorderMime })
-                    : new MediaRecorder(mediaStream);
-                console.log('MediaRecorder using MIME:', mediaRecorder.mimeType || '(default)');
-                mediaRecorder.ondataavailable = (e) => {
-                    if (e.data.size > 0) {
-                        recordingChunks.push(e.data);
+            const requestGeneration = microphoneGeneration;
+            microphoneSetupPromise = (async () => {
+                let requestedStream = null;
+                try {
+                    // Ensure audioContext is initialized first
+                    if (!audioContext) {
+                        await init();
                     }
-                };
-                mediaRecorder.onstop = handleRecordingComplete;
 
-                console.log('Microphone setup complete');
-                return true;
-            } catch (error) {
-                console.error('Microphone setup error:', error);
-                return false;
-            }
+                    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia ||
+                        typeof MediaRecorder === 'undefined') {
+                        throw new Error('Audio recording is not supported in this browser');
+                    }
+
+                    // Do not resume Web Audio just to suspend it again. That route
+                    // round-trip cost close to a second on iOS. Playback nodes are
+                    // already disconnected before this path; if the context is
+                    // still running, begin suspending it without blocking mic
+                    // acquisition or the MediaRecorder start.
+                    if (audioContext.state === 'running') {
+                        audioContext.suspend().catch(error => {
+                            console.warn('Audio context could not idle before recording:', error);
+                        });
+                    }
+
+                    // The REC tap may have just primed this media element for
+                    // future output. Stop it before opening the mic so it cannot
+                    // leak into the new sample or hold the capture-era route.
+                    pauseSilentLoop();
+                    setAudioSessionType('play-and-record');
+
+                    requestedStream = await navigator.mediaDevices.getUserMedia({ audio: MIC_CONSTRAINTS });
+
+                    // A page hide/cleanup can happen while the permission prompt is
+                    // open. Do not resurrect a microphone stream after that cleanup.
+                    if (document.hidden || requestGeneration !== microphoneGeneration) {
+                        requestedStream.getTracks().forEach(track => track.stop());
+                        if (!isPlaying) {
+                            pauseSilentLoop();
+                            if (audioContext.state === 'running') {
+                                try { await audioContext.suspend(); } catch (_) {}
+                            }
+                        }
+                        return false;
+                    }
+
+                    mediaStream = requestedStream;
+
+                    // Setup media recorder with a MIME the browser actually supports
+                    recorderMime = pickRecorderMime();
+                    mediaRecorder = recorderMime
+                        ? new MediaRecorder(mediaStream, { mimeType: recorderMime })
+                        : new MediaRecorder(mediaStream);
+                    console.log('MediaRecorder using MIME:', mediaRecorder.mimeType || '(default)');
+                    mediaRecorder.ondataavailable = (e) => {
+                        if (e.data.size > 0) {
+                            recordingChunks.push(e.data);
+                        }
+                    };
+                    mediaRecorder.onstop = handleRecordingComplete;
+
+                    console.log('Microphone setup complete');
+                    return true;
+                } catch (error) {
+                    console.error('Microphone setup error:', error);
+                    if (requestedStream) {
+                        requestedStream.getTracks().forEach(track => track.stop());
+                    }
+                    if (mediaStream === requestedStream) mediaStream = null;
+                    mediaRecorder = null;
+                    setAudioSessionType('playback');
+                    if (!isPlaying) {
+                        pauseSilentLoop();
+                        if (audioContext && audioContext.state === 'running') {
+                            try { await audioContext.suspend(); } catch (_) {}
+                        }
+                    }
+                    return false;
+                } finally {
+                    microphoneSetupPromise = null;
+                }
+            })();
+
+            return microphoneSetupPromise;
         }
 
-        // Permission overlay handlers
-        const requestMicBtn = document.getElementById('request-mic-btn');
-        if (requestMicBtn) {
-            requestMicBtn.addEventListener('click', async () => {
-                const success = await setupMicrophone();
+        // First-time onboarding asks only for the protected tilt API. The mic
+        // is requested by the first REC gesture, when it is actually needed.
+        const requestControlsBtn = document.getElementById('request-controls-btn');
+        if (requestControlsBtn) {
+            let permissionBusy = false;
+            requestControlsBtn.addEventListener('click', async () => {
+                if (permissionBusy) return;
+                permissionBusy = true;
+                requestControlsBtn.disabled = true;
+                requestControlsBtn.textContent = 'Enabling…';
 
-                if (success) {
-                    // Permission is granted — release the mic and go idle until
-                    // the first Record tap (a valid gesture) re-acquires it.
-                    releaseMicrophone();
-                    audioContext.suspend();
+                try {
+                    // Prime the media element from a real gesture for later iOS
+                    // playback, but do not open the microphone during onboarding.
+                    unlockSilentMode();
+                    const granted = await requestOrientationPermission();
                     pauseSilentLoop();
 
-                    // Update button for orientation request
-                    requestMicBtn.textContent = 'Enable Tilt';
-                    requestMicBtn.id = 'request-orientation-btn';
-
-                    // Orientation button handler
-                    requestMicBtn.addEventListener('click', async () => {
-                        const granted = await requestOrientationPermission();
-                        const permissionsOverlay = document.getElementById('permissions-overlay');
-                        if (permissionsOverlay) {
-                            permissionsOverlay.classList.remove('active');
-                        }
-                        isInitialized = true;
-
-                        if (!granted) {
-                            setTimeout(() => {
-                                alert('Tilt controls could not be enabled. You can still use the looper normally.');
-                            }, 300);
-                        }
-                    });
+                    if (granted) {
+                        completeOnboarding({ remember: true });
+                    } else {
+                        // Recording still works without sensors. Do not remember
+                        // the failed grant, so a later visit can try tilt again.
+                        completeOnboarding();
+                        setTimeout(() => {
+                            alert('Tilt controls could not be enabled. You can still use the looper normally.');
+                        }, 300);
+                    }
+                } finally {
+                    permissionBusy = false;
+                    requestControlsBtn.disabled = false;
+                    if (!isInitialized) requestControlsBtn.textContent = 'Enable Tilt';
                 }
             });
         }
 
+        function bootstrapPermissionFlow() {
+            const hasOrientation = typeof DeviceOrientationEvent !== 'undefined';
+            const needsExplicitTiltGrant = hasOrientation &&
+                typeof DeviceOrientationEvent.requestPermission === 'function';
+
+            if (hasCompletedOnboarding()) {
+                completeOnboarding();
+                if (hasOrientation) attachOrientationListener();
+                if (needsExplicitTiltGrant) scheduleOrientationPermissionCheck();
+                return 'returning';
+            }
+
+            if (!needsExplicitTiltGrant) {
+                if (hasOrientation) attachOrientationListener();
+                completeOnboarding({ remember: true });
+                return 'automatic';
+            }
+
+            showPermissionSetup();
+            return 'prompt';
+        }
+
+        bootstrapPermissionFlow();
+
         // Event Listeners
-        document.getElementById('record-btn').addEventListener('click', async () => {
+        const recordButton = document.getElementById('record-btn');
+
+        // Start opening the microphone on the initial press rather than waiting
+        // for the later click event. The click remains the authoritative action,
+        // so playback is disconnected before MediaRecorder actually starts.
+        recordButton.addEventListener('pointerdown', (event) => {
+            if ((event.isPrimary === false) ||
+                (event.pointerType === 'mouse' && event.button !== 0) ||
+                recordButton.disabled || !isInitialized || isStartingRecording ||
+                isProcessingRecording ||
+                (mediaRecorder && mediaRecorder.state === 'recording')) {
+                return;
+            }
+
+            clearTimeout(recordPrewarmCleanupTimeout);
+            setupMicrophone();
+
+            // A press can be cancelled by dragging away. Do not leave the mic or
+            // a suspended playback context behind if no click claims this prewarm.
+            recordPrewarmCleanupTimeout = setTimeout(() => {
+                recordPrewarmCleanupTimeout = null;
+                if (isStartingRecording ||
+                    (mediaRecorder && mediaRecorder.state === 'recording')) return;
+
+                releaseMicrophone();
+                if (isPlaying && audioContext && audioContext.state === 'suspended' &&
+                    !document.hidden) {
+                    audioContext.resume().catch(error => {
+                        console.warn('Playback could not resume after cancelled REC press:', error);
+                    });
+                }
+            }, 2000);
+        });
+
+        recordButton.addEventListener('click', async () => {
+            clearTimeout(recordPrewarmCleanupTimeout);
+            recordPrewarmCleanupTimeout = null;
+
             if (mediaRecorder && mediaRecorder.state === 'recording') {
                 stopRecording();
                 return;
@@ -2547,14 +2954,25 @@
             }
             // startRecording acquires the mic itself — this click IS a user
             // gesture, so getUserMedia is allowed on iOS.
+            if (!isPlaying) unlockSilentMode();
+            resumePlaybackAfterRecording = isPlaying;
+            if (isPlaying) {
+                // Disconnect speaker playback immediately. setupMicrophone begins
+                // suspending the context in parallel with opening the mic.
+                await stopPlayback({ suspend: false });
+                pauseSilentLoop();
+            }
             currentRecordingLayer = null;
-            startRecording();
+            const started = await startRecording();
+            if (!started && resumePlaybackAfterRecording && !document.hidden) {
+                resumePlaybackAfterRecording = false;
+                await startPlayback();
+            }
         });
 
         document.getElementById('play-btn').addEventListener('click', togglePlayback);
 
-        document.getElementById('reset-orientation-btn').addEventListener('click', () => {
-            // Reset orientation zero point
+        function resetTiltOrigin() {
             orientationZero.beta = null;
             orientationZero.gamma = null;
             orientationZero.alpha = null;
@@ -2565,9 +2983,94 @@
             const originalIcon = btn.querySelector('.button-icon').textContent;
             btn.querySelector('.button-icon').textContent = '✓';
             setTimeout(() => {
-                btn.querySelector('.button-icon').textContent = originalIcon;
+                if (!isTiltLocked) {
+                    btn.querySelector('.button-icon').textContent = originalIcon;
+                }
             }, 500);
-        });
+        }
+
+        function setTiltLocked(locked) {
+            isTiltLocked = Boolean(locked);
+
+            const btn = document.getElementById('reset-orientation-btn');
+            const indicator = document.getElementById('playback-indicator');
+            const icon = btn.querySelector('.button-icon');
+            const label = btn.querySelector('.button-label');
+            btn.classList.toggle('locked', isTiltLocked);
+            if (indicator) indicator.classList.toggle('tilt-locked', isTiltLocked);
+            btn.setAttribute('aria-pressed', String(isTiltLocked));
+            btn.setAttribute('aria-label', isTiltLocked
+                ? 'Tilt locked; tap to unlock'
+                : 'Recenter tilt; hold to lock');
+            icon.textContent = isTiltLocked ? '▣' : '⊙';
+            label.textContent = isTiltLocked ? 'LCK' : 'TLT';
+
+            console.log(isTiltLocked ? 'Tilt controls locked' : 'Tilt controls unlocked');
+        }
+
+        // A quick tap keeps the existing recenter action. A CLR-style hold
+        // toggles a persistent freeze of all three tilt-controlled effects.
+        (function wireTiltLock() {
+            const btn = document.getElementById('reset-orientation-btn');
+            const HOLD_MS = 900;
+            let timer = null;
+            let isHolding = false;
+            let holdCompleted = false;
+
+            function cancelHold() {
+                btn.classList.remove('arming');
+                if (timer) { clearTimeout(timer); timer = null; }
+            }
+
+            function start(e) {
+                if (e.button !== undefined && e.button !== 0) return;
+                e.preventDefault();
+                if (isHolding) return;
+                isHolding = true;
+                holdCompleted = false;
+
+                // Locking is deliberately guarded by a hold. Once latched,
+                // unlocking is a normal tap with no timer or progress fill.
+                if (isTiltLocked) return;
+
+                btn.classList.add('arming');
+                timer = setTimeout(() => {
+                    timer = null;
+                    holdCompleted = true;
+                    btn.classList.remove('arming');
+                    setTiltLocked(!isTiltLocked);
+                    if (navigator.vibrate) navigator.vibrate(25);
+                }, HOLD_MS);
+            }
+
+            function end(e) {
+                if (!isHolding) return;
+                if (e) e.preventDefault();
+                const completed = holdCompleted;
+                isHolding = false;
+                cancelHold();
+                if (!completed) {
+                    if (isTiltLocked) setTiltLocked(false);
+                    else resetTiltOrigin();
+                }
+            }
+
+            function cancel() {
+                isHolding = false;
+                cancelHold();
+            }
+
+            // Match CLR's native-event path. In particular, a non-passive
+            // touchstart prevents iOS from turning the hold into selection.
+            btn.addEventListener('touchstart', start, { passive: false });
+            btn.addEventListener('touchend', end, { passive: false });
+            btn.addEventListener('touchcancel', cancel);
+            btn.addEventListener('mousedown', start);
+            btn.addEventListener('mouseup', end);
+            btn.addEventListener('mouseleave', cancel);
+            btn.addEventListener('contextmenu', (e) => e.preventDefault());
+            btn.addEventListener('click', (e) => e.preventDefault());
+        })();
 
         // Long-press CLR to wipe. The .arming class triggers a 900ms radial
         // fill; only when that completes do we actually nuke the layers.
@@ -2658,6 +3161,11 @@
         //   - Suspend the audio context so playback stops cleanly.
         async function pauseEverything() {
             console.log('🛑 PAUSING');
+            cancelOrientationPermissionCheck();
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+            }
             layers.forEach(layer => {
                 if (layer.grainScheduleId) {
                     clearTimeout(layer.grainScheduleId);
@@ -2677,12 +3185,20 @@
 
         async function resumeEverything() {
             console.log('▶️ RESUMING (state:', audioContext?.state + ')');
+            if (hasCompletedOnboarding() && !hasReceivedOrientationEvent) {
+                attachOrientationListener();
+                scheduleOrientationPermissionCheck();
+            }
             if (!audioContext) return;
 
-            // Only spin the audio machinery back up if the user was actually
-            // listening — an idle context left suspended costs no battery.
-            // The mic is NOT re-acquired here: it's per-recording now, and the
-            // next Record tap (a valid user gesture) acquires it fresh.
+            // If capture interrupted active playback and completed while hidden,
+            // restore it now. Otherwise an idle context stays suspended.
+            // The mic is NOT re-acquired here: it's per-recording now.
+            if (!isPlaying && resumePlaybackAfterRecording) {
+                resumePlaybackAfterRecording = false;
+                await startPlayback();
+                return;
+            }
             if (!isPlaying) return;
 
             // Resume the context. iOS may report 'interrupted' instead of
@@ -2705,6 +3221,7 @@
                         scheduleGrains(layer);
                     }
                 });
+                if (!animationFrameId) animatePlayback();
             }
         }
 
