@@ -2,7 +2,7 @@
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>402SB — 100-Second Street Dash</title>
-<meta name="description" content="The first 96 hours of a $100 → $1,000 x402 fund mandate, replayed in 100 seconds.">
+<meta name="description" content="A $100 → $1,000 x402 fund mandate, live P&L replayed in 100 seconds.">
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#0c0f14;--card:#12161d;--line:#212733;--txt:#eceef1;--dim:#8b929e;--up:#00c805;--dn:#ff5000;--acc:#c5ff3e}
@@ -31,15 +31,20 @@ svg{display:block;width:100%;height:100%}
 .charter{stroke:#3a4354;stroke-width:1;stroke-dasharray:2 4}
 .ax{fill:var(--dim);font-size:9.5px;font-family:Manrope,sans-serif}
 .axl{fill:#0c0f14;font-size:9.5px;font-weight:700;font-family:Manrope,sans-serif}
-.dlab{fill:var(--dim);font-size:9.5px;font-weight:600;font-family:Manrope,sans-serif;text-anchor:middle}
+.dlab{fill:var(--dim);font-size:8.5px;font-weight:600;font-family:Manrope,sans-serif;text-anchor:middle}
 .lastline{stroke:#3a4354;stroke-width:1;stroke-dasharray:2 4}
 .lastchip{fill:var(--acc)}
 .wick.u,.body.u{stroke:var(--up)}.wick.d,.body.d{stroke:var(--dn)}
 .body.u{fill:var(--up)}.body.d{fill:var(--dn)}
 .vol.u{fill:#0f3f16}.vol.d{fill:#4a1c09}
-.mkr{font-size:9px;font-weight:800;font-family:Manrope,sans-serif}
-.mkr.buy{fill:var(--up)}.mkr.sell{fill:var(--dn)}.mkr.perp{fill:var(--acc)}
-.mkpill{font-size:8.5px;font-weight:800;font-family:Manrope,sans-serif;fill:var(--dim)}
+.mkr{font-size:8.5px;font-weight:800;font-family:Manrope,sans-serif;text-anchor:middle}
+.mkr.buy,.mkr.perp{fill:var(--up)}.mkr.sell,.mkr.close{fill:var(--dn)}
+.mkr.perp{fill:var(--acc)}
+.flash{position:absolute;left:0;top:2px;background:#181d26;border:1px solid #2a3140;border-radius:8px;
+  padding:5px 10px;font-size:10.5px;font-weight:800;letter-spacing:.03em;box-shadow:0 6px 18px rgba(0,0,0,.5);
+  opacity:0;transition:opacity .25s;pointer-events:none;white-space:nowrap}
+.flash.on{opacity:1}
+.flash .g{margin-right:5px}
 .foot{display:flex;align-items:center;gap:10px;margin-top:8px}
 .bar{flex:1;height:4px;border-radius:999px;background:var(--line);overflow:hidden}
 .bar i{display:block;height:100%;width:0%;background:var(--acc);border-radius:999px}
@@ -60,12 +65,13 @@ svg{display:block;width:100%;height:100%}
     <div class="v" id="nav">$101.00</div>
     <div class="delta dim" id="delta">— flat</div>
     <div class="right">
-      <div class="day" id="day">Aug 5</div>
+      <div class="day" id="day">Day 14/30</div>
       <div class="ohlc" id="ohlc">O <b>—</b> H <b>—</b> L <b>—</b> C <b>—</b></div>
     </div>
   </div>
   <div class="chartwrap">
     <svg id="chart" viewBox="0 0 448 300" preserveAspectRatio="none"></svg>
+    <div class="flash" id="flash"></div>
     <div class="endpill" id="endpill">↻ RUN IT BACK</div>
   </div>
   <div class="foot">
@@ -73,109 +79,155 @@ svg{display:block;width:100%;height:100%}
     <div class="clockl" id="clockl">0s / 100s</div>
   </div>
   <div class="cap">
-    <span>NAV replay · Aug 5–8 · vol = traded USD/day</span>
+    <span id="capl">NAV daily candles · x402 cloud harness</span>
     <span>target $1,000 by Sep 4</span>
   </div>
 </div>
 <script>
-// ---- real data: runs/nav-history.jsonl + runs/trades.jsonl (PDT) ----
-// ticks: [hourOfDayPDT, NAV]; vol: traded USD that day
-const DAYS = [
-  {label:'Aug 5', ticks:[[22.42,101.00]], vol:4,
-   marks:[{h:22.37,k:'buy',txt:'NVDAx'},{h:22.40,k:'sell',txt:'NVDAx'}]},
-  {label:'Aug 6', ticks:[[6.25,101.00],[10.92,101.00],[11.18,100.97],[14.28,99.97]], vol:18,
-   marks:[{h:11.18,k:'buy',txt:'METAx $18'},{h:14.50,k:'perp',txt:'5x LONG META'}]},
-  {label:'Aug 7', ticks:[[6.25,100.08]], vol:0, marks:[]},
-  {label:'Aug 8', ticks:[[6.25,101.06],[12.13,101.43],[12.15,101.37]], vol:30,
-   marks:[{h:12.13,k:'buy',txt:'AAPLx $15'},{h:12.15,k:'buy',txt:'TSLAx $15'},{h:19.02,k:'perp',txt:'20x CRANK'}]},
-];
-const TOTAL=100, SLOT=TOTAL/DAYS.length, BASE=100;
+// ---- baked fallback: wsad-cloud-harness-v15 snapshot, 2026-08-20 13:18 PDT ----
+// candles [dateLabel, o, h, l, c, volUSD]; marks [dateLabel, kind, flashText]
+const SNAP={
+ updated:'2026-08-20 13:18 PDT', day:'14/30',
+ candles:[
+  ['8/5',101.00,101.00,101.00,101.00,4],
+  ['8/6',101.00,101.00,99.97,99.97,18],
+  ['8/7',100.08,100.08,100.08,100.08,0],
+  ['8/8',101.06,101.43,101.06,101.37,30],
+  ['8/10',98.37,102.13,98.37,100.99,0],
+  ['8/11',100.14,117.78,98.84,105.49,0],
+  ['8/12',105.81,110.09,93.79,93.91,0],
+  ['8/13',93.88,95.12,93.88,94.72,0],
+  ['8/14',94.82,95.48,94.20,94.20,0],
+  ['8/15',94.27,94.69,94.27,94.68,0],
+  ['8/18',89.81,90.09,89.37,89.38,0],
+  ['8/19',89.79,91.35,88.93,90.80,0],
+  ['8/20',90.93,90.93,88.82,88.82,0]],
+ marks:[
+  ['8/5','sell','SHAKEOUT · NVDAx $4 round-trip'],
+  ['8/6','buy','BUY METAx $18'],
+  ['8/6','perp','YOLO · 5x LONG META'],
+  ['8/8','buy','BUY AAPLx + TSLAx $30'],
+  ['8/8','perp','YOLO · 20x CRANK META'],
+  ['8/12','close','YOLO · CLOSE META LONG'],
+  ['8/13','perp','YOLO · OPEN LONG NVDA'],
+  ['8/20','close','YOLO · CLOSE NVDA LONG']]
+};
+const HARNESS='https://wsad-cloud-harness-v15.app.withzero.ai/';
+const BASE=100, TOTAL=100;
 
-// map each day's tick hours into [0.12,0.82] of its slot, preserving spacing
-DAYS.forEach(d=>{
-  const hs=d.ticks.map(t=>t[0]).concat(d.marks.map(m=>m.h));
-  const lo=Math.min(...hs), hi=Math.max(...hs), span=Math.max(hi-lo,0.001);
-  const norm=h=> d.ticks.length===1 && d.marks.length===0 ? 0.35 : 0.12+0.70*(h-lo)/span;
-  d.ticks=d.ticks.map(([h,v])=>({u:norm(h),v}));
-  d.marks=d.marks.map(m=>({...m,u:norm(m.h)}));
-});
-// global keyframes for the NAV counter
-const KEYS=[];
-DAYS.forEach((d,i)=>d.ticks.forEach(t=>KEYS.push({t:i*SLOT+t.u*SLOT,v:t.v})));
-
-const PMIN=99.85, PMAX=101.60;
-const W=448, H=300, PLOT_W=396, VOL_H=26, LBL_H=14, PRICE_H=H-VOL_H-LBL_H-6;
-const CW=PLOT_W/DAYS.length, BODY=34;
-const yP=v=>PRICE_H*(1-(v-PMIN)/(PMAX-PMIN));
-const maxVol=Math.max(...DAYS.map(d=>d.vol));
-const ease=x=>x<0?0:x>1?1:x*x*(3-2*x);
-const fmt=v=>'$'+v.toFixed(2);
-
-function navAt(t){
-  if(t<=KEYS[0].t) return KEYS[0].v;
-  for(let i=1;i<KEYS.length;i++){
-    const a=KEYS[i-1], b=KEYS[i];
-    if(t<=b.t){
-      // hold flat across day boundaries (no fabricated overnight path)
-      const dayA=Math.floor(a.t/SLOT), dayB=Math.floor(b.t/SLOT);
-      if(dayA!==dayB){ const bd=dayB*SLOT; if(t<bd) return a.v; return a.v+(b.v-a.v)*ease((t-bd)/(b.t-bd)); }
-      return a.v+(b.v-a.v)*ease((t-a.t)/(b.t-a.t));
-    }
-  }
-  return KEYS[KEYS.length-1].v;
+// ---- live parse of the harness dashboard (same-format data attrs) ----
+function parseLive(h){
+  const candles=[...h.matchAll(/data-d="\d{4}-(\d\d)-(\d\d)"[^>]*data-o="([\d.]+)"[^>]*data-h="([\d.]+)"[^>]*data-l="([\d.]+)"[^>]*data-c="([\d.]+)"[^>]*data-v="([\d.]+)"/g)]
+    .map(m=>[`${+m[1]}/${+m[2]}`,+m[3],+m[4],+m[5],+m[6],+m[7]]);
+  if(candles.length<2) throw new Error('no candles');
+  const marks=[];
+  h.split('<tr>').forEach(row=>{
+    const m=row.match(/<td class="sym">(\w+)<\/td><td><span class="chip[^"]*">Filled<\/span><\/td><td class="[^"]*">([^<]+)<\/td><td class="dim">([^<]*)<\/td>/);
+    const d=row.match(/class="rt dim">(\d\d)-(\d\d) [\d:]+ PDT<\/td>/);
+    if(!m||!d) return;
+    const side=m[2], perp=/perp/.test(m[3]);
+    const kind=/^Buy/.test(side)?'buy':/^Sell/.test(side)?'sell':/^Open/.test(side)?'perp':'close';
+    marks.push([`${+d[1]}/${+d[2]}`,kind,(perp?'YOLO · ':'')+side.toUpperCase()+' '+m[1]]);
+  });
+  marks.reverse();
+  const upd=h.match(/updated (\d{4}-\d\d-\d\d \d\d:\d\d P[DS]T)/);
+  const day=h.match(/Day<\/span><b>([^<]+)<\/b>/);
+  return {updated:upd?upd[1]:'',day:day?day[1].replace(/\s/g,''):'',candles,marks,live:true};
 }
 
+// ---- replay engine (N candles → 100s) ----
+let D=SNAP, SLOT, KEYS, dom, maxVol;
+const W=448,H=300,PLOT_W=396,VOL_H=18,LBL_H=13,PRICE_H=H-VOL_H-LBL_H-6;
+let CW,BODY;
+const ease=x=>x<0?0:x>1?1:x*x*(3-2*x);
+const yP=v=>PRICE_H*(1-(v-dom[0])/(dom[1]-dom[0]));
+
+function prep(){
+  const n=D.candles.length; SLOT=TOTAL/n;
+  CW=PLOT_W/n; BODY=Math.min(CW*0.58,20);
+  let lo=Infinity,hi=-Infinity;
+  D.candles.forEach(c=>{lo=Math.min(lo,c[3]);hi=Math.max(hi,c[2])});
+  const pad=(hi-lo)*0.05+0.2; dom=[lo-pad,hi+pad];
+  maxVol=Math.max(...D.candles.map(c=>c[5]),1);
+  // per-candle sweep waypoints at fixed intra-slot times: O → first extreme → second → C
+  KEYS=D.candles.map((c,i)=>{
+    const [,o,h,l,cl]=c, up=cl>=o;
+    const path=up?[o,l,h,cl]:[o,h,l,cl];
+    return {t0:i*SLOT, pts:[[.15,path[0]],[.38,path[1]],[.68,path[2]],[.92,path[3]]]};
+  });
+  // marks → absolute times, staggered within their day's slot
+  const perDay={};
+  D.marksT=D.marks.filter(m=>D.candles.some(c=>c[0]===m[0])).map(m=>{
+    const di=D.candles.findIndex(c=>c[0]===m[0]);
+    const lane=perDay[m[0]]=(perDay[m[0]]||0)+1;
+    return {di,lane:lane-1,t:di*SLOT+(0.25+(lane-1)*0.22)*SLOT,kind:m[1],txt:m[2]};
+  });
+}
+
+function sweep(i,rel){ // value of candle i's sweep at intra-slot rel
+  const p=KEYS[i].pts;
+  if(rel<=p[0][0]) return p[0][1];
+  for(let k=1;k<p.length;k++) if(rel<=p[k][0]){
+    const a=p[k-1],b=p[k];
+    return a[1]+(b[1]-a[1])*ease((rel-a[0])/(b[0]-a[0]));
+  }
+  return p[p.length-1][1];
+}
+function navAt(t){
+  const n=D.candles.length;
+  if(t>=TOTAL) return D.candles[n-1][4];
+  const i=Math.min(Math.floor(t/SLOT),n-1), rel=t/SLOT-i;
+  if(rel<0.15) return i===0?D.candles[0][1]:D.candles[i-1][4];
+  return sweep(i,rel);
+}
 function candleAt(i,t){
-  const d=DAYS[i], s=i*SLOT, rel=(t-s)/SLOT;
-  if(rel<=0||t<s+d.ticks[0].u*SLOT) return null;
-  const seen=d.ticks.filter(k=>s+k.u*SLOT<=t).map(k=>k.v);
-  const cur=t<s+SLOT?navAt(t):d.ticks[d.ticks.length-1].v;
-  if(t<s+SLOT&&Math.floor(t/SLOT)===i) seen.push(cur);
-  const o=d.ticks[0].v, c=t>=s+SLOT?d.ticks[d.ticks.length-1].v:cur;
-  return {o,c,h:Math.max(...seen,o),l:Math.min(...seen,o),prog:Math.min(rel,1)};
+  const c=D.candles[i], s=i*SLOT, rel=(t-s)/SLOT;
+  if(rel<=0.15) return null;
+  if(rel>=1) return {o:c[1],h:c[2],l:c[3],c:c[4],prog:1};
+  const seen=[c[1]];
+  KEYS[i].pts.forEach(p=>{if(rel>=p[0])seen.push(p[1])});
+  const cur=sweep(i,rel); seen.push(cur);
+  return {o:c[1],c:cur,h:Math.max(...seen),l:Math.min(...seen),prog:rel};
 }
 
 const svg=document.getElementById('chart');
 const $=id=>document.getElementById(id);
 function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;')}
+const GLYPH={buy:'▲',sell:'▼',perp:'◆',close:'✕'};
 
 function render(t){
   let out='';
-  // grid + charter line
-  [100.0,100.5,101.0,101.5].forEach(v=>{
+  const span=dom[1]-dom[0], step=span>15?10:span>6?2:0.5;
+  for(let v=Math.ceil(dom[0]/step)*step;v<dom[1];v+=step){
     const y=yP(v).toFixed(1);
-    out+=`<line x1="0" y1="${y}" x2="${PLOT_W}" y2="${y}" class="${v===BASE?'charter':'grid'}"/>`;
-    out+=`<text x="${PLOT_W+4}" y="${(+y+3.2).toFixed(1)}" class="ax">${v.toFixed(2)}</text>`;
-  });
-  const nav=navAt(t);
-  // candles + volume + day labels + markers
-  for(let i=0;i<DAYS.length;i++){
-    const d=DAYS[i], cx=i*CW+CW/2, s=i*SLOT;
-    out+=`<text x="${cx}" y="${H-3}" class="dlab">${d.label}</text>`;
-    const c=candleAt(i,t);
-    if(c){
-      const up=c.c>=c.o, cls=up?'u':'d';
-      const yO=yP(c.o), yC=yP(c.c), yH=yP(c.h), yL=yP(c.l);
-      const bt=Math.min(yO,yC), bh=Math.max(Math.abs(yO-yC),1.5);
-      out+=`<line x1="${cx}" y1="${yH.toFixed(1)}" x2="${cx}" y2="${yL.toFixed(1)}" class="wick ${cls}"/>`;
-      out+=`<rect x="${(cx-BODY/2).toFixed(1)}" y="${bt.toFixed(1)}" width="${BODY}" height="${bh.toFixed(1)}" rx="1" class="body ${cls}"/>`;
-      const vh=maxVol?(d.vol/maxVol)*VOL_H*c.prog:0;
-      if(vh>0.5) out+=`<rect x="${(cx-BODY/2).toFixed(1)}" y="${(PRICE_H+VOL_H-vh+4).toFixed(1)}" width="${BODY}" height="${vh.toFixed(1)}" rx="1" class="vol ${cls}"/>`;
-    }
-    // trade markers pop as the clock passes them; stack above the candle
-    // when its low sits too close to the volume strip
-    const lowV=c?c.l:d.ticks[0].v, highV=c?c.h:d.ticks[0].v;
-    const below=yP(lowV)<PRICE_H-46;
-    let lane=0;
-    d.marks.forEach(m=>{
-      if(s+m.u*SLOT>t) return;
-      const my=below?yP(lowV)+14+lane*11:yP(highV)-10-lane*11; lane++;
-      const sym=m.k==='buy'?'▲':m.k==='sell'?'▼':'◆';
-      out+=`<text x="${cx-BODY/2}" y="${my.toFixed(1)}" class="mkr ${m.k}">${sym}</text>`;
-      out+=`<text x="${cx-BODY/2+11}" y="${my.toFixed(1)}" class="mkpill">${esc(m.txt)}</text>`;
-    });
+    out+=`<line x1="0" y1="${y}" x2="${PLOT_W}" y2="${y}" class="grid"/>`;
+    out+=`<text x="${PLOT_W+4}" y="${(+y+3.2).toFixed(1)}" class="ax">${v.toFixed(0)}</text>`;
   }
-  // last-price line + chip
+  if(dom[0]<BASE&&BASE<dom[1]){
+    const y=yP(BASE).toFixed(1);
+    out+=`<line x1="0" y1="${y}" x2="${PLOT_W}" y2="${y}" class="charter"/>`;
+  }
+  const nav=navAt(t);
+  for(let i=0;i<D.candles.length;i++){
+    const cx=i*CW+CW/2;
+    out+=`<text x="${cx.toFixed(1)}" y="${H-3}" class="dlab">${D.candles[i][0]}</text>`;
+    const c=candleAt(i,t);
+    if(!c) continue;
+    const up=c.c>=c.o, cls=up?'u':'d';
+    const yO=yP(c.o), yC=yP(c.c);
+    const bt=Math.min(yO,yC), bh=Math.max(Math.abs(yO-yC),1.5);
+    out+=`<line x1="${cx.toFixed(1)}" y1="${yP(c.h).toFixed(1)}" x2="${cx.toFixed(1)}" y2="${yP(c.l).toFixed(1)}" class="wick ${cls}"/>`;
+    out+=`<rect x="${(cx-BODY/2).toFixed(1)}" y="${bt.toFixed(1)}" width="${BODY.toFixed(1)}" height="${bh.toFixed(1)}" rx="1" class="body ${cls}"/>`;
+    const vh=(D.candles[i][5]/maxVol)*VOL_H*c.prog;
+    if(vh>0.5) out+=`<rect x="${(cx-BODY/2).toFixed(1)}" y="${(PRICE_H+VOL_H-vh+4).toFixed(1)}" width="${BODY.toFixed(1)}" height="${vh.toFixed(1)}" rx="1" class="vol ${cls}"/>`;
+  }
+  // trade glyphs stack above each day's high as the clock passes them
+  D.marksT.forEach(m=>{
+    if(m.t>t) return;
+    const cx=m.di*CW+CW/2, hi=D.candles[m.di][2];
+    const my=Math.max(yP(hi)-8-m.lane*10,8);
+    out+=`<text x="${cx.toFixed(1)}" y="${my.toFixed(1)}" class="mkr ${m.kind}">${GLYPH[m.kind]}</text>`;
+  });
   const ly=yP(nav);
   out+=`<line x1="0" y1="${ly.toFixed(1)}" x2="${PLOT_W}" y2="${ly.toFixed(1)}" class="lastline"/>`;
   out+=`<rect x="${PLOT_W}" y="${(ly-7.5).toFixed(1)}" width="50" height="15" rx="2" class="lastchip"/>`;
@@ -183,32 +235,47 @@ function render(t){
   svg.innerHTML=out;
   // counters
   const pl=nav-BASE, up=pl>=0;
-  $('nav').textContent=fmt(nav);
+  $('nav').textContent='$'+nav.toFixed(2);
   const de=$('delta');
   de.textContent=(up?'▲ +':'▼ −')+'$'+Math.abs(pl).toFixed(2)+' ('+(up?'+':'−')+Math.abs(pl/BASE*100).toFixed(2)+'%)';
   de.className='delta '+(up?'up':'dn');
-  const di=Math.min(Math.floor(t/SLOT),DAYS.length-1);
-  $('day').textContent=DAYS[di].label;
-  const cc=candleAt(di,t)||{o:nav,h:nav,l:nav,c:nav};
-  $('ohlc').innerHTML=`O <b>${cc.o.toFixed(2)}</b> H <b>${cc.h.toFixed(2)}</b> L <b>${cc.l.toFixed(2)}</b> C <b>${cc.c.toFixed(2)}</b>`;
+  const di=Math.min(Math.floor(t/SLOT),D.candles.length-1);
+  const cc=candleAt(di,t)||{o:navAt(t),h:navAt(t),l:navAt(t),c:navAt(t)};
+  $('ohlc').innerHTML=`Aug ${D.candles[di][0].split('/')[1]} · O <b>${cc.o.toFixed(2)}</b> H <b>${cc.h.toFixed(2)}</b> L <b>${cc.l.toFixed(2)}</b> C <b>${cc.c.toFixed(2)}</b>`;
+  // event flash: latest mark within the last 3.5s
+  const fl=$('flash');
+  const act=D.marksT.filter(m=>m.t<=t&&t-m.t<3.5).pop();
+  if(act&&t<TOTAL){fl.innerHTML=`<span class="g ${act.kind==='close'||act.kind==='sell'?'dn':act.kind==='perp'?'':'up'}">${GLYPH[act.kind]}</span>${esc(act.txt)}`;fl.classList.add('on')}
+  else fl.classList.remove('on');
   $('barfill').style.width=Math.min(t/TOTAL*100,100)+'%';
   $('clockl').textContent=Math.min(Math.floor(t),TOTAL)+'s / '+TOTAL+'s';
   $('endpill').classList.toggle('on',t>=TOTAL);
 }
 
+// ---- boot: try live data (2.5s budget), fall back to baked snapshot ----
 const q=new URLSearchParams(location.search);
-let start=performance.now()-(q.has('poster')?TOTAL:(parseFloat(q.get('t'))||0))*1000;
-let done=false;
+let start,done=false;
 function tick(now){
   const t=(now-start)/1000;
   render(Math.min(t,TOTAL));
   if(t>=TOTAL){done=true;return}
   requestAnimationFrame(tick);
 }
-requestAnimationFrame(tick);
+function boot(){
+  prep();
+  $('day').textContent='Day '+(D.day||SNAP.day);
+  $('capl').textContent='NAV daily candles · '+(D.live?'live':'snapshot')+' · upd '+(D.updated||SNAP.updated).replace('2026-','');
+  start=performance.now()-(q.has('poster')?TOTAL:(parseFloat(q.get('t'))||0))*1000;
+  requestAnimationFrame(tick);
+}
 document.body.addEventListener('pointerdown',()=>{
   start=performance.now();
   if(done){done=false;requestAnimationFrame(tick)}
 });
+if(q.has('poster')||q.get('live')==='0') boot();
+else Promise.race([
+  fetch(HARNESS).then(r=>r.text()).then(parseLive),
+  new Promise((_,rej)=>setTimeout(rej,2500,'timeout'))
+]).then(d=>{D=d}).catch(()=>{}).then(boot);
 </script>
 </body></html>
