@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>402SB — 100-Second Street Dash</title>
+<meta name="description" content="The first 96 hours of a $100 → $1,000 x402 fund mandate, replayed in 100 seconds.">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0c0f14;--card:#12161d;--line:#212733;--txt:#eceef1;--dim:#8b929e;--up:#00c805;--dn:#ff5000;--acc:#c5ff3e}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{background:var(--bg);color:var(--txt);font-family:'Manrope',-apple-system,sans-serif;
+  font-size:13px;line-height:1.45;font-variant-numeric:tabular-nums;overflow:hidden;cursor:pointer;
+  display:flex;align-items:center;justify-content:center}
+.stage{width:480px;height:480px;max-width:100vw;max-height:100vh;display:flex;flex-direction:column;
+  background:var(--bg);padding:14px 16px 12px}
+.hdr{display:flex;align-items:flex-start;gap:10px}
+.logo{font-weight:800;font-size:15px}.logo span{color:var(--acc)}
+.logo small{display:block;color:var(--dim);font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;margin-top:-1px}
+.proto{margin-left:auto;color:#07110a;background:var(--acc);border-radius:999px;padding:3px 10px;
+  font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;align-self:center}
+.nav{display:flex;align-items:flex-end;gap:14px;margin:10px 0 4px}
+.nav .v{font-size:34px;font-weight:800;letter-spacing:-.02em;line-height:1}
+.nav .delta{font-weight:700;font-size:13px;padding-bottom:2px}
+.nav .right{margin-left:auto;text-align:right;padding-bottom:2px}
+.ohlc{font-size:10.5px;color:var(--dim)}.ohlc b{color:var(--txt);font-weight:600}
+.day{font-size:10.5px;color:var(--dim);font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+.up{color:var(--up)}.dn{color:var(--dn)}.dim{color:var(--dim)}
+.chartwrap{flex:1;position:relative;margin-top:2px}
+svg{display:block;width:100%;height:100%}
+.grid{stroke:#1a202a;stroke-width:1}
+.charter{stroke:#3a4354;stroke-width:1;stroke-dasharray:2 4}
+.ax{fill:var(--dim);font-size:9.5px;font-family:Manrope,sans-serif}
+.axl{fill:#0c0f14;font-size:9.5px;font-weight:700;font-family:Manrope,sans-serif}
+.dlab{fill:var(--dim);font-size:9.5px;font-weight:600;font-family:Manrope,sans-serif;text-anchor:middle}
+.lastline{stroke:#3a4354;stroke-width:1;stroke-dasharray:2 4}
+.lastchip{fill:var(--acc)}
+.wick.u,.body.u{stroke:var(--up)}.wick.d,.body.d{stroke:var(--dn)}
+.body.u{fill:var(--up)}.body.d{fill:var(--dn)}
+.vol.u{fill:#0f3f16}.vol.d{fill:#4a1c09}
+.mkr{font-size:9px;font-weight:800;font-family:Manrope,sans-serif}
+.mkr.buy{fill:var(--up)}.mkr.sell{fill:var(--dn)}.mkr.perp{fill:var(--acc)}
+.mkpill{font-size:8.5px;font-weight:800;font-family:Manrope,sans-serif;fill:var(--dim)}
+.foot{display:flex;align-items:center;gap:10px;margin-top:8px}
+.bar{flex:1;height:4px;border-radius:999px;background:var(--line);overflow:hidden}
+.bar i{display:block;height:100%;width:0%;background:var(--acc);border-radius:999px}
+.clockl{font-size:10.5px;font-weight:700;color:var(--dim);min-width:74px;text-align:right}
+.cap{font-size:9.5px;color:var(--dim);margin-top:5px;display:flex;justify-content:space-between}
+.endpill{position:absolute;left:50%;bottom:14px;transform:translateX(-50%) translateY(6px);
+  background:var(--acc);color:#07110a;font-weight:800;font-size:12px;letter-spacing:.04em;
+  padding:7px 16px;border-radius:999px;opacity:0;transition:opacity .4s,transform .4s;pointer-events:none;
+  box-shadow:0 6px 18px rgba(0,0,0,.5)}
+.endpill.on{opacity:1;transform:translateX(-50%) translateY(0)}
+</style></head><body>
+<div class="stage">
+  <div class="hdr">
+    <div class="logo">402nd <span>Street Bets</span><small>100-second street dash</small></div>
+    <div class="proto">x402 fund</div>
+  </div>
+  <div class="nav">
+    <div class="v" id="nav">$101.00</div>
+    <div class="delta dim" id="delta">— flat</div>
+    <div class="right">
+      <div class="day" id="day">Aug 5</div>
+      <div class="ohlc" id="ohlc">O <b>—</b> H <b>—</b> L <b>—</b> C <b>—</b></div>
+    </div>
+  </div>
+  <div class="chartwrap">
+    <svg id="chart" viewBox="0 0 448 300" preserveAspectRatio="none"></svg>
+    <div class="endpill" id="endpill">↻ RUN IT BACK</div>
+  </div>
+  <div class="foot">
+    <div class="bar"><i id="barfill"></i></div>
+    <div class="clockl" id="clockl">0s / 100s</div>
+  </div>
+  <div class="cap">
+    <span>NAV replay · Aug 5–8 · vol = traded USD/day</span>
+    <span>target $1,000 by Sep 4</span>
+  </div>
+</div>
+<script>
+// ---- real data: runs/nav-history.jsonl + runs/trades.jsonl (PDT) ----
+// ticks: [hourOfDayPDT, NAV]; vol: traded USD that day
+const DAYS = [
+  {label:'Aug 5', ticks:[[22.42,101.00]], vol:4,
+   marks:[{h:22.37,k:'buy',txt:'NVDAx'},{h:22.40,k:'sell',txt:'NVDAx'}]},
+  {label:'Aug 6', ticks:[[6.25,101.00],[10.92,101.00],[11.18,100.97],[14.28,99.97]], vol:18,
+   marks:[{h:11.18,k:'buy',txt:'METAx $18'},{h:14.50,k:'perp',txt:'5x LONG META'}]},
+  {label:'Aug 7', ticks:[[6.25,100.08]], vol:0, marks:[]},
+  {label:'Aug 8', ticks:[[6.25,101.06],[12.13,101.43],[12.15,101.37]], vol:30,
+   marks:[{h:12.13,k:'buy',txt:'AAPLx $15'},{h:12.15,k:'buy',txt:'TSLAx $15'},{h:19.02,k:'perp',txt:'20x CRANK'}]},
+];
+const TOTAL=100, SLOT=TOTAL/DAYS.length, BASE=100;
+
+// map each day's tick hours into [0.12,0.82] of its slot, preserving spacing
+DAYS.forEach(d=>{
+  const hs=d.ticks.map(t=>t[0]).concat(d.marks.map(m=>m.h));
+  const lo=Math.min(...hs), hi=Math.max(...hs), span=Math.max(hi-lo,0.001);
+  const norm=h=> d.ticks.length===1 && d.marks.length===0 ? 0.35 : 0.12+0.70*(h-lo)/span;
+  d.ticks=d.ticks.map(([h,v])=>({u:norm(h),v}));
+  d.marks=d.marks.map(m=>({...m,u:norm(m.h)}));
+});
+// global keyframes for the NAV counter
+const KEYS=[];
+DAYS.forEach((d,i)=>d.ticks.forEach(t=>KEYS.push({t:i*SLOT+t.u*SLOT,v:t.v})));
+
+const PMIN=99.85, PMAX=101.60;
+const W=448, H=300, PLOT_W=396, VOL_H=26, LBL_H=14, PRICE_H=H-VOL_H-LBL_H-6;
+const CW=PLOT_W/DAYS.length, BODY=34;
+const yP=v=>PRICE_H*(1-(v-PMIN)/(PMAX-PMIN));
+const maxVol=Math.max(...DAYS.map(d=>d.vol));
+const ease=x=>x<0?0:x>1?1:x*x*(3-2*x);
+const fmt=v=>'$'+v.toFixed(2);
+
+function navAt(t){
+  if(t<=KEYS[0].t) return KEYS[0].v;
+  for(let i=1;i<KEYS.length;i++){
+    const a=KEYS[i-1], b=KEYS[i];
+    if(t<=b.t){
+      // hold flat across day boundaries (no fabricated overnight path)
+      const dayA=Math.floor(a.t/SLOT), dayB=Math.floor(b.t/SLOT);
+      if(dayA!==dayB){ const bd=dayB*SLOT; if(t<bd) return a.v; return a.v+(b.v-a.v)*ease((t-bd)/(b.t-bd)); }
+      return a.v+(b.v-a.v)*ease((t-a.t)/(b.t-a.t));
+    }
+  }
+  return KEYS[KEYS.length-1].v;
+}
+
+function candleAt(i,t){
+  const d=DAYS[i], s=i*SLOT, rel=(t-s)/SLOT;
+  if(rel<=0||t<s+d.ticks[0].u*SLOT) return null;
+  const seen=d.ticks.filter(k=>s+k.u*SLOT<=t).map(k=>k.v);
+  const cur=t<s+SLOT?navAt(t):d.ticks[d.ticks.length-1].v;
+  if(t<s+SLOT&&Math.floor(t/SLOT)===i) seen.push(cur);
+  const o=d.ticks[0].v, c=t>=s+SLOT?d.ticks[d.ticks.length-1].v:cur;
+  return {o,c,h:Math.max(...seen,o),l:Math.min(...seen,o),prog:Math.min(rel,1)};
+}
+
+const svg=document.getElementById('chart');
+const $=id=>document.getElementById(id);
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;')}
+
+function render(t){
+  let out='';
+  // grid + charter line
+  [100.0,100.5,101.0,101.5].forEach(v=>{
+    const y=yP(v).toFixed(1);
+    out+=`<line x1="0" y1="${y}" x2="${PLOT_W}" y2="${y}" class="${v===BASE?'charter':'grid'}"/>`;
+    out+=`<text x="${PLOT_W+4}" y="${(+y+3.2).toFixed(1)}" class="ax">${v.toFixed(2)}</text>`;
+  });
+  const nav=navAt(t);
+  // candles + volume + day labels + markers
+  for(let i=0;i<DAYS.length;i++){
+    const d=DAYS[i], cx=i*CW+CW/2, s=i*SLOT;
+    out+=`<text x="${cx}" y="${H-3}" class="dlab">${d.label}</text>`;
+    const c=candleAt(i,t);
+    if(c){
+      const up=c.c>=c.o, cls=up?'u':'d';
+      const yO=yP(c.o), yC=yP(c.c), yH=yP(c.h), yL=yP(c.l);
+      const bt=Math.min(yO,yC), bh=Math.max(Math.abs(yO-yC),1.5);
+      out+=`<line x1="${cx}" y1="${yH.toFixed(1)}" x2="${cx}" y2="${yL.toFixed(1)}" class="wick ${cls}"/>`;
+      out+=`<rect x="${(cx-BODY/2).toFixed(1)}" y="${bt.toFixed(1)}" width="${BODY}" height="${bh.toFixed(1)}" rx="1" class="body ${cls}"/>`;
+      const vh=maxVol?(d.vol/maxVol)*VOL_H*c.prog:0;
+      if(vh>0.5) out+=`<rect x="${(cx-BODY/2).toFixed(1)}" y="${(PRICE_H+VOL_H-vh+4).toFixed(1)}" width="${BODY}" height="${vh.toFixed(1)}" rx="1" class="vol ${cls}"/>`;
+    }
+    // trade markers pop as the clock passes them; stack above the candle
+    // when its low sits too close to the volume strip
+    const lowV=c?c.l:d.ticks[0].v, highV=c?c.h:d.ticks[0].v;
+    const below=yP(lowV)<PRICE_H-46;
+    let lane=0;
+    d.marks.forEach(m=>{
+      if(s+m.u*SLOT>t) return;
+      const my=below?yP(lowV)+14+lane*11:yP(highV)-10-lane*11; lane++;
+      const sym=m.k==='buy'?'▲':m.k==='sell'?'▼':'◆';
+      out+=`<text x="${cx-BODY/2}" y="${my.toFixed(1)}" class="mkr ${m.k}">${sym}</text>`;
+      out+=`<text x="${cx-BODY/2+11}" y="${my.toFixed(1)}" class="mkpill">${esc(m.txt)}</text>`;
+    });
+  }
+  // last-price line + chip
+  const ly=yP(nav);
+  out+=`<line x1="0" y1="${ly.toFixed(1)}" x2="${PLOT_W}" y2="${ly.toFixed(1)}" class="lastline"/>`;
+  out+=`<rect x="${PLOT_W}" y="${(ly-7.5).toFixed(1)}" width="50" height="15" rx="2" class="lastchip"/>`;
+  out+=`<text x="${PLOT_W+25}" y="${(ly+3.6).toFixed(1)}" class="axl" text-anchor="middle">${nav.toFixed(2)}</text>`;
+  svg.innerHTML=out;
+  // counters
+  const pl=nav-BASE, up=pl>=0;
+  $('nav').textContent=fmt(nav);
+  const de=$('delta');
+  de.textContent=(up?'▲ +':'▼ −')+'$'+Math.abs(pl).toFixed(2)+' ('+(up?'+':'−')+Math.abs(pl/BASE*100).toFixed(2)+'%)';
+  de.className='delta '+(up?'up':'dn');
+  const di=Math.min(Math.floor(t/SLOT),DAYS.length-1);
+  $('day').textContent=DAYS[di].label;
+  const cc=candleAt(di,t)||{o:nav,h:nav,l:nav,c:nav};
+  $('ohlc').innerHTML=`O <b>${cc.o.toFixed(2)}</b> H <b>${cc.h.toFixed(2)}</b> L <b>${cc.l.toFixed(2)}</b> C <b>${cc.c.toFixed(2)}</b>`;
+  $('barfill').style.width=Math.min(t/TOTAL*100,100)+'%';
+  $('clockl').textContent=Math.min(Math.floor(t),TOTAL)+'s / '+TOTAL+'s';
+  $('endpill').classList.toggle('on',t>=TOTAL);
+}
+
+const q=new URLSearchParams(location.search);
+let start=performance.now()-(q.has('poster')?TOTAL:(parseFloat(q.get('t'))||0))*1000;
+let done=false;
+function tick(now){
+  const t=(now-start)/1000;
+  render(Math.min(t,TOTAL));
+  if(t>=TOTAL){done=true;return}
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+document.body.addEventListener('pointerdown',()=>{
+  start=performance.now();
+  if(done){done=false;requestAnimationFrame(tick)}
+});
+</script>
+</body></html>
