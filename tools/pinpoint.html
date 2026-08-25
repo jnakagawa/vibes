@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Download Pinpoint, a free Chrome extension for collaborative visual website feedback.">
+  <title>Pinpoint — collaborative website feedback</title>
+  <style>
+    :root {
+      --bg:#f2f3ed; --panel:#fff; --line:#dfe1d8; --ink:#171a17; --muted:#666c63;
+      --lime:#c7ff5e; --lime-dark:#7faa26; --violet:#7159ff; --soft:#f8f8f4;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin:0; padding:32px 20px 48px; background:var(--bg); color:var(--ink);
+      font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; line-height:1.55;
+      -webkit-font-smoothing:antialiased;
+    }
+    a { color:inherit; }
+    .container { max-width:920px; margin:0 auto; }
+    .back { color:var(--muted); font:600 .82rem ui-monospace,"SF Mono",monospace; text-decoration:none; }
+    .back:hover { color:var(--ink); }
+    header { display:flex; align-items:flex-start; justify-content:space-between; gap:24px; margin:28px 0 22px; }
+    .eyebrow { color:var(--lime-dark); font:700 .72rem ui-monospace,"SF Mono",monospace; letter-spacing:.14em; text-transform:uppercase; }
+    h1 { font-size:clamp(2.5rem,7vw,5.2rem); line-height:.95; letter-spacing:-.065em; margin:8px 0 14px; }
+    .subtitle { max-width:620px; color:var(--muted); font-size:1.08rem; }
+    .mark { width:58px; height:58px; border-radius:16px; display:grid; place-items:center; flex:none; background:#151815; color:var(--lime); font-size:34px; font-weight:900; }
+    .hero {
+      position:relative; min-height:390px; overflow:hidden; border:1px solid var(--line); border-radius:22px;
+      background:linear-gradient(145deg,#e7e9e0,#f8f8f4); box-shadow:0 18px 50px rgba(31,38,25,.12);
+    }
+    .browser { position:absolute; inset:36px 34px; border:1px solid #d9dbd2; border-radius:15px; overflow:hidden; background:#fff; box-shadow:0 16px 36px rgba(30,35,26,.12); }
+    .browser-top { height:44px; display:flex; align-items:center; gap:7px; padding:0 16px; border-bottom:1px solid #e7e8e2; background:#fff; }
+    .browser-top i { width:8px; height:8px; border-radius:50%; background:#d7d8d2; }
+    .address { width:52%; height:25px; margin:auto; display:grid; place-items:center; border:1px solid #e0e1db; border-radius:8px; color:#8a8e86; font-size:.7rem; }
+    .page { position:absolute; inset:44px 260px 0 0; padding:44px 42px; background:#f8f5ed; }
+    .page small { font-weight:700; letter-spacing:.08em; }
+    .page h2 { max-width:410px; margin:45px 0 16px; font:500 clamp(2rem,5vw,3.7rem)/.96 Georgia,serif; letter-spacing:-.045em; }
+    .shape { position:absolute; right:-30px; bottom:-70px; width:280px; height:230px; border-radius:48% 0 0 0; background:#f46c4b; }
+    .shape::after { content:''; position:absolute; width:105px; height:105px; left:52px; top:48px; border-radius:50%; background:#b5c7ef; }
+    .panel { position:absolute; inset:44px 0 0 auto; width:260px; padding:24px 22px; background:#fff; border-left:1px solid #e7e8e2; }
+    .panel h3 { margin:0; font-size:1.15rem; }
+    .panel p { margin:3px 0 24px; color:var(--muted); font-size:.78rem; }
+    .comment { display:grid; grid-template-columns:30px 1fr; gap:10px; margin:20px 0; }
+    .number { width:30px; height:30px; display:grid; place-items:center; border-radius:9px; background:var(--violet); color:#fff; font-weight:800; }
+    .comment b { display:block; font-size:.74rem; }
+    .comment span { color:#555b52; font-size:.76rem; }
+    .pin { position:absolute; width:37px; height:43px; border-radius:20px 20px 20px 3px; transform:rotate(-45deg); background:var(--violet); border:3px solid #fff; box-shadow:0 7px 18px rgba(61,43,190,.28); }
+    .pin::after { content:attr(data-number); position:absolute; inset:0; display:grid; place-items:center; transform:rotate(45deg); color:#fff; font-weight:800; }
+    .pin-one { left:27%; top:62%; }
+    .pin-two { left:53%; top:49%; }
+    .actions { display:flex; flex-wrap:wrap; gap:11px; margin:26px 0 34px; }
+    .button { display:inline-flex; align-items:center; justify-content:center; min-height:50px; padding:0 20px; border-radius:12px; font-weight:800; text-decoration:none; border:1px solid var(--line); background:var(--panel); }
+    .button.primary { background:var(--ink); color:#fff; border-color:var(--ink); }
+    .button.primary::before { content:'↓'; color:var(--lime); margin-right:9px; font-size:1.3rem; }
+    .button:hover { transform:translateY(-1px); }
+    .grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+    .card { padding:22px 24px; border:1px solid var(--line); border-radius:15px; background:var(--panel); }
+    .card h2 { margin:0 0 12px; font-size:.75rem; letter-spacing:.12em; text-transform:uppercase; color:var(--lime-dark); }
+    ol { margin:0; padding-left:20px; }
+    li { margin:8px 0; }
+    code,kbd { padding:2px 6px; border:1px solid var(--line); border-radius:5px; background:var(--soft); font-family:ui-monospace,"SF Mono",monospace; font-size:.86em; }
+    .features { margin:0; padding:0; list-style:none; }
+    .features li { padding-left:20px; position:relative; }
+    .features li::before { content:'•'; position:absolute; left:2px; color:var(--violet); font-weight:900; }
+    .note { margin-top:16px; color:var(--muted); font-size:.82rem; }
+    footer { display:flex; justify-content:space-between; gap:16px; margin-top:28px; color:var(--muted); font-size:.8rem; }
+    footer a { color:var(--ink); }
+    @media (max-width:720px) {
+      header { align-items:center; }
+      .hero { min-height:410px; }
+      .browser { inset:20px 16px; }
+      .page { inset:44px 0 145px; padding:32px 24px; }
+      .page h2 { margin-top:26px; max-width:260px; }
+      .panel { inset:auto 0 0; width:100%; height:145px; border-left:0; border-top:1px solid #e7e8e2; display:flex; gap:14px; padding:16px; }
+      .panel > div:first-child { min-width:92px; }
+      .comment { margin:0; flex:1; }
+      .shape { width:190px; height:145px; }
+      .pin-one { left:22%; top:45%; }
+      .pin-two { left:66%; top:38%; }
+      .grid { grid-template-columns:1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <a class="back" href="../index.html">← back to vibes</a>
+    <header>
+      <div>
+        <div class="eyebrow">free · open source · Chrome</div>
+        <h1>Pinpoint</h1>
+        <p class="subtitle">Drop feedback directly onto any public website, publish a scrollable review, and share one clean link with the whole team.</p>
+      </div>
+      <div class="mark">p</div>
+    </header>
+
+    <div class="hero" role="img" aria-label="Pinpoint review with two feedback pins and a collaborative comment panel">
+      <div class="browser">
+        <div class="browser-top"><i></i><i></i><i></i><div class="address">https://your-site.com</div></div>
+        <div class="page"><small>YOUR SITE</small><h2>Feedback stays attached to the page.</h2><div class="shape"></div></div>
+        <aside class="panel">
+          <div><h3>Feedback</h3><p>2 open comments</p></div>
+          <div class="comment"><div class="number">1</div><div><b>Alex</b><span>Tighten this headline.</span></div></div>
+          <div class="comment"><div class="number">2</div><div><b>Sam</b><span>Use the new image here.</span></div></div>
+        </aside>
+        <span class="pin pin-one" data-number="1"></span>
+        <span class="pin pin-two" data-number="2"></span>
+      </div>
+    </div>
+
+    <div class="actions">
+      <a class="button primary" href="https://github.com/jnakagawa/pinpoint-feedback/releases/download/v0.10.0/pinpoint-chrome-extension-v0.10.0.zip">Download Pinpoint v0.10.0</a>
+      <a class="button" href="https://github.com/jnakagawa/pinpoint-feedback">Browse source ↗</a>
+      <a class="button" href="https://deploy-9po6nd1t-nlbndjpuja-uc.a.run.app">Open a public review ↗</a>
+    </div>
+
+    <div class="grid">
+      <section class="card">
+        <h2>Install in Chrome</h2>
+        <ol>
+          <li>Download and extract the ZIP.</li>
+          <li>Open <kbd>chrome://extensions</kbd>.</li>
+          <li>Enable <strong>Developer mode</strong>.</li>
+          <li>Click <strong>Load unpacked</strong> and choose the extracted folder.</li>
+          <li>Pin Pinpoint, open any public page, and start marking it up.</li>
+        </ol>
+      </section>
+      <section class="card">
+        <h2>What you get</h2>
+        <ul class="features">
+          <li>Element-anchored, numbered feedback pins</li>
+          <li>Full-width reviews with native scrolling and selectable text</li>
+          <li>Public collaboration without an account or extension</li>
+          <li>Author-only comment editing through Zero Auth</li>
+          <li>Optional email-domain protection</li>
+          <li>Review revisions hosted on Zero</li>
+        </ul>
+      </section>
+    </div>
+
+    <p class="note">The download is served directly from the signed GitHub Release. SHA-256: <code>1e19cab5dabc77e054d21bcc47cbda871bbc81c0a27e01da43301c4a394c68e6</code></p>
+    <footer><span>a vibes tool · built with Zero</span><a href="https://github.com/jnakagawa/pinpoint-feedback/releases/tag/v0.10.0">release notes ↗</a></footer>
+  </div>
+</body>
+</html>

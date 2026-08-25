@@ -228,6 +228,41 @@
         50% { transform: scaleY(1); }
     }
 
+    /* pinpoint */
+    .v-pinpoint { --accent: #c7ff5e; background: linear-gradient(160deg, #11170d 0%, #12121a 100%); }
+    .v-pinpoint .review-window {
+        position: absolute; width: 210px; height: 112px; left: 50%; top: 19px;
+        transform: translateX(-50%); border-radius: 10px; overflow: hidden;
+        background: #f8f8f5; border: 1px solid rgba(199,255,94,0.25);
+        box-shadow: 0 10px 28px rgba(0,0,0,.3);
+    }
+    .v-pinpoint .review-top { height: 18px; background: #fff; border-bottom: 1px solid #e7e7e1; }
+    .v-pinpoint .review-page { position: absolute; inset: 18px 54px 0 0; background: linear-gradient(145deg,#edece6,#faf9f4); }
+    .v-pinpoint .review-page::before {
+        content: ''; position: absolute; left: 13px; top: 16px; width: 64px; height: 6px;
+        border-radius: 6px; background: #171a17; box-shadow: 0 13px 0 #d1d2ca, 0 26px 0 #d1d2ca;
+    }
+    .v-pinpoint .review-panel { position: absolute; inset: 18px 0 0 auto; width: 54px; background: #fff; border-left: 1px solid #e7e7e1; }
+    .v-pinpoint .review-panel::before {
+        content: ''; position: absolute; left: 9px; top: 13px; width: 36px; height: 5px;
+        border-radius: 5px; background: #20221f; box-shadow: 0 13px 0 #d7d8d2, 0 24px 0 #d7d8d2, 0 42px 0 #d7d8d2;
+    }
+    .v-pinpoint .pin {
+        position: absolute; width: 22px; height: 27px; border-radius: 12px 12px 12px 2px;
+        transform: rotate(-45deg); background: #7159ff; border: 2px solid #fff;
+        box-shadow: 0 4px 12px rgba(55,40,180,.35); animation: pinpoint-pop 2.8s ease-in-out infinite;
+    }
+    .v-pinpoint .pin::after {
+        content: attr(data-n); position: absolute; inset: 0; display: grid; place-items: center;
+        transform: rotate(45deg); color: #fff; font: 700 10px var(--mono);
+    }
+    .v-pinpoint .pin-one { left: 48px; top: 72px; }
+    .v-pinpoint .pin-two { left: 105px; top: 53px; animation-delay: 1.35s; }
+    @keyframes pinpoint-pop {
+        0%, 100% { scale: 1; }
+        50% { scale: 1.12; }
+    }
+
     /* dive arranger */
     .v-duck { --accent: #38bdf8; background: linear-gradient(160deg, #0c1720 0%, #12121a 100%); }
     .v-duck .tiles {
@@ -498,6 +533,32 @@
             </div>
         </a>
 
+        <a class="card" href="tools/pinpoint.html" style="--accent:#c7ff5e">
+            <div class="visual v-pinpoint">
+                <div class="review-window">
+                    <div class="review-top"></div>
+                    <div class="review-page"></div>
+                    <div class="review-panel"></div>
+                    <span class="pin pin-one" data-n="1"></span>
+                    <span class="pin pin-two" data-n="2"></span>
+                </div>
+                <span class="hint">chrome ext · free</span>
+            </div>
+            <div class="card-body">
+                <h3>Pinpoint</h3>
+                <div class="tagline">Collaborative feedback, pinned to the page.</div>
+                <p class="desc">Drop anchored comments directly onto any public website, publish a
+                   full scrollable review on Zero, and share one link. Reviewers can join without
+                   installing the extension or creating an account.</p>
+                <div class="meta">
+                    <span class="tag platform">Chrome · MV3</span>
+                    <span class="tag">Zero Auth</span>
+                    <span class="tag">public reviews</span>
+                    <span class="tag">open source</span>
+                </div>
+            </div>
+        </a>
+
         <a class="card" href="tools/dive-arranger.html" style="--accent:#38bdf8">
             <div class="visual v-duck">
                 <div class="tiles">
@@ -624,7 +685,7 @@
         // featured above, or not launchable — keep them out of the lab list
         const EXCLUDE = new Set([
             'synths/index.html', 'synths/glass-conductor-v3.html',
-            'synths/sound_catcher.html', 'tools/dive-arranger.html'
+            'synths/sound_catcher.html', 'tools/dive-arranger.html', 'tools/pinpoint.html'
         ]);
         const grid = document.getElementById('lab-grid');
 
