@@ -213,6 +213,47 @@
         100% { transform: rotate(300deg) translateY(90px); opacity: 0; }
     }
 
+    /* peel */
+    .v-peel { --accent: #2dd4bf; background: linear-gradient(180deg, #0b2a3a 0%, #0a1d29 55%, #071219 100%); }
+    .v-peel .curl {
+        position: absolute; width: 150px; height: 150px; left: 50%; top: 26px; margin-left: -60px;
+        border-radius: 50%;
+        border: 22px solid transparent;
+        border-top-color: #2dd4bf; border-left-color: #14b8a6;
+        transform: rotate(-20deg);
+        animation: peel-throw 3.2s ease-in-out infinite;
+    }
+    .v-peel .face {
+        position: absolute; left: -10%; right: -10%; bottom: -30px; height: 70px;
+        background: linear-gradient(180deg, #0f766e 0%, #0b3b45 100%);
+        border-radius: 50% 50% 0 0 / 30% 30% 0 0;
+    }
+    .v-peel .spray {
+        position: absolute; width: 5px; height: 5px; border-radius: 50%; background: #e0fbff;
+        left: 62%; top: 30px; opacity: 0;
+        animation: peel-spray 3.2s ease-out infinite;
+    }
+    .v-peel .spray.s2 { left: 58%; animation-delay: 0.4s; }
+    .v-peel .spray.s3 { left: 66%; animation-delay: 0.8s; }
+    .v-peel .rider {
+        position: absolute; width: 8px; height: 20px; left: calc(50% - 10px); top: 82px;
+        background: #0a0f14; border-radius: 4px 4px 2px 2px;
+        animation: peel-ride 3.2s ease-in-out infinite;
+    }
+    @keyframes peel-throw {
+        0%, 100% { transform: rotate(-24deg); }
+        50% { transform: rotate(-8deg); }
+    }
+    @keyframes peel-spray {
+        0% { opacity: 0; transform: translate(0, 0); }
+        15% { opacity: 0.9; }
+        100% { opacity: 0; transform: translate(40px, -24px); }
+    }
+    @keyframes peel-ride {
+        0%, 100% { transform: translateX(0) rotate(-6deg); }
+        50% { transform: translateX(-10px) rotate(4deg); }
+    }
+
     /* sound catcher */
     .v-sound { --accent: #fb923c; background: linear-gradient(160deg, #1c130c 0%, #12121a 100%); }
     .v-sound .bars {
@@ -500,6 +541,29 @@
                     <span class="tag">photo → 3D</span>
                     <span class="tag">hand tracking</span>
                     <span class="tag">physics</span>
+                </div>
+            </div>
+        </a>
+
+        <a class="card" href="peel/" style="--accent:#2dd4bf">
+            <div class="visual v-peel">
+                <div class="face"></div>
+                <div class="curl"></div>
+                <div class="rider"></div>
+                <div class="spray"></div><div class="spray s2"></div><div class="spray s3"></div>
+                <span class="hint">live · WebGPU · keyboard</span>
+            </div>
+            <div class="card-body">
+                <h3>PEEL</h3>
+                <div class="tagline">One endless wave.</div>
+                <p class="desc">A surfing game on a single endless peeling wave, with hand-written
+                   WebGPU shaders. Read the lip, stall into the barrel, hold the line to the spit,
+                   and throw airs and 360s off the lip. WASD or arrows, Space to crouch and pop.</p>
+                <div class="meta">
+                    <span class="tag platform">Web</span>
+                    <span class="tag">WebGPU · Chrome</span>
+                    <span class="tag">Babylon.js</span>
+                    <span class="tag">WGSL</span>
                 </div>
             </div>
         </a>

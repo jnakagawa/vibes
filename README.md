@@ -14,6 +14,7 @@ Sound installations, hand-tracked instruments, iOS apps, and web experiments —
 | **Stackify Social** | The mailing list for Instagram | [stackify.social](https://stackify.social) |
 | **Stackify Calendar** | The events come to you | [calendar.stackify.social](https://calendar.stackify.social) |
 | **Petal Picker** | Photo → 3D flower; pinch the petals off with your hands | [live](https://jnakagawa.github.io/vibes/petal-picker/) |
+| **PEEL** | A surfing game on one endless peeling wave: barrels, airs, 360s; hand-written WebGPU | [live](https://jnakagawa.github.io/vibes/peel/) · WebGPU (Chrome) |
 | **Sound Catcher** | Pocket granular sampler with a TE-inspired UI | [live](https://jnakagawa.github.io/vibes/synths/sound_catcher.html) |
 | **Pinpoint** | Collaborative visual website feedback — pin comments, publish a review, share one link | [download](https://jnakagawa.github.io/vibes/tools/pinpoint.html) · [repo](https://github.com/jnakagawa/pinpoint-feedback) |
 | **Dive Arranger** | Chrome extension: drag-and-drop layout for MotherDuck dives, written back to JSX source | [about](https://jnakagawa.github.io/vibes/tools/dive-arranger.html) |
