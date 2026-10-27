@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nearfield — The Ring</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: #000; color: #d8d8de; overflow: hidden;
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  .screen { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 18px; padding: 24px 20px calc(24px + env(safe-area-inset-bottom)); text-align: center; }
+  .hidden { display: none !important; }
+  h1 { font-size: 15px; letter-spacing: 0.45em; font-weight: 600; margin: 0; color: #fff; }
+  .sub { color: #8a8a96; font-size: 13px; letter-spacing: 0.08em; }
+  .grid { display: grid; grid-template-columns: repeat(4, 64px); gap: 12px; justify-content: center; }
+  .grid button, .pill { background: #0c0c10; color: #fff; border: 1px solid #3a3a44; border-radius: 999px;
+    font: inherit; cursor: pointer; }
+  .grid button { width: 64px; height: 64px; font-size: 20px; font-variant-numeric: tabular-nums; }
+  .grid button.wide { grid-column: span 4; width: auto; height: 48px; font-size: 14px; letter-spacing: 0.1em; }
+  .pill { padding: 16px 44px; font-size: 16px; letter-spacing: 0.25em; border-color: #d8d8de; }
+  .ghost { background: none; border: 0; color: #8a8a96; font: inherit; font-size: 13px; text-decoration: underline; cursor: pointer; }
+  .big { font-size: 72px; font-weight: 200; color: #fff; line-height: 1; font-variant-numeric: tabular-nums; }
+  .note { color: #8a8a96; font-size: 13px; max-width: 320px; }
+  #hud { position: fixed; left: 0; right: 0; bottom: 0; padding: 12px 16px calc(14px + env(safe-area-inset-bottom));
+    display: flex; justify-content: space-between; gap: 10px; color: #5a5a66; font-size: 12px;
+    font-variant-numeric: tabular-nums; pointer-events: none; }
+  #menu { position: fixed; top: calc(14px + env(safe-area-inset-top)); right: 14px; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="sLoading" class="screen"><h1>NEARFIELD</h1><div class="sub" id="loadingMsg">loading…</div></div>
+
+<div id="sPick" class="screen hidden">
+  <h1>NEARFIELD</h1>
+  <div class="sub">which position are you at?</div>
+  <div class="grid" id="grid"></div>
+  <div class="note">Each phone stands at one numbered mark around the circle. If there's a QR code at your spot, scan that instead.</div>
+</div>
+
+<div id="sBegin" class="screen hidden">
+  <h1>NEARFIELD</h1>
+  <div class="sub">position</div>
+  <div class="big" id="beginPos">—</div>
+  <button class="pill" id="beginBtn">BEGIN</button>
+  <div class="note">Volume all the way up, headphones off. Set the phone down at your mark, screen up, and leave this page open — the sound moves around the circle from phone to phone.</div>
+  <button class="ghost" id="repick">change position</button>
+</div>
+
+<div id="hud" class="hidden"><span id="hudL"></span><span id="hudR"></span></div>
+<button id="menu" class="ghost hidden">position</button>
+
+<script src="ring-core.js"></script>
+<script src="ring-live.js"></script>
+<script src="ring-audio.js"></script>
+<script>
+'use strict';
+const NR = window.NearfieldRing;
+const $ = id => document.getElementById(id);
+const ROLE_COLORS = { anchor: '#4a6cd4', voice: '#e8e2d2', shimmer: '#59d6d6' };
+
+const hash = new URLSearchParams(location.hash.slice(1));
+const topic = hash.get('t');
+const app = {
+  ring: null, state: null, slot: null, audio: null, live: null,
+  clock: { offset: 0, err: null }, status: 'link only', playing: false, lastFrame: null,
+};
+const now = () => Date.now() + app.clock.offset;
+
+function show(id) {
+  for (const s of ['sLoading', 'sPick', 'sBegin']) $(s).classList.toggle('hidden', s !== id);
+}
+
+function savedPos() {
+  try { return localStorage.getItem(`nfring:${topic}:pos`); } catch (_) { return null; }
+}
+function savePos(p) {
+  try { localStorage.setItem(`nfring:${topic}:pos`, String(p)); } catch (_) {}
+}
+function deviceId() {
+  try {
+    let d = localStorage.getItem('nfring:device');
+    if (!d) { d = Math.random().toString(36).slice(2, 10); localStorage.setItem('nfring:device', d); }
+    return d;
+  } catch (_) { return 'anon'; }
+}
+
+// positions are 1-based on screen, 0-based in the model; 'P' = pedestal
+function parsePos(p) {
+  if (p === null || p === undefined || p === '') return null;
+  if (String(p).toUpperCase() === 'P') return 'pedestal';
+  const n = parseInt(p, 10);
+  return Number.isFinite(n) && n >= 1 ? n - 1 : null;
+}
+const posLabel = s => s === 'pedestal' ? 'P' : String(s + 1);
+
+function applyState(st) {
+  app.state = st;
+  app.ring.setState(st);
+  if (app.slot !== null && app.slot !== 'pedestal' && app.slot >= st.S) {
+    app.slot = null;   // the ring got smaller: choose again
+    if (!app.playing) route();
+  }
+  if (!app.playing && $('sPick') && !$('sPick').classList.contains('hidden')) buildGrid();
+  if (!app.playing && !$('sLoading').classList.contains('hidden')) route();
+}
+
+function buildGrid() {
+  const g = $('grid');
+  g.innerHTML = '';
+  for (let k = 0; k < app.state.S; k++) {
+    const b = document.createElement('button');
+    b.textContent = k + 1;
+    b.onclick = () => choose(k);
+    g.appendChild(b);
+  }
+  if (app.state.anchors === 'pedestal') {
+    const b = document.createElement('button');
+    b.className = 'wide';
+    b.textContent = 'PEDESTAL (anchors, center)';
+    b.onclick = () => choose('pedestal');
+    g.appendChild(b);
+  }
+}
+
+function choose(slot) {
+  app.slot = slot;
+  savePos(posLabel(slot));
+  if (app.playing) { $('menu').textContent = `position ${posLabel(slot)}`; announce(); return; }
+  route();
+}
+
+function route() {
+  if (!app.state) { show('sLoading'); return; }
+  if (app.slot === null) { buildGrid(); show('sPick'); return; }
+  $('beginPos').textContent = posLabel(app.slot);
+  show('sBegin');
+}
+
+function announce() {
+  app.live?.publish({ k: 'join', pos: posLabel(app.slot), dev: deviceId() }).catch(() => {});
+}
+
+async function begin() {
+  show(null);
+  app.audio = new NearfieldAudio.RingAudio(app.ring.params);
+  await app.audio.start();
+  app.playing = true;
+  $('hud').classList.remove('hidden');
+  $('menu').classList.remove('hidden');
+  $('menu').textContent = `position ${posLabel(app.slot)}`;
+  keepAwake();
+  announce();
+}
+
+// screen stays on while playing (needs https)
+let wake = null;
+async function keepAwake() {
+  try { wake = await navigator.wakeLock?.request('screen'); } catch (_) { wake = null; }
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && app.playing) { keepAwake(); app.audio.resume(); }
+});
+
+// --- loop ---------------------------------------------------------------------
+
+function tick() {
+  if (!app.state || !app.playing) return;
+  const fr = app.ring.frame(now());
+  app.lastFrame = fr;
+  app.audio.update(fr, app.ring.playersAt(fr, app.slot), app.state.vol);
+}
+
+const cv = $('c'), cx = cv.getContext('2d');
+function resize() {
+  const d = window.devicePixelRatio || 1;
+  cv.width = innerWidth * d; cv.height = innerHeight * d;
+  cx.setTransform(d, 0, 0, d, 0, 0);
+}
+addEventListener('resize', resize);
+
+function draw() {
+  requestAnimationFrame(draw);
+  const W = innerWidth, H = innerHeight;
+  cx.fillStyle = '#000'; cx.fillRect(0, 0, W, H);
+  if (!app.state || !app.playing) return;
+  const fr = app.lastFrame || app.ring.frame(now());
+  const S = app.state.S, R = Math.min(W, H) * 0.36, ox = W / 2, oy = H / 2 - 10;
+  const ang = p => -Math.PI / 2 + 2 * Math.PI * p / S;
+  const lvl = Math.min(1, (app.audio?.level || 0) * 6);
+
+  // my glow, breathing with what this phone is playing
+  if (app.slot !== 'pedestal') {
+    const a = ang(app.slot);
+    const gx = ox + R * Math.cos(a), gy = oy + R * Math.sin(a);
+    const grd = cx.createRadialGradient(gx, gy, 0, gx, gy, R * 0.9);
+    grd.addColorStop(0, `rgba(232,226,210,${0.05 + 0.3 * lvl})`);
+    grd.addColorStop(1, 'rgba(0,0,0,0)');
+    cx.fillStyle = grd; cx.fillRect(0, 0, W, H);
+  }
+  // the ring: every position, lit by what it is sounding
+  const levels = new Array(S).fill(0);
+  for (const vc of fr.voices) for (const s of vc.shares) levels[s.slot] += s.g * s.g * vc.level;
+  cx.strokeStyle = '#1a1a22'; cx.lineWidth = 1;
+  cx.beginPath(); cx.arc(ox, oy, R, 0, Math.PI * 2); cx.stroke();
+  for (let k = 0; k < S; k++) {
+    const a = ang(k), x = ox + R * Math.cos(a), y = oy + R * Math.sin(a);
+    const mine = k === app.slot;
+    cx.fillStyle = mine ? '#fff' : `rgba(216,216,222,${0.15 + 0.6 * Math.min(1, levels[k])})`;
+    cx.beginPath(); cx.arc(x, y, mine ? 7 : 4, 0, Math.PI * 2); cx.fill();
+    if (mine) { cx.strokeStyle = '#fff'; cx.beginPath(); cx.arc(x, y, 13, 0, Math.PI * 2); cx.stroke(); }
+  }
+  // voices traveling on an inner ring
+  for (const vc of fr.voices) {
+    if (vc.level <= 0.01) continue;
+    const a = ang(vc.pos), r = R * 0.82;
+    cx.globalAlpha = Math.min(1, 0.3 + vc.level);
+    cx.fillStyle = ROLE_COLORS[vc.role];
+    cx.beginPath(); cx.arc(ox + r * Math.cos(a), oy + r * Math.sin(a), 3, 0, Math.PI * 2); cx.fill();
+  }
+  cx.globalAlpha = 1;
+  // center: my number
+  cx.fillStyle = '#fff'; cx.textAlign = 'center';
+  cx.font = '200 64px -apple-system, "Helvetica Neue", sans-serif';
+  cx.fillText(posLabel(app.slot), ox, oy + 20);
+  cx.font = '12px -apple-system, sans-serif'; cx.fillStyle = '#5a5a66';
+  cx.fillText(app.slot === 'pedestal' ? 'pedestal' : `of ${S}`, ox, oy + 44);
+
+  // hud
+  const mm = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+  const section = fr.sT === null ? 'free ring' : (fr.sT < 0 ? `starts in ${Math.ceil(-fr.sT / fr.comp)} s` : `${fr.label} ${mm(Math.min(fr.sT, 960))}`);
+  const rot = Math.abs(fr.rate) < 1e-4 ? 'at rest' : `${fr.rate > 0 ? '↻' : '↺'} ${Math.round(1 / Math.abs(fr.rate))} s`;
+  $('hudL').textContent = `${section} · ${rot}`;
+  const ck = app.clock.offset ? `clock ${app.clock.offset > 0 ? '+' : ''}${app.clock.offset} ms` : 'clock ok';
+  $('hudR').textContent = `${app.status === 'live' ? '●' : '○'} ${app.status} · ${ck}`;
+}
+
+$('beginBtn').onclick = begin;
+$('repick').onclick = () => { app.slot = null; route(); };
+$('menu').onclick = () => {
+  const p = prompt(`Position (1–${app.state.S}${app.state.anchors === 'pedestal' ? ', or P for the pedestal' : ''})`, posLabel(app.slot));
+  const s = parsePos(p);
+  if (s !== null && (s === 'pedestal' || s < app.state.S)) choose(s);
+};
+
+(async function init() {
+  resize();
+  requestAnimationFrame(draw);
+  if (!topic) { $('loadingMsg').textContent = 'This link is missing its performance — ask the host for the QR code.'; return; }
+  const load = f => fetch(`config/${f}`, { cache: 'no-cache' }).then(r => r.json());
+  const [scale, params, score, drift] = await Promise.all(['scale.json', 'params.json', 'score.json', 'scale_drift.json'].map(load));
+  app.ring = new NR.Ring({ scale, params, score, drift });
+  app.slot = parsePos(hash.get('pos')) ?? parsePos(savedPos());
+  if (hash.get('pos')) savePos(hash.get('pos'));
+  const linkState = hash.get('s') ? NR.decodeState(hash.get('s')) : null;
+  if (linkState) applyState(linkState);
+  else $('loadingMsg').textContent = 'waiting for the host…';
+  app.live = new NearfieldLive.Live(topic, {
+    onState: st => { if (!app.state || st.rev >= app.state.rev) applyState(st); },
+    onStatus: s => { app.status = s === 'live' ? 'live' : (app.state ? 'link only' : s); },
+  });
+  app.live.connect();
+  NearfieldLive.syncClock().then(c => { app.clock = c; });
+  setInterval(tick, 50);
+  if (app.state) route();
+})();
+</script>
+</body>
+</html>
