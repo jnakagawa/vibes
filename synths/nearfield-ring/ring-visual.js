@@ -4,9 +4,10 @@
 // and this layer smooths per frame and drifts fringes at the audible beat
 // rate (nearest coinciding partial pair).
 //
-// One ring-specific change: a ring phone's own voice changes as the chord
-// hands voices on, so its pitch is smoothed in log-frequency (fringes morph
-// into the next voice instead of jumping).
+// Ring-specific changes: a ring phone's own voice changes as the chord hands
+// voices on, so its pitch is smoothed in log-frequency (fringes morph into
+// the next voice instead of jumping); and the lines take a color (`color`,
+// white by default) that glides as the phone's voices change.
 (function (root) {
   'use strict';
 
@@ -30,6 +31,7 @@
 precision highp float;
 uniform vec2 res;
 uniform float ink, density, breathScale;
+uniform vec3 lineCol;
 uniform vec2 meC[6];
 uniform float meLam[6], meW[6];
 uniform vec2 peerC[3];
@@ -53,8 +55,7 @@ void main(){
   }
   v = v / g;
   float c = hair(v, density, 0.7);
-  float lum = mix(1.0 - c, c, ink);
-  gl_FragColor = vec4(vec3(lum), 1.0);
+  gl_FragColor = vec4(mix(vec3(1.0 - c), lineCol * c, ink), 1.0);
 }`;
 
   const lamFor = f => Math.max(0.32 * Math.pow(220 / f, 0.7), 0.06);
@@ -99,8 +100,9 @@ void main(){
 
     let cfg = null, centers = [];
     let S = { gains: [1, 0, 0, 0], cents: 0, W: 0, fpAmp: 1, breathPhase: 0,
-              pitch: 220, ratios: [1, 2.07, 3.2, 4.4], peers: [] };
+              pitch: 220, ratios: [1, 2.07, 3.2, 4.4], peers: [], color: [1, 1, 1] };
     let visW = [], visDensity = null, visPeerE = new Map(), beatPhases = new Map(), visLogF = null;
+    let visCol = [1, 1, 1];
     let lastT = null;
 
     function frame(ms) {
@@ -152,6 +154,8 @@ void main(){
 
       const densTarget = 2 + 2 * S.W;
       visDensity = visDensity === null ? densTarget : visDensity + (densTarget - visDensity) * alpha(0.5);
+      const col = S.color || [1, 1, 1];
+      for (let i = 0; i < 3; i++) visCol[i] += (col[i] - visCol[i]) * alpha(1.2);
 
       gl.viewport(0, 0, canvas.width, canvas.height);
       gl.useProgram(prog);
@@ -160,6 +164,7 @@ void main(){
       gl.uniform1f(loc('ink'), cfg.ink ?? 1);
       gl.uniform1f(loc('density'), visDensity);
       gl.uniform1f(loc('breathScale'), 1 + 0.02 * Math.sin(S.breathPhase));
+      gl.uniform3fv(loc('lineCol'), visCol);
       gl.uniform2fv(loc('meC'), meC);
       gl.uniform1fv(loc('meLam'), meLam);
       gl.uniform1fv(loc('meW'), meW);
@@ -185,6 +190,7 @@ void main(){
                    wob: r() * Math.PI * 2, rate: 0.03 + r() * 0.04 };
         });
         visW = []; visPeerE = new Map(); beatPhases = new Map(); visDensity = null; visLogF = null;
+        visCol = [1, 1, 1];
       },
       update(s) { S = s; },
     };

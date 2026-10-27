@@ -78,6 +78,24 @@
     return clamp(params.drift.ombak_ref_hz / fHz, 0.25, 3);
   }
 
+  // A voice's color: hue from where its pitch sits inside the (stretched)
+  // pseudo-octave, so equal pitches share a color and the four scale degrees
+  // land on amber / cyan / indigo / magenta; lightness from the role.
+  // Returns linear-ish sRGB in 0..1.
+  // thin lines on black: saturated enough to read as color, never neon
+  const ROLE_LIGHT = { anchor: [0.72, 0.58], voice: [0.7, 0.66], shimmer: [0.6, 0.78] };   // [sat, light]
+  function voiceColor(f0, role, baseHz, pseudoRatio) {
+    const pc = wrap(Math.log2(f0 / baseHz), Math.log2(pseudoRatio)) / Math.log2(pseudoRatio);
+    const h = wrap(40 + 360 * pc, 360) / 360;
+    const [s, l] = ROLE_LIGHT[role] || ROLE_LIGHT.voice;
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s, p = 2 * l - q;
+    const ch = t => {
+      t = wrap(t, 1);
+      return t < 1 / 6 ? p + (q - p) * 6 * t : t < 1 / 2 ? q : t < 2 / 3 ? p + (q - p) * (2 / 3 - t) * 6 : p;
+    };
+    return [ch(h + 1 / 3), ch(h), ch(h - 1 / 3)];
+  }
+
   // Interpolate the drifting scale between precomputed sweep rows (§13.1).
   function interpolateScale(drift, stretch) {
     const rows = drift.rows;
@@ -344,6 +362,7 @@
         const shares = windowShares(posU, w).map(([iU, g]) => ({ slot: wrap(iU, S), g }));
         return {
           v: vc.v, role: vc.role, f0, level, posU, pos: wrap(posU, S), shares,
+          color: voiceColor(f0, vc.role, this.scale.base_freq_hz, es.pseudo_octave_ratio),
           fp: this.fingerprint(vc.v, vc.role, f0, tMs, c.fpAmp),
           bloom: vc.role === 'anchor' ? 0.35 : st.bloom * c.bloomM,
         };
@@ -426,7 +445,7 @@
 
   const api = {
     STEP_MS, SCORE_LEAD_MS,
-    mulberry32, fnv1a, clamp, wrap, smoothstep, pitchHzFor, assignRoles, ombakScale,
+    mulberry32, fnv1a, clamp, wrap, smoothstep, pitchHzFor, assignRoles, ombakScale, voiceColor,
     interpolateScale, Score, Ring, windowShares, partialGains,
     defaultState, encodeState, decodeState,
   };

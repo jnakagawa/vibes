@@ -176,8 +176,12 @@ function announce() {
 }
 
 function initVisual() {
-  // same seeding as the app: identity + performance
-  app.visual?.init({ seedString: `${posLabel(app.slot)}|${app.state.seed}|visual`, ink: 1 });
+  // same seeding as the app: identity + performance (re-seed only when it
+  // changes, so host edits don't reset the field or its color)
+  const seedString = `${posLabel(app.slot)}|${app.state.seed}|visual`;
+  if (seedString === app.visualSeed) return;
+  app.visualSeed = seedString;
+  app.visual?.init({ seedString, ink: 1 });
 }
 
 function setChrome(on) {
@@ -258,12 +262,26 @@ function visualState(fr) {
   }
   peers.sort((a, b) => b.e - a.e);
 
+  // line color: white until the piece (the score) begins; then the color of
+  // the voices sounding here, weighted by how much of each this phone plays,
+  // so it blends through a handoff (the visual glides it); back to white as
+  // fingerprints fade across the final gong. A silent phone reads white.
+  const k = fr.sT !== null && fr.sT >= 0 ? fr.fpAmp : 0;
+  let r = 0, gr = 0, bl = 0, w = 0;
+  for (const p of here) {
+    const x = Math.min(1, p.g * p.g * p.vc.level);
+    r += x * p.vc.color[0]; gr += x * p.vc.color[1]; bl += x * p.vc.color[2]; w += x;
+  }
+  const fill = Math.max(0, 0.3 - w);
+  const mixed = w + fill > 0 ? [(r + fill) / (w + fill), (gr + fill) / (w + fill), (bl + fill) / (w + fill)] : [1, 1, 1];
+  const color = mixed.map(c => 1 + (c - 1) * k);
+
   return {
     me, here,
     vis: {
       pitch: me.vc.f0, cents: me.detune, gains,
       W: NR.clamp(fr.factor * 0.75, 0, 1), fpAmp: fr.fpAmp, breathPhase: fr.phase,
-      ratios: fr.ratios, peers: peers.slice(0, 3),
+      ratios: fr.ratios, peers: peers.slice(0, 3), color,
     },
   };
 }
@@ -277,6 +295,7 @@ function tick() {
   app.audio.update(fr, players, app.muted ? 0 : app.state.vol);
   const v = visualState(fr);
   app.visual?.update(v.vis);
+  app.lastColor = v.vis.color;
   if (app.chrome) renderChrome(fr, v);
 }
 

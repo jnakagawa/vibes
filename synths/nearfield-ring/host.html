@@ -83,7 +83,8 @@
 'use strict';
 const NR = window.NearfieldRing;
 const $ = id => document.getElementById(id);
-const ROLE_COLORS = { anchor: '#4a6cd4', voice: '#e8e2d2', shimmer: '#59d6d6' };
+// voices in their pitch colors (the colors phones turn once the score begins)
+const rgb = c => `rgb(${c.map(x => Math.round(255 * x)).join(',')})`;
 const mmss = s => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
 const app = { ring: null, state: null, live: null, topic: null, clock: { offset: 0 }, status: '…', roster: new Map() };
@@ -234,7 +235,7 @@ function draw() {
   const levels = new Array(S).fill(0), dom = new Array(S).fill(null);
   for (const vc of fr.voices) for (const s of vc.shares) {
     const l = s.g * s.g * vc.level * (fr.lift ? fr.lift[s.slot] : 1);
-    if (l > levels[s.slot]) dom[s.slot] = vc.role;
+    if (l > levels[s.slot]) dom[s.slot] = vc.color;
     levels[s.slot] += l;
   }
   const present = new Set([...app.roster.values()].map(r => r.pos));
@@ -242,7 +243,7 @@ function draw() {
   for (let k = 0; k < S; k++) {
     const a = ang(k), x = ox + R * Math.cos(a), y = oy + R * Math.sin(a), l = Math.min(1, levels[k]);
     cx.globalAlpha = 0.15 + 0.6 * l;
-    cx.fillStyle = ROLE_COLORS[dom[k]] || '#555';
+    cx.fillStyle = dom[k] ? rgb(dom[k]) : '#555';
     cx.beginPath(); cx.arc(x, y, 5 + 12 * l, 0, Math.PI * 2); cx.fill();
     cx.globalAlpha = 1;
     cx.strokeStyle = present.has(String(k + 1)) ? '#59d6a0' : '#3a3a44';
@@ -253,7 +254,7 @@ function draw() {
   for (const vc of fr.voices) {
     const a = ang(vc.pos), r = R * 0.8;
     cx.globalAlpha = Math.max(0.15, Math.min(1, vc.level));
-    cx.fillStyle = ROLE_COLORS[vc.role];
+    cx.fillStyle = rgb(vc.color);
     cx.beginPath(); cx.arc(ox + r * Math.cos(a), oy + r * Math.sin(a), 3.5, 0, Math.PI * 2); cx.fill();
   }
   cx.globalAlpha = 1;
