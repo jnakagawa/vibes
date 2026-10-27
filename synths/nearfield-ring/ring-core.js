@@ -363,7 +363,7 @@
 
       return {
         tMs, sT: c.sT, label: c.sT === null ? null : (c.sT < 0 ? 'pre-roll' : (c.sT > this.score.duration ? 'end' : this.score.labelAt(c.sT))),
-        comp: c.comp, turns, rate, factor, phase, stretch: c.stretch, amDepth: c.amDepth,
+        comp: c.comp, turns, rate, factor, phase, stretch: c.stretch, amDepth: c.amDepth, fpAmp: c.fpAmp,
         ratios: scaleNow.spectrum.ratios, amps: this.scale.spectrum.amps,
         voices, lift,
       };
