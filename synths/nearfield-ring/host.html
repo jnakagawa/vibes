@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nearfield — The Ring (host)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #101014; color: #d8d8de;
+    font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  header { display: flex; align-items: baseline; gap: 16px; padding: 10px 16px 8px; border-bottom: 1px solid #26262e; flex-wrap: wrap; }
+  header h1 { font-size: 15px; margin: 0; font-weight: 600; letter-spacing: 0.04em; }
+  header .sub { color: #8a8a96; font-size: 12px; }
+  #status { margin-left: auto; color: #9aa0b4; font-variant-numeric: tabular-nums; font-size: 12px; }
+  #main { display: grid; grid-template-columns: minmax(0, 1fr) 360px; min-height: calc(100vh - 42px); }
+  #left { padding: 16px; display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+  #monitor { width: 100%; aspect-ratio: 1.4; max-height: 62vh; background: #0c0c10; border: 1px solid #26262e; border-radius: 8px; display: block; }
+  #panel { border-left: 1px solid #26262e; padding: 12px 14px 40px; background: #14141a; overflow-y: auto; max-height: calc(100vh - 42px); }
+  fieldset { border: 1px solid #26262e; border-radius: 8px; margin: 0 0 12px; padding: 8px 10px 10px; }
+  legend { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: #8a8a96; padding: 0 6px; }
+  .row { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+  .row label { flex: 0 0 132px; color: #b8b8c2; font-size: 12px; }
+  .row input[type=range] { flex: 1; min-width: 0; }
+  .row output { flex: 0 0 56px; text-align: right; color: #e8e8ee; font-variant-numeric: tabular-nums; font-size: 12px; }
+  select, button, input[type=text] { background: #1e1e26; color: #d8d8de; border: 1px solid #33333e; border-radius: 6px; padding: 5px 9px; font: inherit; }
+  .row select { flex: 1; min-width: 0; }
+  button { cursor: pointer; }
+  button:hover { border-color: #5a5aff; }
+  button.primary { border-color: #5a5aff; color: #fff; }
+  .btnrow { display: flex; gap: 8px; margin: 6px 0 2px; flex-wrap: wrap; }
+  .note { color: #8a8a96; font-size: 11px; margin: 6px 0 0; }
+  #join { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+  #joinQR { background: #fff; border-radius: 6px; width: 220px; height: 220px; image-rendering: pixelated; }
+  #joinInfo { flex: 1; min-width: 220px; display: flex; flex-direction: column; gap: 8px; }
+  #joinLink { width: 100%; font-family: ui-monospace, Menlo, monospace; font-size: 11px; }
+  #roster { color: #9aa0b4; font-variant-numeric: tabular-nums; }
+  #sheet { display: none; }
+  @media (max-width: 860px) { #main { grid-template-columns: 1fr; } #panel { border-left: 0; max-height: none; } }
+  @media print {
+    body { background: #fff; color: #000; }
+    header, #main { display: none !important; }
+    #sheet { display: grid !important; grid-template-columns: repeat(3, 1fr); gap: 18px; padding: 10px; }
+    .card { border: 1px solid #000; border-radius: 8px; padding: 10px; text-align: center; break-inside: avoid; }
+    .card canvas { width: 100%; image-rendering: pixelated; }
+    .card .n { font-size: 40px; font-weight: 300; }
+    .card .t { font-size: 10px; letter-spacing: 0.3em; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>NEARFIELD</h1>
+  <span class="sub">The ring — host</span>
+  <span id="status">—</span>
+</header>
+<div id="main">
+  <div id="left">
+    <canvas id="monitor"></canvas>
+    <div id="join">
+      <canvas id="joinQR"></canvas>
+      <div id="joinInfo">
+        <div><b>Join:</b> scan with each phone's camera, then pick a position — or print a QR per position so phones join at the right spot.</div>
+        <input id="joinLink" type="text" readonly>
+        <div class="btnrow">
+          <button id="copyLink">copy link</button>
+          <button id="printSheet">print position QR codes</button>
+          <a id="openPlayer" target="_blank"><button>open a player here</button></a>
+        </div>
+        <div id="roster">no phones yet</div>
+        <div class="note">Phones compute the piece themselves from this state and their clocks; changes here reach them through a public relay (ntfy.sh) within a second or two. If the relay is down, phones keep playing from their link.</div>
+      </div>
+    </div>
+  </div>
+  <div id="panel"></div>
+</div>
+<div id="sheet"></div>
+
+<script src="ring-core.js"></script>
+<script src="ring-live.js"></script>
+<script src="qr.js"></script>
+<script>
+'use strict';
+const NR = window.NearfieldRing;
+const $ = id => document.getElementById(id);
+// voices in their pitch colors (the colors phones turn once the score begins)
+const rgb = c => `rgb(${c.map(x => Math.round(255 * x)).join(',')})`;
+const mmss = s => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+
+const app = { ring: null, state: null, live: null, topic: null, clock: { offset: 0 }, status: '…', roster: new Map() };
+const now = () => Date.now() + app.clock.offset;
+const base = location.href.split('#')[0].replace(/host\.html.*$/, '');
+
+// --- state: host is the source of truth; every change continues the rotation
+// from where it is (a new segment) and bumps rev ------------------------------
+
+function saveLocal() { try { localStorage.setItem(`nfring:host:${app.topic}`, JSON.stringify(app.state)); } catch (_) {} }
+function loadLocal(topic) { try { return JSON.parse(localStorage.getItem(`nfring:host:${topic}`)); } catch (_) { return null; } }
+
+let pubTimer = null;
+function change(patch, { now: immediate = false } = {}) {
+  const seg = app.ring.segmentAt(now());
+  const st = { ...app.state, ...patch, seg, rev: app.state.rev + 1 };
+  app.state = st;
+  app.ring.setState(st);
+  saveLocal();
+  refreshLinks();
+  syncPanel();
+  clearTimeout(pubTimer);
+  pubTimer = setTimeout(publish, immediate ? 0 : 500);   // sliders: settle first
+}
+async function publish() {
+  try { await app.live.publish({ k: 'state', state: app.state }); app.lastPub = Date.now(); }
+  catch (e) { app.status = `relay error (${e.message}) — phones keep their link`; }
+}
+
+function playerLink(pos) {
+  const p = pos === undefined ? '' : `&pos=${pos}`;
+  return `${base}play.html#t=${app.topic}${p}&s=${NR.encodeState(app.state)}`;
+}
+function refreshLinks() {
+  const link = playerLink();
+  $('joinLink').value = link;
+  $('openPlayer').href = link;
+  NearfieldQR.drawQR($('joinQR'), link, { px: 4 });
+  $('joinQR').style.width = $('joinQR').style.height = '220px';
+}
+
+function buildSheet() {
+  const sh = $('sheet');
+  sh.innerHTML = '';
+  const n = app.state.S + (app.state.anchors === 'pedestal' ? 1 : 0);
+  for (let k = 1; k <= n; k++) {
+    const label = k > app.state.S ? 'P' : String(k);
+    const card = document.createElement('div'); card.className = 'card';
+    const c = document.createElement('canvas');
+    NearfieldQR.drawQR(c, playerLink(label), { px: 4 });
+    card.innerHTML = `<div class="t">NEARFIELD · POSITION</div><div class="n">${label === 'P' ? 'pedestal' : label}</div>`;
+    card.insertBefore(c, card.children[1]);
+    sh.appendChild(card);
+  }
+}
+
+// --- panel -----------------------------------------------------------------------
+
+const syncers = [];
+function syncPanel() { for (const s of syncers) s(); }
+function fieldset(title) {
+  const fs = document.createElement('fieldset');
+  fs.innerHTML = `<legend>${title}</legend>`;
+  $('panel').appendChild(fs);
+  return fs;
+}
+function addRange(fs, label, key, min, max, step, fmt = v => v) {
+  const row = document.createElement('div'); row.className = 'row';
+  row.innerHTML = `<label>${label}</label><input type="range" min="${min}" max="${max}" step="${step}"><output></output>`;
+  const input = row.querySelector('input'), out = row.querySelector('output');
+  input.addEventListener('input', () => { out.textContent = fmt(+input.value); change({ [key]: +input.value }); });
+  syncers.push(() => { if (document.activeElement !== input) input.value = app.state[key]; out.textContent = fmt(+app.state[key]); });
+  fs.appendChild(row);
+}
+function addSelect(fs, label, key, options, parse = v => v) {
+  const row = document.createElement('div'); row.className = 'row';
+  row.innerHTML = `<label>${label}</label><select>${options.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select>`;
+  const sel = row.querySelector('select');
+  sel.addEventListener('change', () => change({ [key]: parse(sel.value) }, { now: true }));
+  syncers.push(() => { sel.value = String(app.state[key]); });
+  fs.appendChild(row);
+}
+function addNote(fs, t) { const p = document.createElement('p'); p.className = 'note'; p.textContent = t; fs.appendChild(p); }
+function btn(text, fn, cls) { const b = document.createElement('button'); b.textContent = text; b.onclick = fn; if (cls) b.className = cls; return b; }
+
+function buildPanel() {
+  const score = app.ring.score;
+  let fs = fieldset(`Score — ${mmss(score.duration)}`);
+  let row = document.createElement('div'); row.className = 'btnrow';
+  const startAt = at => {
+    const comp = +$('comp').value;
+    change({ score: { start: now() + NR.SCORE_LEAD_MS - at * 1000 / comp, comp } }, { now: true });
+  };
+  row.append(btn('▶ start score', () => startAt(0), 'primary'), btn('■ stop (free ring)', () => change({ score: null }, { now: true })));
+  fs.appendChild(row);
+  row = document.createElement('div'); row.className = 'row';
+  row.innerHTML = '<label>time compression</label><select id="comp">' + [1, 2, 4, 8, 16].map(c => `<option value="${c}">${c}×</option>`).join('') + '</select>';
+  fs.appendChild(row);
+  row = document.createElement('div'); row.className = 'btnrow';
+  for (const s of score.sections.filter(s => s.label !== 'end')) row.appendChild(btn(`from ${s.label}`, () => startAt(s.at)));
+  fs.appendChild(row);
+  addNote(fs, 'The ensemble score, unchanged: buka (anchors, then voices enter one by one around the ring), cycle I, the turning (breath 60 → 40 s), cycle II, final gong; the scale ages from stretch 2.04 to 2.10. Rotation follows the score\'s bloom: it gathers through the buka and comes to rest at the final gong. The score starts 4 s after you press, so phones can fade out first.');
+
+  fs = fieldset('Ring');
+  addRange(fs, 'positions', 'S', 2, 24, 1);
+  addSelect(fs, 'anchors', 'anchors', [['lift', 'lifted (phones can play them)'], ['phones', 'true pitch on phones'], ['pedestal', 'on a pedestal device']]);
+  addNote(fs, 'Positions = phones around the circle; each position is a voice. Anchors sit near 106 Hz, below what phone speakers can play: "lifted" moves them up one pseudo-octave; "pedestal" moves them to a laptop or speaker in the middle (open the P link on it).');
+
+  fs = fieldset('Rotation');
+  addSelect(fs, 'mode', 'mode', [['chord', 'rotate the chord'], ['counter', 'counter-rotate shimmer'], ['sweep', 'sweep (voices stay home)']]);
+  addSelect(fs, 'direction', 'dir', [['1', 'clockwise'], ['-1', 'counter-clockwise'], ['0', 'stopped']], v => +v);
+  addSelect(fs, 'speed', 'lock', [['1', 'one turn per breath'], ['0', 'seconds per turn ↓']], v => +v);
+  addRange(fs, 'seconds per turn', 'period', 8, 240, 1, v => `${v} s`);
+  addRange(fs, 'handoff width', 'w', 1, 2, 0.05, v => v.toFixed(2));
+  addRange(fs, 'handoff bend', 'bend', 0, 20, 0.5, v => `±${v} ¢`);
+  addNote(fs, 'Handoff bend: each position bends what it plays, fading as a voice arrives — a voice beats against itself mid-handoff and settles as it lands. Scales with rotation speed and register (ombak).');
+
+  fs = fieldset('Sound');
+  addRange(fs, 'bloom', 'bloom', 0, 1, 0.01, v => v.toFixed(2));
+  addRange(fs, 'fingerprint max', 'fp', 0, 24, 0.5, v => `±${v} ¢`);
+  addSelect(fs, 'ombak', 'ombak', [['1', 'on (even beat rate)'], ['0', 'off']], v => +v);
+  addRange(fs, 'breath (free ring)', 'breath', 20, 90, 1, v => `${v} s`);
+  addRange(fs, 'phone volume', 'vol', 0, 1.5, 0.01, v => v.toFixed(2));
+
+  fs = fieldset('Performance');
+  row = document.createElement('div'); row.className = 'btnrow';
+  row.append(btn('new performance', () => {
+    if (confirm('Start a new performance? Phones on the old link keep playing the old one.')) { location.hash = ''; location.reload(); }
+  }), btn('re-send state', () => publish()));
+  fs.appendChild(row);
+  addNote(fs, 'The host can close this page — phones keep playing. Reopen it (same link) to change things again.');
+  syncPanel();
+}
+
+// --- monitor --------------------------------------------------------------------
+
+const cv = $('monitor'), cx = cv.getContext('2d');
+function draw() {
+  requestAnimationFrame(draw);
+  const d = devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
+  if (cv.width !== Math.round(W * d)) { cv.width = W * d; cv.height = H * d; }
+  cx.setTransform(d, 0, 0, d, 0, 0);
+  cx.fillStyle = '#0c0c10'; cx.fillRect(0, 0, W, H);
+  if (!app.state) return;
+  const fr = app.ring.frame(now());
+  const S = app.state.S, R = Math.min(W, H) * 0.36, ox = W / 2, oy = H / 2;
+  const ang = p => -Math.PI / 2 + 2 * Math.PI * p / S;
+  const levels = new Array(S).fill(0), dom = new Array(S).fill(null);
+  for (const vc of fr.voices) for (const s of vc.shares) {
+    const l = s.g * s.g * vc.level * (fr.lift ? fr.lift[s.slot] : 1);
+    if (l > levels[s.slot]) dom[s.slot] = vc.color;
+    levels[s.slot] += l;
+  }
+  const present = new Set([...app.roster.values()].map(r => r.pos));
+  cx.strokeStyle = '#1e1e26'; cx.beginPath(); cx.arc(ox, oy, R, 0, Math.PI * 2); cx.stroke();
+  for (let k = 0; k < S; k++) {
+    const a = ang(k), x = ox + R * Math.cos(a), y = oy + R * Math.sin(a), l = Math.min(1, levels[k]);
+    cx.globalAlpha = 0.15 + 0.6 * l;
+    cx.fillStyle = dom[k] ? rgb(dom[k]) : '#555';
+    cx.beginPath(); cx.arc(x, y, 5 + 12 * l, 0, Math.PI * 2); cx.fill();
+    cx.globalAlpha = 1;
+    cx.strokeStyle = present.has(String(k + 1)) ? '#59d6a0' : '#3a3a44';
+    cx.beginPath(); cx.arc(x, y, 5, 0, Math.PI * 2); cx.stroke();
+    cx.fillStyle = '#6a6a76'; cx.font = '11px -apple-system, sans-serif'; cx.textAlign = 'center';
+    cx.fillText(String(k + 1), ox + (R + 26) * Math.cos(a), oy + (R + 26) * Math.sin(a) + 4);
+  }
+  for (const vc of fr.voices) {
+    const a = ang(vc.pos), r = R * 0.8;
+    cx.globalAlpha = Math.max(0.15, Math.min(1, vc.level));
+    cx.fillStyle = rgb(vc.color);
+    cx.beginPath(); cx.arc(ox + r * Math.cos(a), oy + r * Math.sin(a), 3.5, 0, Math.PI * 2); cx.fill();
+  }
+  cx.globalAlpha = 1;
+  cx.fillStyle = '#8a8a96'; cx.textAlign = 'center'; cx.font = '12px -apple-system, sans-serif';
+  const rot = Math.abs(fr.rate) < 1e-4 ? 'at rest' : `${fr.rate > 0 ? '↻' : '↺'} ${Math.round(1 / Math.abs(fr.rate))} s / turn`;
+  const sec = fr.sT === null ? 'free ring' : fr.sT < 0 ? `score in ${Math.ceil(-fr.sT / fr.comp)} s` : `${fr.label} ${mmss(Math.min(fr.sT, 960))}${fr.stretch ? ` · stretch ${fr.stretch.toFixed(3)}` : ''}`;
+  cx.fillText(sec, ox, oy - 4);
+  cx.fillText(rot, ox, oy + 14);
+  $('status').textContent = `${app.topic} · rev ${app.state.rev} · ${app.status}${app.clock.offset ? ` · clock ${app.clock.offset} ms` : ''}`;
+}
+
+function renderRoster() {
+  const rows = [...app.roster.values()].filter(r => Date.now() - r.at < 3 * 3600e3);
+  if (!rows.length) { $('roster').textContent = 'no phones yet'; return; }
+  const pos = rows.map(r => r.pos).sort((a, b) => (a === 'P') - (b === 'P') || a - b);
+  $('roster').textContent = `${rows.length} phone${rows.length > 1 ? 's' : ''} joined · positions ${pos.join(', ')}`;
+}
+
+// --- start ------------------------------------------------------------------------
+
+$('copyLink').onclick = async () => {
+  try { await navigator.clipboard.writeText($('joinLink').value); $('copyLink').textContent = 'copied'; }
+  catch (_) { $('joinLink').select(); }
+  setTimeout(() => { $('copyLink').textContent = 'copy link'; }, 1500);
+};
+$('printSheet').onclick = () => { buildSheet(); window.print(); };
+
+(async function init() {
+  const load = f => fetch(`config/${f}`, { cache: 'no-cache' }).then(r => r.json());
+  const [scale, params, score, drift] = await Promise.all(['scale.json', 'params.json', 'score.json', 'scale_drift.json'].map(load));
+  app.ring = new NR.Ring({ scale, params, score, drift });
+  const h = new URLSearchParams(location.hash.slice(1));
+  app.topic = h.get('t');
+  if (!app.topic) {
+    app.topic = NearfieldLive.newTopic();
+    history.replaceState(null, '', `#t=${app.topic}`);
+  }
+  app.state = loadLocal(app.topic) || NR.defaultState(Date.now());
+  app.ring.setState(app.state);
+  app.live = new NearfieldLive.Live(app.topic, {
+    // a newer state from elsewhere (another host tab) wins
+    onState: st => { if (st.rev > app.state.rev) { app.state = st; app.ring.setState(st); saveLocal(); refreshLinks(); syncPanel(); } },
+    onJoin: (m, at) => { app.roster.set(m.dev, { pos: String(m.pos), at }); renderRoster(); },
+    onStatus: s => { app.status = s === 'live' ? 'relay live' : `relay ${s}`; },
+  });
+  app.live.connect();
+  NearfieldLive.syncClock().then(c => { app.clock = c; });
+  buildPanel();
+  refreshLinks();
+  publish();
+  setInterval(publish, 10 * 60 * 1000);   // keep the relay's copy fresh for late joiners
+  setInterval(renderRoster, 30 * 1000);
+  requestAnimationFrame(draw);
+})();
+</script>
+</body>
+</html>

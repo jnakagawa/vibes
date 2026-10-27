@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nearfield — The Ring</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: #000; color: #fff; overflow: hidden;
+    font: 15px/1.4 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; -webkit-user-select: none; user-select: none; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  .screen { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 22px; padding: calc(20px + env(safe-area-inset-top)) 20px calc(28px + env(safe-area-inset-bottom)); text-align: center; }
+  .hidden { display: none !important; }
+  /* type matches the iOS app's chrome (ContentView.swift) */
+  .title { font-size: 22px; font-weight: 600; letter-spacing: 0.27em; margin-right: -0.27em; }
+  .build { font-size: 10px; color: rgba(235,235,245,0.3); margin-top: -18px; }
+  .dim { color: rgba(235,235,245,0.6); }
+  .mono { font: 12px ui-monospace, Menlo, monospace; }
+  .role { font-size: 13px; font-weight: 500; letter-spacing: 0.3em; margin-right: -0.3em; }
+  .hz { font: 300 34px ui-rounded, -apple-system, "SF Pro Rounded", sans-serif; font-variant-numeric: tabular-nums; }
+  .foot { font-size: 13px; }
+  .assign { display: flex; flex-direction: column; gap: 8px; align-items: center; min-height: 120px; justify-content: center; }
+  .capsule { background: none; color: #fff; border: 1px solid #fff; border-radius: 999px; font: 500 15px -apple-system, sans-serif;
+    letter-spacing: 0.2em; padding: 14px 44px; cursor: pointer; }
+  .ghost { background: none; border: 0; color: rgba(235,235,245,0.6); font: inherit; font-size: 13px; text-decoration: underline; cursor: pointer; }
+  .spacer { flex: 1; }
+  .grid { display: grid; grid-template-columns: repeat(4, 62px); gap: 12px; justify-content: center; }
+  .grid button { width: 62px; height: 62px; background: #000; color: #fff; border: 1px solid rgba(235,235,245,0.35); border-radius: 999px;
+    font: 300 22px ui-rounded, -apple-system, sans-serif; cursor: pointer; }
+  .grid button.wide { grid-column: span 4; width: auto; height: 46px; font: 500 13px -apple-system, sans-serif; letter-spacing: 0.15em; }
+  .note { color: rgba(235,235,245,0.6); font-size: 13px; max-width: 300px; }
+  .big { font: 200 72px ui-rounded, -apple-system, sans-serif; line-height: 1; }
+  #chrome { text-shadow: 0 0 10px #000, 0 0 3px #000; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="sLoading" class="screen">
+  <div class="title">NEARFIELD</div>
+  <div class="dim" id="loadingMsg">loading…</div>
+</div>
+
+<div id="sPick" class="screen hidden">
+  <div class="title">NEARFIELD</div>
+  <div class="dim">which position are you at?</div>
+  <div class="grid" id="grid"></div>
+  <div class="note">Each phone stands at one numbered mark around the circle. If there's a QR code at your spot, scan that instead.</div>
+</div>
+
+<div id="sBegin" class="screen hidden">
+  <div class="spacer"></div>
+  <div class="title">NEARFIELD</div>
+  <div class="dim">position</div>
+  <div class="big" id="beginPos">—</div>
+  <div class="spacer"></div>
+  <button class="capsule" id="beginBtn">BEGIN</button>
+  <div class="note">Volume all the way up, headphones off. Set the phone down at your mark, screen up, and leave this page open — the sound moves around the circle from phone to phone.</div>
+  <button class="ghost" id="repick">change position</button>
+</div>
+
+<!-- the app's chrome: tap the field to show / hide -->
+<div id="chrome" class="screen hidden">
+  <div class="spacer"></div>
+  <div class="title">NEARFIELD</div>
+  <div class="build" id="cBuild">the ring</div>
+  <div class="assign">
+    <div class="mono dim" id="cScore"></div>
+    <div class="role dim" id="cRole">—</div>
+    <div class="hz" id="cHz">—</div>
+    <div class="foot dim" id="cMeta"></div>
+    <div class="mono dim" id="cStats" style="margin-top:6px"></div>
+  </div>
+  <div class="spacer"></div>
+  <button class="capsule" id="mute">MUTE</button>
+  <button class="ghost" id="changePos">change position</button>
+  <div class="mono dim" id="cStatus" style="font-size:11px"></div>
+</div>
+
+<script src="ring-core.js"></script>
+<script src="ring-live.js"></script>
+<script src="ring-audio.js"></script>
+<script src="ring-visual.js"></script>
+<script>
+'use strict';
+const NR = window.NearfieldRing;
+const $ = id => document.getElementById(id);
+
+const hash = new URLSearchParams(location.hash.slice(1));
+const topic = hash.get('t');
+const app = {
+  ring: null, state: null, slot: null, audio: null, live: null, visual: null,
+  clock: { offset: 0, err: null }, status: 'link only', playing: false, muted: false, chrome: true,
+};
+const now = () => Date.now() + app.clock.offset;
+
+function show(id) {
+  for (const s of ['sLoading', 'sPick', 'sBegin']) $(s).classList.toggle('hidden', s !== id);
+}
+
+function savedPos() {
+  try { return localStorage.getItem(`nfring:${topic}:pos`); } catch (_) { return null; }
+}
+function savePos(p) {
+  try { localStorage.setItem(`nfring:${topic}:pos`, String(p)); } catch (_) {}
+}
+function deviceId() {
+  try {
+    let d = localStorage.getItem('nfring:device');
+    if (!d) { d = Math.random().toString(36).slice(2, 10); localStorage.setItem('nfring:device', d); }
+    return d;
+  } catch (_) { return 'anon'; }
+}
+
+// positions are 1-based on screen, 0-based in the model; 'P' = pedestal
+function parsePos(p) {
+  if (p === null || p === undefined || p === '') return null;
+  if (String(p).toUpperCase() === 'P') return 'pedestal';
+  const n = parseInt(p, 10);
+  return Number.isFinite(n) && n >= 1 ? n - 1 : null;
+}
+const posLabel = s => s === 'pedestal' ? 'P' : String(s + 1);
+
+function applyState(st) {
+  app.state = st;
+  app.ring.setState(st);
+  if (app.slot !== null && app.slot !== 'pedestal' && app.slot >= st.S) {
+    app.slot = null;   // the ring got smaller: choose again
+    if (app.playing) stopPlaying();
+    route();
+    return;
+  }
+  if (app.playing) initVisual();   // seed follows the performance
+  else if (!$('sPick').classList.contains('hidden')) buildGrid();
+  else if (!$('sLoading').classList.contains('hidden')) route();
+}
+
+function buildGrid() {
+  const g = $('grid');
+  g.innerHTML = '';
+  for (let k = 0; k < app.state.S; k++) {
+    const b = document.createElement('button');
+    b.textContent = k + 1;
+    b.onclick = () => choose(k);
+    g.appendChild(b);
+  }
+  if (app.state.anchors === 'pedestal') {
+    const b = document.createElement('button');
+    b.className = 'wide';
+    b.textContent = 'PEDESTAL (anchors, center)';
+    b.onclick = () => choose('pedestal');
+    g.appendChild(b);
+  }
+}
+
+function choose(slot) {
+  app.slot = slot;
+  savePos(posLabel(slot));
+  if (app.playing) { initVisual(); announce(); setChrome(true); return; }
+  route();
+}
+
+function route() {
+  if (!app.state) { show('sLoading'); return; }
+  if (app.slot === null) { buildGrid(); show('sPick'); return; }
+  $('beginPos').textContent = posLabel(app.slot);
+  show('sBegin');
+}
+
+function announce() {
+  app.live?.publish({ k: 'join', pos: posLabel(app.slot), dev: deviceId() }).catch(() => {});
+}
+
+function initVisual() {
+  // same seeding as the app: identity + performance (re-seed only when it
+  // changes, so host edits don't reset the field or its color)
+  const seedString = `${posLabel(app.slot)}|${app.state.seed}|visual`;
+  if (seedString === app.visualSeed) return;
+  app.visualSeed = seedString;
+  app.visual?.init({ seedString, ink: 1 });
+}
+
+function setChrome(on) {
+  app.chrome = on;
+  $('chrome').classList.toggle('hidden', !on);
+}
+
+async function begin() {
+  show(null);
+  app.audio = new NearfieldAudio.RingAudio(app.ring.params);
+  await app.audio.start();
+  app.playing = true;
+  initVisual();
+  setChrome(true);
+  keepAwake();
+  announce();
+}
+
+function stopPlaying() {
+  app.playing = false;
+  setChrome(false);
+  app.audio?.update({ ratios: [1, 2, 3, 4], amps: [1, 0, 0, 0], comp: 1, factor: 0, amDepth: 0 }, [], 0);
+}
+
+// screen stays on while playing (needs https)
+let wake = null;
+async function keepAwake() {
+  try { wake = await navigator.wakeLock?.request('screen'); } catch (_) { wake = null; }
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && app.playing) { keepAwake(); app.audio.resume(); }
+});
+
+// --- the visual's state (§14.2 bindings, as the app's Conductor pushes them) --------
+//   me    = the voice this phone is sounding most (pitch, its bend here, bloom partials)
+//   peers = the same voice on its other phone mid-handoff (it beats with itself),
+//           the other voice sounding here, and the neighbors' voices
+//   W     = rotation (the ring's wind), fpAmp = final-gong convergence
+
+const hid = s => NR.fnv1a(s) % 1000000;
+const cents2f = (f, c) => f * Math.pow(2, c / 1200);
+
+function visualState(fr) {
+  const params = app.ring.params;
+  const here = app.ring.playersAt(fr, app.slot);
+  const strength = p => p.g * p.vc.level;
+  let dom = null;
+  for (const p of here) if (!dom || strength(p) > strength(dom)) dom = p;
+  const homeV = app.slot === 'pedestal' ? fr.voices.find(v => v.role === 'anchor') : fr.voices[app.slot];
+  const me = dom || { v: homeV.v, vc: homeV, g: 0, detune: homeV.fp };
+  // own field: every voice sounding here, weighted by the power this phone
+  // plays of it — the visual crossfades their topographies, so a handoff
+  // reads as one voice dissolving into the next. A quiet phone keeps a
+  // floor of its home voice so the field never goes blank.
+  const th = params.bloom.partial_thresholds, tw = params.bloom.threshold_width;
+  const gainsFor = vc => [0, 1, 2, 3].map(j => j === 0 ? 1
+    : (j < params.roles[vc.role].max_partials ? fr.amps[j] * NR.smoothstep((vc.bloom - th[j - 1]) / tw) : 0));
+  const voices = here.map(p => ({ id: p.v, f: cents2f(p.vc.f0, p.detune), w: Math.min(1, p.g * p.g * p.vc.level), gains: gainsFor(p.vc) }));
+  const wSum = voices.reduce((s, x) => s + x.w, 0);
+  if (wSum < 0.3) {
+    const h = voices.find(x => x.id === homeV.v);
+    if (h) h.w += 0.3 - wSum;
+    else voices.push({ id: homeV.v, f: cents2f(homeV.f0, homeV.fp), w: 0.3 - wSum, gains: gainsFor(homeV) });
+  }
+
+  // peers: each voice here as it sounds on its other phone (mid-handoff it
+  // beats against itself), then the neighbors' voices — stable ids per
+  // voice + phone, so the visual fades them instead of swapping
+  const peers = [];
+  if (app.slot !== 'pedestal') {
+    for (const p of here) {
+      for (const s of p.vc.shares) {
+        if (s.slot === app.slot || s.g < 0.02) continue;
+        const there = app.ring.playersAt(fr, s.slot).find(q => q.v === p.v);
+        if (there) peers.push({ id: hid(`v${p.v}@${s.slot}`), e: Math.min(1, strength(there)), freq: cents2f(p.vc.f0, there.detune) });
+      }
+    }
+  }
+  if (app.slot !== 'pedestal') {
+    for (const d of [-1, 1]) {
+      const k = NR.wrap(app.slot + d, app.state.S);
+      if (k === app.slot) continue;
+      let b = null;
+      for (const p of app.ring.playersAt(fr, k)) if (!b || strength(p) > strength(b)) b = p;
+      if (b && !here.some(p => p.v === b.v)) peers.push({ id: hid(`v${b.v}@${k}`), e: 0.35 * Math.min(1, strength(b)), freq: cents2f(b.vc.f0, b.detune) });
+    }
+  }
+  peers.sort((a, b) => b.e - a.e);
+
+  // line color: white until the piece (the score) begins; then the color of
+  // the voices sounding here, weighted by how much of each this phone plays,
+  // so it blends through a handoff (the visual glides it); back to white as
+  // fingerprints fade across the final gong. A silent phone reads white.
+  const k = fr.sT !== null && fr.sT >= 0 ? fr.fpAmp : 0;
+  let r = 0, gr = 0, bl = 0, w = 0;
+  for (const p of here) {
+    const x = Math.min(1, p.g * p.g * p.vc.level);
+    r += x * p.vc.color[0]; gr += x * p.vc.color[1]; bl += x * p.vc.color[2]; w += x;
+  }
+  const fill = Math.max(0, 0.3 - w);
+  const mixed = w + fill > 0 ? [(r + fill) / (w + fill), (gr + fill) / (w + fill), (bl + fill) / (w + fill)] : [1, 1, 1];
+  const color = mixed.map(c => 1 + (c - 1) * k);
+
+  return {
+    me, here,
+    vis: {
+      voices,
+      W: NR.clamp(fr.factor * 0.75, 0, 1), fpAmp: fr.fpAmp, breathPhase: fr.phase,
+      ratios: fr.ratios, peers: peers.slice(0, 5), color,
+    },
+  };
+}
+
+// --- loop ---------------------------------------------------------------------
+
+function tick() {
+  if (!app.state || !app.playing) return;
+  const fr = app.ring.frame(now());
+  const players = app.ring.playersAt(fr, app.slot);
+  app.audio.update(fr, players, app.muted ? 0 : app.state.vol);
+  const v = visualState(fr);
+  app.visual?.update(v.vis);
+  app.lastColor = v.vis.color;
+  if (app.chrome) renderChrome(fr, v);
+}
+
+const mmss = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+function renderChrome(fr, v) {
+  const me = v.me, vc = me.vc;
+  $('cBuild').textContent = app.slot === 'pedestal' ? 'the ring · pedestal' : `the ring · position ${posLabel(app.slot)} of ${app.state.S}`;
+  $('cScore').textContent = fr.sT === null ? '' : fr.sT < 0 ? `starts in ${Math.ceil(-fr.sT / fr.comp)} s` : `${fr.label} · ${mmss(Math.min(fr.sT, 960))}`;
+  $('cRole').textContent = vc.role.toUpperCase();
+  $('cHz').textContent = `${vc.f0.toFixed(1)} Hz`;
+  $('cMeta').textContent = `position ${posLabel(app.slot)} · degree ${app.ring.voices[vc.v].degreeIndex} · performance ${app.state.seed}`;
+  const others = v.here.filter(p => p !== me);
+  const hand = others.length ? `handoff ${Math.round(100 * Math.min(...others.map(p => p.g * p.g)))}%` : 'solo';
+  $('cStats').textContent = `W ${v.vis.W.toFixed(2)} · B ${vc.bloom.toFixed(2)} · ${hand} · ${me.detune >= 0 ? '+' : ''}${me.detune.toFixed(1)}¢`;
+  const ck = app.clock.offset ? `clock ${app.clock.offset > 0 ? '+' : ''}${app.clock.offset} ms` : 'clock ok';
+  const rot = Math.abs(fr.rate) < 1e-4 ? 'at rest' : `${fr.rate > 0 ? '↻' : '↺'} ${Math.round(1 / Math.abs(fr.rate))} s`;
+  $('cStatus').textContent = `${app.status === 'live' ? '●' : '○'} ${app.status} · ${ck} · ${rot}`;
+}
+
+$('beginBtn').onclick = begin;
+$('repick').onclick = () => { app.slot = null; route(); };
+$('mute').onclick = e => {
+  e.stopPropagation();
+  app.muted = !app.muted;
+  $('mute').textContent = app.muted ? 'UNMUTE' : 'MUTE';
+};
+$('changePos').onclick = e => {
+  e.stopPropagation();
+  const p = prompt(`Position (1–${app.state.S}${app.state.anchors === 'pedestal' ? ', or P for the pedestal' : ''})`, posLabel(app.slot));
+  const s = parsePos(p);
+  if (s !== null && (s === 'pedestal' || s < app.state.S)) choose(s);
+};
+// tap the field: toggle the chrome (as in the app)
+addEventListener('click', e => {
+  if (!app.playing || e.target.closest('button')) return;
+  setChrome(!app.chrome);
+});
+
+(async function init() {
+  app.visual = NearfieldVisual.create($('c'));
+  if (!topic) { $('loadingMsg').textContent = 'This link is missing its performance — ask the host for the QR code.'; return; }
+  const load = f => fetch(`config/${f}`, { cache: 'no-cache' }).then(r => r.json());
+  const [scale, params, score, drift] = await Promise.all(['scale.json', 'params.json', 'score.json', 'scale_drift.json'].map(load));
+  app.ring = new NR.Ring({ scale, params, score, drift });
+  app.slot = parsePos(hash.get('pos')) ?? parsePos(savedPos());
+  if (hash.get('pos')) savePos(hash.get('pos'));
+  const linkState = hash.get('s') ? NR.decodeState(hash.get('s')) : null;
+  if (linkState) applyState(linkState);
+  else $('loadingMsg').textContent = 'waiting for the host…';
+  app.live = new NearfieldLive.Live(topic, {
+    onState: st => { if (!app.state || st.rev >= app.state.rev) applyState(st); },
+    onStatus: s => { app.status = s === 'live' ? 'live' : (app.state ? 'link only' : s); },
+  });
+  app.live.connect();
+  NearfieldLive.syncClock().then(c => { app.clock = c; });
+  setInterval(tick, 50);
+  if (app.state) route();
+})();
+</script>
+</body>
+</html>
