@@ -232,24 +232,33 @@ function visualState(fr) {
   for (const p of here) if (!dom || strength(p) > strength(dom)) dom = p;
   const homeV = app.slot === 'pedestal' ? fr.voices.find(v => v.role === 'anchor') : fr.voices[app.slot];
   const me = dom || { v: homeV.v, vc: homeV, g: 0, detune: homeV.fp };
-  const presence = dom ? Math.min(1, strength(dom)) : 0;
-
+  // own field: every voice sounding here, weighted by the power this phone
+  // plays of it — the visual crossfades their topographies, so a handoff
+  // reads as one voice dissolving into the next. A quiet phone keeps a
+  // floor of its home voice so the field never goes blank.
   const th = params.bloom.partial_thresholds, tw = params.bloom.threshold_width;
-  const maxP = params.roles[me.vc.role].max_partials;
-  const gains = [0, 1, 2, 3].map(j => (j === 0 ? 1 : (j < maxP ? fr.amps[j] * NR.smoothstep((me.vc.bloom - th[j - 1]) / tw) : 0))
-    * (0.35 + 0.65 * presence));
+  const gainsFor = vc => [0, 1, 2, 3].map(j => j === 0 ? 1
+    : (j < params.roles[vc.role].max_partials ? fr.amps[j] * NR.smoothstep((vc.bloom - th[j - 1]) / tw) : 0));
+  const voices = here.map(p => ({ id: p.v, f: cents2f(p.vc.f0, p.detune), w: Math.min(1, p.g * p.g * p.vc.level), gains: gainsFor(p.vc) }));
+  const wSum = voices.reduce((s, x) => s + x.w, 0);
+  if (wSum < 0.3) {
+    const h = voices.find(x => x.id === homeV.v);
+    if (h) h.w += 0.3 - wSum;
+    else voices.push({ id: homeV.v, f: cents2f(homeV.f0, homeV.fp), w: 0.3 - wSum, gains: gainsFor(homeV) });
+  }
 
+  // peers: each voice here as it sounds on its other phone (mid-handoff it
+  // beats against itself), then the neighbors' voices — stable ids per
+  // voice + phone, so the visual fades them instead of swapping
   const peers = [];
   if (app.slot !== 'pedestal') {
-    for (const s of me.vc.shares) {
-      if (s.slot === app.slot || s.g < 0.02) continue;
-      const there = app.ring.playersAt(fr, s.slot).find(p => p.v === me.v);
-      if (there) peers.push({ id: hid(`v${me.v}@${s.slot}`), e: Math.min(1, strength(there)), freq: cents2f(me.vc.f0, there.detune) });
+    for (const p of here) {
+      for (const s of p.vc.shares) {
+        if (s.slot === app.slot || s.g < 0.02) continue;
+        const there = app.ring.playersAt(fr, s.slot).find(q => q.v === p.v);
+        if (there) peers.push({ id: hid(`v${p.v}@${s.slot}`), e: Math.min(1, strength(there)), freq: cents2f(p.vc.f0, there.detune) });
+      }
     }
-  }
-  for (const p of here) {
-    if (p === dom) continue;
-    peers.push({ id: hid(`v${p.v}@here`), e: Math.min(1, strength(p)), freq: cents2f(p.vc.f0, p.detune) });
   }
   if (app.slot !== 'pedestal') {
     for (const d of [-1, 1]) {
@@ -257,7 +266,7 @@ function visualState(fr) {
       if (k === app.slot) continue;
       let b = null;
       for (const p of app.ring.playersAt(fr, k)) if (!b || strength(p) > strength(b)) b = p;
-      if (b && b.v !== me.v) peers.push({ id: hid(`v${b.v}@${k}`), e: 0.35 * Math.min(1, strength(b)), freq: cents2f(b.vc.f0, b.detune) });
+      if (b && !here.some(p => p.v === b.v)) peers.push({ id: hid(`v${b.v}@${k}`), e: 0.35 * Math.min(1, strength(b)), freq: cents2f(b.vc.f0, b.detune) });
     }
   }
   peers.sort((a, b) => b.e - a.e);
@@ -279,9 +288,9 @@ function visualState(fr) {
   return {
     me, here,
     vis: {
-      pitch: me.vc.f0, cents: me.detune, gains,
+      voices,
       W: NR.clamp(fr.factor * 0.75, 0, 1), fpAmp: fr.fpAmp, breathPhase: fr.phase,
-      ratios: fr.ratios, peers: peers.slice(0, 3), color,
+      ratios: fr.ratios, peers: peers.slice(0, 5), color,
     },
   };
 }

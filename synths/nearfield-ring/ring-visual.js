@@ -1,13 +1,16 @@
 // §14 interference topography — the phone's main screen, ported from the iOS
-// app (nearfield-ios/NearfieldEnsemble/visual.html) with the same shader,
-// smoothing and bindings: play.html pushes state via NearfieldVisual.update()
-// and this layer smooths per frame and drifts fringes at the audible beat
-// rate (nearest coinciding partial pair).
+// app (nearfield-ios/NearfieldEnsemble/visual.html): same shader, sources,
+// wavelengths, density, breath and beat-rate fringe drift. play.html pushes
+// state via update(); this layer smooths per frame.
 //
-// Ring-specific changes: a ring phone's own voice changes as the chord hands
-// voices on, so its pitch is smoothed in log-frequency (fringes morph into
-// the next voice instead of jumping); and the lines take a color (`color`,
-// white by default) that glides as the phone's voices change.
+// Ring-specific changes, because a ring phone's voice is handed on:
+// - The phone's own field is up to two voice layers on the same six sources,
+//   weighted by how much of each voice the phone is playing. A handoff is a
+//   crossfade between the two voices' topographies (their superposition
+//   mid-way, as in the air) — nothing is swapped or rescaled.
+// - Layers and peers keep their slot until they have faded out, so no
+//   frame ever replaces one source with another.
+// - The lines take a color (`color`, white by default) that glides.
 (function (root) {
   'use strict';
 
@@ -26,6 +29,8 @@
     };
   }
 
+  const LAYERS = 2, PEERS = 3;
+
   const FS = `
 #extension GL_OES_standard_derivatives : enable
 precision highp float;
@@ -33,7 +38,7 @@ uniform vec2 res;
 uniform float ink, density, breathScale;
 uniform vec3 lineCol;
 uniform vec2 meC[6];
-uniform float meLam[6], meW[6];
+uniform float meLam[12], meW[12];
 uniform vec2 peerC[3];
 uniform float peerLam[3], peerW[3], peerPhase[3];
 float hair(float v, float n, float w) {
@@ -46,8 +51,9 @@ void main(){
   uv *= breathScale;
   float v = 0.0; float g = 1e-4;
   for (int k = 0; k < 6; k++) {
-    v += meW[k] * cos(6.2831853 * length(uv - meC[k]) / meLam[k]);
-    g += meW[k];
+    float r = length(uv - meC[k]);
+    v += meW[k] * cos(6.2831853 * r / meLam[k]) + meW[k + 6] * cos(6.2831853 * r / meLam[k + 6]);
+    g += meW[k] + meW[k + 6];
   }
   for (int j = 0; j < 3; j++) {
     v += peerW[j] * cos(6.2831853 * length(uv - peerC[j]) / peerLam[j] + peerPhase[j]);
@@ -71,6 +77,25 @@ void main(){
     { pk: 0, w: 1.0 }, { pk: 0, w: 0.65 }, { pk: 0, w: 0.45 },
     { pk: 1, w: 1.0 }, { pk: 2, w: 1.0 }, { pk: 3, w: 1.0 },
   ];
+
+  // Persistent slots: an item keeps its slot while it is wanted or still
+  // fading; a new item only takes a slot that is empty or faded out.
+  function assignSlots(slots, wanted, weightOf, eps) {
+    const byId = new Map(wanted.map(x => [x.id, x]));
+    for (let i = 0; i < slots.length; i++) {
+      const s = slots[i];
+      if (s) s.want = byId.get(s.id) || null;
+      if (s && !s.want && weightOf(s) < eps) slots[i] = null;
+    }
+    const held = new Set(slots.filter(Boolean).map(s => s.id));
+    for (const x of [...wanted].sort((a, b) => b.w - a.w)) {
+      if (held.has(x.id)) continue;
+      const free = slots.findIndex(s => !s || (!s.want && weightOf(s) < eps * 4));
+      if (free < 0) break;
+      slots[free] = { id: x.id, want: x, sm: 0, gains: [0, 0, 0, 0], logF: Math.log2(x.f), phase: 0 };
+      held.add(x.id);
+    }
+  }
 
   function create(canvas) {
     const gl = canvas.getContext('webgl', { antialias: true });
@@ -99,10 +124,11 @@ void main(){
     resize();
 
     let cfg = null, centers = [];
-    let S = { gains: [1, 0, 0, 0], cents: 0, W: 0, fpAmp: 1, breathPhase: 0,
-              pitch: 220, ratios: [1, 2.07, 3.2, 4.4], peers: [], color: [1, 1, 1] };
-    let visW = [], visDensity = null, visPeerE = new Map(), beatPhases = new Map(), visLogF = null;
-    let visCol = [1, 1, 1];
+    // voices: [{id, f, w, gains}] sounding here; peers: [{id, e, freq}]
+    let S = { voices: [], peers: [], W: 0, fpAmp: 1, breathPhase: 0,
+              ratios: [1, 2.07, 3.2, 4.4], color: [1, 1, 1] };
+    let layers = new Array(LAYERS).fill(null), peers = new Array(PEERS).fill(null);
+    let visDensity = null, visCol = [1, 1, 1];
     let lastT = null;
 
     function frame(ms) {
@@ -113,13 +139,23 @@ void main(){
       lastT = t;
       const alpha = tau => 1 - Math.exp(-dt / tau);
 
-      // the ring change: the phone's voice is handed on, so glide its pitch
-      const logF = Math.log2(S.pitch);
-      visLogF = visLogF === null ? logF : visLogF + (logF - visLogF) * alpha(0.6);
-      const pitch = Math.pow(2, visLogF);
+      // own field: voice layers crossfade by share
+      assignSlots(layers, S.voices, l => l.sm, 0.01);
+      let wSum = 0;
+      for (const l of layers) {
+        if (!l) continue;
+        const tw = l.want ? l.want.w : 0;
+        l.sm += (tw - l.sm) * alpha(1.2);   // slow next to a handoff (~5–8 s), never a jolt
+        if (l.want) l.logF += (Math.log2(l.want.f) - l.logF) * alpha(1.0);
+        for (let p = 0; p < 4; p++) l.gains[p] += ((l.want ? l.want.gains[p] : l.gains[p]) - l.gains[p]) * alpha(0.6);
+        wSum += l.sm;
+      }
+      const norm = wSum > 1e-3 ? 1 / wSum : 0;
+      let lead = null;
+      for (const l of layers) if (l && (!lead || l.sm > lead.sm)) lead = l;
+      const fMe = lead ? Math.pow(2, lead.logF) : 220;
 
-      const fMe = pitch * Math.pow(2, S.cents / 1200);
-      const meC = [], meLam = [], meW = [];
+      const meC = [], meLam = new Array(12).fill(1), meW = new Array(12).fill(0);
       for (let k = 0; k < 6; k++) {
         const c = centers[k];
         let x = c.x + 0.06 * Math.sin(t * c.rate + c.wob);
@@ -127,29 +163,31 @@ void main(){
         x *= S.fpAmp; y *= S.fpAmp;   // final-gong convergence (§14.1)
         meC.push(x, y);
         const spec = srcSpec[k];
-        meLam.push(lamFor(pitch * S.ratios[spec.pk]));
-        const target = (S.gains[spec.pk] ?? 0) * spec.w;
-        visW[k] = (visW[k] ?? 0) + (target - (visW[k] ?? 0)) * alpha(0.2);
-        meW.push(visW[k]);
+        for (let L = 0; L < LAYERS; L++) {
+          const l = layers[L];
+          if (!l) continue;
+          meLam[L * 6 + k] = lamFor(Math.pow(2, l.logF) * S.ratios[spec.pk]);
+          meW[L * 6 + k] = l.gains[spec.pk] * spec.w * l.sm * norm;
+        }
       }
 
+      // peers: persistent slots, slow fades, drift at the audible beat
+      assignSlots(peers, S.peers.map(p => ({ ...p, w: p.e, f: p.freq })), p => p.sm, 0.01);
       const peerC = [], peerLam = [], peerW = [], peerPhase = [];
-      for (let j = 0; j < 3; j++) {
-        const p = S.peers[j];
-        if (p) {
-          const eKey = p.id;
-          visPeerE.set(eKey, (visPeerE.get(eKey) ?? 0) + (p.e - (visPeerE.get(eKey) ?? 0)) * alpha(0.3));
-          const e = visPeerE.get(eKey);
-          const ang = (fnv1a(`${p.id}|azimuth`) % 6283) / 1000;
-          const rad = 1.9 - 0.7 * e;
-          peerC.push(Math.cos(ang) * rad, Math.sin(ang) * rad);
-          peerLam.push(lamFor(p.freq));
-          peerW.push(e);
-          const beat = 1.2 * Math.tanh(pairBeatHz(fMe, p.freq, S.ratios) / 1.2);
-          const ph = (beatPhases.get(p.id) ?? 0) + 2 * Math.PI * beat * dt;
-          beatPhases.set(p.id, ph);
-          peerPhase.push(ph);
-        } else { peerC.push(9, 9); peerLam.push(1); peerW.push(0); peerPhase.push(0); }
+      for (let j = 0; j < PEERS; j++) {
+        const p = peers[j];
+        if (!p) { peerC.push(9, 9); peerLam.push(1); peerW.push(0); peerPhase.push(0); continue; }
+        p.sm += ((p.want ? p.want.e : 0) - p.sm) * alpha(1.5);
+        if (p.want) p.logF += (Math.log2(p.want.freq) - p.logF) * alpha(1.0);
+        const freq = Math.pow(2, p.logF);
+        const ang = (fnv1a(`${p.id}|azimuth`) % 6283) / 1000;
+        const rad = 1.9 - 0.7 * p.sm;
+        peerC.push(Math.cos(ang) * rad, Math.sin(ang) * rad);
+        peerLam.push(lamFor(freq));
+        peerW.push(p.sm);
+        const beat = 1.2 * Math.tanh(pairBeatHz(fMe, freq, S.ratios) / 1.2);
+        p.phase += 2 * Math.PI * beat * dt;
+        peerPhase.push(p.phase);
       }
 
       const densTarget = 2 + 2 * S.W;
@@ -189,10 +227,12 @@ void main(){
           return { x: Math.cos(ang) * rad, y: Math.sin(ang) * rad,
                    wob: r() * Math.PI * 2, rate: 0.03 + r() * 0.04 };
         });
-        visW = []; visPeerE = new Map(); beatPhases = new Map(); visDensity = null; visLogF = null;
-        visCol = [1, 1, 1];
+        layers = new Array(LAYERS).fill(null); peers = new Array(PEERS).fill(null);
+        visDensity = null; visCol = [1, 1, 1];
       },
       update(s) { S = s; },
+      // for tests: the smoothed weights in each slot
+      debug() { return { layers: layers.map(l => l && { id: l.id, sm: l.sm }), peers: peers.map(p => p && { id: p.id, sm: p.sm }) }; },
     };
   }
 
