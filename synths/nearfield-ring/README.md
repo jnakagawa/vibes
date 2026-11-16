@@ -9,9 +9,137 @@ clock, and plays only the voices passing through its position.
 - `play.html` — what each phone opens (`#t=<topic>&pos=<n>&s=<state>`)
 - `ring-core.js` — the piece (deterministic; tested in `test/`)
 - `ring-live.js` — live control via a public ntfy.sh topic + clock check
-- `ring-audio.js` — per-phone synthesis and voicing chain
+- `ring-audio.js` — per-phone synthesis, the air layer, and the host's headphone monitor
 - `qr.js` — tiny QR encoder (no CDN)
 - `config/` — tuning, voicing and score, copied from `nearfield-ios/config`
+
+## Composing on headphones
+
+**Listen on headphones → listen to the whole ring** on the host renders every
+position around your head (with the time sound takes to reach you), so the
+piece can be shaped without setting out phones. It plays on the host only.
+
+### What stays gamelan
+
+The piece borrows gamelan's structure, and these parts are the core:
+
+- **Tuning** — by default the stretched octave (2.07) with bell-like partials
+  and a scale grown from that sound, the way a gamelan's tuning follows its
+  metal. **Slendro** (five equal steps of the stretched octave) is one switch
+  away. *Pure* (true octaves, harmonics) is the other end of the tuning dial.
+- **Beating (ombak)** — neighboring phones are tuned as a pair, one slightly
+  high and one slightly low, like pengumbang and pengisep, so each tone swells
+  and fades in the air between them.
+- **Nested cycles** — layers turn at 1 : 2 : 4, and the foundation's root
+  swells at each turn like a gong marking the cycle.
+- **The score** — buka, cycles, the turning, final gong.
+
+### The dials
+
+Eleven dials, each with a live picture of what it does:
+
+| Group | Dial | What it changes |
+|---|---|---|
+| Tuning and beating | **tuning** | gamelan (stretched) ↔ pure; switch for 4 tones / slendro |
+| | **beating** | how long each wave between paired phones takes |
+| Voice | **choir** | one exact pitch ↔ a small group drifting around it |
+| | **bronze** | bell overtones blooming as a tone arrives, then fading |
+| | **vowel** | which vowel the tones sing (oo → ee), and how strongly |
+| | **dark** | how much of the top is rolled off |
+| | **glints** | faint high harmonics twinkling above |
+| Motion | **turning** | seconds for the sound to go once round the ring |
+| | **width** | a point between two phones ↔ a cloud over several |
+| | **weave** | how many tones rest at a time, and how often they hand over |
+| | **drift** | layers turning together ↔ each at its own speed |
+
+Mix has four levels (foundation, tones, high tones, phone volume). Everything
+else is under **more settings**.
+
+### The weave
+
+The sound never stops; relief comes from *which* tones are sounding. Time runs
+in phrases, and at each **turn** a few tones hand over to others — the new ones
+arrive before the old ones have left — while the anchors and the foundation's
+deep root never leave. The foundation's color (one degree, two octaves down)
+changes at the turns too, and its root swells slightly to mark them. **Space**
+sets how many tones are resting at any time; **turn every** sets the phrase
+length. This follows a full track of *Incandescence*, which keeps a 6 dB
+loudness range for ten minutes while trading tones roughly every 80 seconds.
+
+### Keeping close tones from grating
+
+Sustained tones a step apart grate. Gamelan avoids it by damping (a player
+stops the last key when striking the next), by sounding together only tones
+on the scale's consonances, and by keeping the low register nearly empty. The
+weave does the same in every scale:
+
+- tones closer than about a minor third take turns: when one comes in, its
+  neighbor leaves first;
+- partners are sought on the consonant intervals (in slendro, three steps or
+  an octave; in our own scale, its derived intervals);
+- every tone comes round: the longer one has waited, the sooner it is due;
+- the foundation carries its root, its octaves and at most one color, an
+  octave under the tones and clear of the root's octaves.
+
+**Bronze** gives the color of a struck bar without the strike: as a tone
+arrives its bell partials bloom, then die away over seconds, the highest
+first, leaving the hum. Anchors flare the same way at each turn.
+
+### Vowels
+
+Each phone has a vowel: the one set on the dial, wandering a little so the
+choir never quite agrees. Every partial is weighted by how close it falls to
+that vowel's two formants (oo 300/870 Hz, oh 570/840, ah 730/1090, eh 530/1840,
+ee 270/2290); partials above 700 Hz that the vowel calls for go round the
+darkening filter with the glints.
+
+The shared vowel **travels**. On its own it wanders slowly around the vowel you
+set, changing about as often as the weave turns. With the score it follows an
+arc, a mouth opening over the piece: oo in the buka, through oh and ah, toward
+ee late in cycle II, closing again across the final gong.
+
+### Beating that evolves
+
+Left alone, every wave runs at one speed and the choir shimmers at one
+strength, which never lets up. Instead each tone's wave drifts slower and
+faster (about x0.7 to x1.5) over a couple of phrases, and the singers draw
+together into near-unison, leaving only the slow wave between paired phones,
+then spread into shimmer again. Part of that runs on a cycle the whole ring
+shares, so there are calm stretches for everyone. The foundation's waves drift
+the same way. `evolves` on the beating dial sets how much (0 = constant).
+
+### What may sustain up high
+
+Only octaves of scale tones. The top partial is tuned to the double octave
+(not the derived spectrum's 4.4), glints and vowel highs use only the octave
+partials, and the bell partial (3.2) appears only in the brief bronze bloom.
+Otherwise different tones' upper partials land a few hertz apart around
+1–1.5 kHz and beat 15–25 times a second.
+
+### Warmth (measured against Aleksi Perälä's *Incandescence*)
+
+- **Foundation** — a deep tone with its octaves and fifth (55 Hz up). Phones
+  cannot play it: put a real speaker in the middle and open the **center
+  speaker** link (position `P`) on whatever drives it. The headphone monitor
+  always includes it.
+- **Breathing** — neighboring phones play each partial a fraction of a hertz
+  apart, so wherever a tone sounds on two phones every partial swells and
+  fades between them over a few seconds, each at its own rate.
+- **Tuning** — *stretched* is the gamelan-derived scale with bell-like
+  partials; *pure* has true octaves, harmonics and just intervals, which fuse
+  into one warm sound.
+- **Choir** — each phone sings every tone as two voices that drift a few
+  cents around the note, each on its own, so a tone is a small group rather
+  than one exact pitch. The deep tones stay exact. In the album the bass is a
+  razor line while every tone above ~130 Hz is a band about 1% of its pitch
+  wide; this reproduces that.
+- **Glints** — the shimmer on top. Each tone's own harmonics (x2, x3, x4)
+  that land between about 1 and 2.5 kHz sound very faintly, outside the
+  darkening filter and mostly as reverb, each twinkling on its own cycle of one
+  to three seconds, differently on every phone. They follow the score's
+  fullness. This is the register phone speakers are best at.
+- **Softness** now rolls off much more steeply (24 dB per octave, down to
+  500 Hz). Air is off by default.
 
 ## Testing with a bunch of phones
 
