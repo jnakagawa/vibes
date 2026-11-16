@@ -12,7 +12,8 @@ const cfg = { scale: load('scale.json'), params: load('params.json'), score: loa
 
 const T0 = 1_800_000_000_000;
 // baseline for the handoff/score tests: every layer together, no tides, no air
-const PLAIN = { drift: 0, density: 1, L: { anchor: [1, 1, 1], voice: [1, 1, 1], shimmer: [1, 1, 1] }, air: [0, 1] };
+// (and the original stretched tuning, fingerprint and handoff bend)
+const PLAIN = { drift: 0, density: 1, L: { anchor: [1, 1, 1], voice: [1, 1, 1], shimmer: [1, 1, 1] }, air: [0, 1], pure: 0, fp: 12, bend: 10, bed: 0 };
 function ring(over = {}) {
   const r = new NR.Ring(cfg);
   r.setState({ ...NR.defaultState(T0), ...PLAIN, ...over });
@@ -222,7 +223,7 @@ test('air: bounded, silent in the pre-roll, strongest where it is passing', () =
 });
 
 test('beat depth scales fingerprint and bend together; 0 is perfectly in tune', () => {
-  const r = cycles({ beat: 0 });
+  const r = cycles({ beat: 0, rate: 0 });
   const fr = r.frame(T0 + 123_456);
   for (let k = 0; k < 8; k++) for (const p of r.playersAt(fr, k)) assert.ok(p.detune === 0);
 });
@@ -234,4 +235,55 @@ test('a pre-cycles link still plays: layers start from the shared rotation', () 
   const st = r.setState(old);
   assert.deepEqual(st.seg.lt0, [2.5, 2.5, 2.5, 2.5]);
   assert.ok(r.frame(T0 + 5000).voices.length === 6);
+});
+
+// --- warmth: tuning, breathing, foundation -------------------------------------------
+
+test('pure tuning: octaves of 2, harmonic partials, just intervals', () => {
+  const fr = cycles({ pure: 1 }).frame(T0 + 60_000);
+  assert.deepEqual(fr.ratios, [1, 2, 3, 4]);
+  const by = d => fr.voices.find(v => v.role === 'voice' && v.v % 4 === d).f0;
+  assert.ok(Math.abs(by(2) / 220 - 3 / 2) < 1e-4);
+  assert.ok(Math.abs(by(3) / 220 - 5 / 3) < 1e-4);
+  const sh = fr.voices.find(v => v.role === 'shimmer');
+  assert.ok(Math.abs(sh.f0 / (220 * Math.pow(2, [0, 498.045, 701.955, 884.359][sh.v % 4] / 1200)) - 2) < 1e-6);
+  // 0 leaves the stretched scale exactly as derived
+  const st = cycles({ pure: 0 }).frame(T0 + 60_000);
+  assert.deepEqual(st.ratios, cfg.scale.spectrum.ratios);
+});
+
+test('breathing: neighbors play each partial a fraction of a hertz apart', () => {
+  const r = cycles({ rate: 0.27, fp: 0, bend: 0 });
+  const fr = r.frame(T0 + 77_000);
+  let pairs = 0;
+  for (let k = 0; k < 8; k++) {
+    const here = r.playersAt(fr, k), next = r.playersAt(fr, (k + 1) % 8);
+    for (const a of here) {
+      const b = next.find(x => x.v === a.v);
+      if (!b) continue;
+      for (let j = 0; j < 4; j++) {
+        const f = a.vc.f0 * fr.ratios[j];
+        const beat = Math.abs(f * Math.pow(2, a.detunes[j] / 1200) - f * Math.pow(2, b.detunes[j] / 1200));
+        const want = r.beatHz(f);
+        assert.ok(beat > want * 0.7 && beat < want * 1.3, `partial ${j} at ${f.toFixed(0)} Hz beats ${beat.toFixed(3)} (law ${want.toFixed(3)})`);
+        pairs++;
+      }
+    }
+  }
+  assert.ok(pairs > 20);
+  // 210 Hz breathes about every 3.7 s; higher partials a little faster
+  assert.ok(Math.abs(r.beatHz(210) - 0.27) < 1e-9 && r.beatHz(475) > r.beatHz(210) && r.beatHz(475) < 0.5);
+});
+
+test('foundation: a deep octave stack for the middle only, silent before the score', () => {
+  const r = cycles();
+  const fr = r.frame(T0 + 30_000);
+  assert.equal(r.bedAt(fr, 3), null);
+  const bed = r.bedAt(fr, 'pedestal');
+  assert.ok(Math.abs(bed.parts[0].f - 55) < 1e-6 && Math.abs(bed.parts[1].f - 110) < 1e-6 && Math.abs(bed.parts[2].f - 82.5) < 0.01);
+  assert.ok(bed.parts.every(p => p.beat > 0.05 && p.beat < 0.6));
+  assert.ok(bed.parts[0].depth < bed.parts[1].depth, 'the bottom is steadier than what sits above it');
+  assert.ok(bed.lvl > 0.5);
+  assert.equal(cycles({ score: { start: T0 + 4000, comp: 1 } }).frame(T0 + 1000).bed.lvl, 0);
+  assert.equal(cycles({ bed: 0 }).frame(T0 + 30_000).bed.lvl, 0);
 });

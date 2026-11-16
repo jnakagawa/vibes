@@ -1,5 +1,7 @@
 // Sound for the ring.
 //
+// BedSynth    the foundation: a deep octave stack for a real speaker in the
+//             middle (and for the headphone monitor).
 // PhoneSynth  what one ring position plays: the voices passing through it
 //             (each a stack of 4 sine partials at this position's bend) and
 //             its share of the air (band-passed noise, its own per phone).
@@ -22,8 +24,8 @@
     param.setTargetAtTime(v, now, tau);
   }
 
-  // softness 0..1 -> lowpass cutoff (7 kHz open .. 2 kHz dark)
-  const softHz = s => 7000 * Math.pow(2000 / 7000, NR.clamp(s ?? 0.5, 0, 1));
+  // softness 0..1 -> lowpass cutoff (6 kHz open .. 500 Hz dark), 24 dB / octave
+  const softHz = s => 6000 * Math.pow(500 / 6000, NR.clamp(s ?? 0.6, 0, 1));
 
   // a few seconds of pink-ish noise, shared per context; each phone reads it
   // from its own random offset
@@ -62,22 +64,27 @@
     return ir;
   }
 
-  // shelf -> lowpass -> dry / reverb -> compressor -> master
+  // shelf -> lowpass x2 -> dry / reverb -> compressor -> master
   function voicingChain(ctx, T) {
     const sum = new GainNode(ctx, { gain: 1 });
     const shelf = new BiquadFilterNode(ctx, { type: 'highshelf', frequency: T.shelf_freq_hz, gain: T.shelf_gain_db });
     const lowpass = new BiquadFilterNode(ctx, { type: 'lowpass', frequency: T.lowpass_hz, Q: 0.5 });
+    const lowpass2 = new BiquadFilterNode(ctx, { type: 'lowpass', frequency: T.lowpass_hz, Q: 0.5 });
     const dry = new GainNode(ctx, { gain: Math.cos(T.reverb_wet * Math.PI / 2) });
     const wet = new GainNode(ctx, { gain: Math.sin(T.reverb_wet * Math.PI / 2) });
     const convolver = new ConvolverNode(ctx);
     convolver.buffer = reverbIR(ctx, T);
     const comp = new DynamicsCompressorNode(ctx, { threshold: -14, knee: 12, ratio: 4, attack: 0.01, release: 0.3 });
     const master = new GainNode(ctx, { gain: 0 });
-    sum.connect(shelf).connect(lowpass);
-    lowpass.connect(dry).connect(comp);
-    lowpass.connect(convolver).connect(wet).connect(comp);
+    sum.connect(shelf).connect(lowpass).connect(lowpass2);
+    lowpass2.connect(dry).connect(comp);
+    lowpass2.connect(convolver).connect(wet).connect(comp);
     comp.connect(master);
-    return { sum, lowpass, master };
+    const setSoft = (soft, now) => {
+      setT(lowpass.frequency, softHz(soft), now, 0.5, 5);
+      setT(lowpass2.frequency, softHz(soft), now, 0.5, 5);
+    };
+    return { sum, master, setSoft };
   }
 
   class PhoneSynth {
@@ -143,7 +150,7 @@
         const pg = NR.partialGains(this.params, vc.role, vc.f0, vc.bloom, fr.ratios, fr.amps);
         for (let j = 0; j < 4; j++) {
           setT(n.oscs[j].frequency, vc.f0 * fr.ratios[j], now, 1.5, 0.01);
-          setT(n.oscs[j].detune, p.detune, now, 0.08, 0.02);
+          setT(n.oscs[j].detune, p.detunes[j], now, 0.08, 0.002);
           setT(n.pGains[j].gain, pg[j], now, 0.3, 1e-3);
         }
         setT(n.bus.gain, g, now, 0.05, 1e-4);
@@ -178,6 +185,51 @@
       if (this.air) { try { this.air.src.stop(); } catch (_) {} this.air.gain.disconnect(); this.air = null; }
     }
   }
+  // The foundation: each part is two sines a fraction of a hertz apart, so it
+  // breathes; `trade` flips one of them toward one ear so some parts sway.
+  class BedSynth {
+    constructor(ctx, out) {
+      this.ctx = ctx;
+      this.gain = new GainNode(ctx, { gain: 0 });
+      this.merge = new ChannelMergerNode(ctx, { numberOfInputs: 2 });
+      this.merge.connect(this.gain);
+      this.gain.connect(out);
+      this.parts = [];
+    }
+    update(bed) {
+      const now = this.ctx.currentTime, ctx = this.ctx;
+      if (!bed || (bed.lvl < 1e-4 && !this.parts.length)) return;
+      bed.parts.forEach((p, i) => {
+        let n = this.parts[i];
+        if (!n) {
+          // tone a goes to both ears; tone b goes to the left as is and to
+          // the right scaled by (1 - 2 * trade) — flipped past 0.5 — so the
+          // two ears swell in turn (kept under 1 so one speaker still beats)
+          n = { a: new OscillatorNode(ctx, { type: 'sine', frequency: p.f }), b: new OscillatorNode(ctx, { type: 'sine', frequency: p.f }),
+            ga: new GainNode(ctx, { gain: 0 }), gbl: new GainNode(ctx, { gain: 0 }), gbr: new GainNode(ctx, { gain: 0 }) };
+          n.a.connect(n.ga); n.ga.connect(this.merge, 0, 0); n.ga.connect(this.merge, 0, 1);
+          n.b.connect(n.gbl); n.b.connect(n.gbr); n.gbl.connect(this.merge, 0, 0); n.gbr.connect(this.merge, 0, 1);
+          n.a.start(); n.b.start();
+          this.parts[i] = n;
+        }
+        const unit = p.g / (1 + p.depth);
+        setT(n.a.frequency, p.f - 0.5 * p.beat, now, 1.0, 1e-4);
+        setT(n.b.frequency, p.f + 0.5 * p.beat, now, 1.0, 1e-4);
+        setT(n.ga.gain, unit, now, 0.3, 1e-4);
+        setT(n.gbl.gain, unit * p.depth, now, 0.3, 1e-4);
+        setT(n.gbr.gain, unit * p.depth * (1 - 2 * p.trade), now, 0.3, 1e-4);
+      });
+      setT(this.gain.gain, bed.lvl * BED_GAIN, now, 0.4, 1e-4);
+    }
+    dispose() {
+      for (const n of this.parts) { try { n.a.stop(); n.b.stop(); } catch (_) {} }
+      this.gain.disconnect();
+      this.parts = [];
+    }
+  }
+  // set against the album's balance: the foundation carries most of the energy
+  const BED_GAIN = 2.2;
+
   // with the air fader at 1 and the air fully swelled, the air around the ring
   // is about as loud as the whole chord (measured through the monitor)
   const AIR_GAIN = 3;
@@ -198,6 +250,11 @@
       const resumed = ctx.resume();
       this.chain = voicingChain(ctx, this.params.timbre);
       this.synth = new PhoneSynth(ctx, this.params, this.chain.sum);
+      // only sounds on the device in the middle; trimmed so its stack of
+      // tones stays under full scale on one speaker
+      this.bedTrim = new GainNode(ctx, { gain: 0.2 });
+      this.bedTrim.connect(this.chain.sum);
+      this.bed = new BedSynth(ctx, this.bedTrim);
       this.analyser = new AnalyserNode(ctx, { fftSize: 512 });
       this.chain.master.connect(this.analyser);
       // play through an <audio> element (MediaStream): iOS treats the page as
@@ -224,18 +281,21 @@
       this.el?.play().catch(() => {});
     }
 
-    update(fr, players, vol, air) {
+    update(fr, players, vol, air, bed) {
       if (!this.ctx) return;
       const now = this.ctx.currentTime;
       setT(this.chain.master.gain, vol, now, 0.6, 1e-3);
-      setT(this.chain.lowpass.frequency, softHz(fr.soft), now, 0.5, 5);
+      this.chain.setSoft(fr.soft, now);
       this.synth.update(fr, players, air || null);
+      this.bed.update(bed || SILENT_BED);
       this.analyser.getFloatTimeDomainData(this._buf);
       let s = 0;
       for (const x of this._buf) s += x * x;
       this.level = Math.sqrt(s / this._buf.length);
     }
   }
+
+  const SILENT_BED = { lvl: 0, parts: [] };
 
   class RingMonitor {
     constructor(params) {
@@ -266,6 +326,7 @@
     }
 
     _dispose() {
+      if (this.bed) { this.bed.dispose(); this.bed = null; this.bedBus.disconnect(); }
       for (const s of this.slots) { s.synth.dispose(); s.panner.disconnect(); }
       this.slots = [];
       this.S = 0;
@@ -285,6 +346,11 @@
         input.connect(delay).connect(panner).connect(this.chain.sum);
         this.slots.push({ slot: k < S ? k : 'pedestal', delay, panner, synth: new PhoneSynth(ctx, this.params, input) });
       }
+      // the foundation comes from the speaker in the middle; low tones have
+      // no direction, so it goes straight to both ears
+      this.bedBus = new GainNode(ctx, { gain: 1 });
+      this.bedBus.connect(this.chain.sum);
+      this.bed = new BedSynth(ctx, this.bedBus);
       this.S = S;
     }
 
@@ -329,8 +395,12 @@
         const hasAir = s.slot !== 'pedestal' || st.anchors === 'pedestal';
         s.synth.update(fr, ring.playersAt(fr, s.slot), hasAir ? ring.airAt(fr, s.slot) : null);
       }
+      // quieter with distance, like the phones
+      const dBed = Math.max(0.5, Math.hypot(lx, lz, phoneH - earH));
+      setT(this.bedBus.gain, 0.5 / dBed, now, 0.1, 1e-3);
+      this.bed.update(fr.bed);
       setT(this.chain.master.gain, opts.vol * st.vol * 0.8, now, 0.3, 1e-3);
-      setT(this.chain.lowpass.frequency, softHz(fr.soft), now, 0.5, 5);
+      this.chain.setSoft(fr.soft, now);
       this.analyser.getFloatTimeDomainData(this._buf);
       let sum = 0;
       for (const v of this._buf) sum += v * v;

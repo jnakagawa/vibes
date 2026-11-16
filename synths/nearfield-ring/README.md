@@ -33,6 +33,21 @@ The piece is layers of slow cycles that never quite line up:
 The line under the ring shows each layer's seconds per turn and how many tones
 the tides have up.
 
+### Warmth (measured against Aleksi Perälä's *Incandescence*)
+
+- **Foundation** — a deep tone with its octaves and fifth (55 Hz up). Phones
+  cannot play it: put a real speaker in the middle and open the **center
+  speaker** link (position `P`) on whatever drives it. The headphone monitor
+  always includes it.
+- **Breathing** — neighboring phones play each partial a fraction of a hertz
+  apart, so wherever a tone sounds on two phones every partial swells and
+  fades between them over a few seconds, each at its own rate.
+- **Tuning** — *stretched* is the gamelan-derived scale with bell-like
+  partials; *pure* has true octaves, harmonics and just intervals, which fuse
+  into one warm sound.
+- **Softness** now rolls off much more steeply (24 dB per octave, down to
+  500 Hz). Air is off by default.
+
 ## Testing with a bunch of phones
 
 1. On a laptop, open **host.html** (from the vibes page: *nearfield_ring → HOST A RING*).

@@ -177,17 +177,20 @@
       period: 60,                    // seconds per turn when not locked
       breath: 60,                    // breath period outside the score
       // layers: [level, width in positions, 1 with / -1 against the rotation]
-      L: { anchor: [1, 1.5, 1], voice: [1, 1.5, 1], shimmer: [1, 1.25, -1] },
-      air: [0.35, -1],               // [level, with / against]
+      L: { anchor: [0.8, 1.5, 1], voice: [0.7, 1.5, 1], shimmer: [0.3, 1.25, -1] },
+      air: [0, -1],                  // [level, with / against] — off by default
+      bed: 0.8,                      // the foundation (center speaker) level
+      pure: 1,                       // tuning: 0 = stretched (gamelan) .. 1 = pure octaves
+      rate: 0.27,                    // breathing: beat rate (Hz) of a partial at 210 Hz
       ratios: 'nested',              // layer cycle ratios: nested 1:2:4 | prime 5:7:11
       drift: 0.6,                    // 0 = every cycle together .. 1 = fully apart
-      density: 0.6,                  // share of the chord sounding at once (tides)
+      density: 0.5,                  // share of the chord sounding at once (tides)
       tide: 50,                      // a voice's swell cycle, seconds
-      soft: 0.5,                     // darker + slower edges
+      soft: 0.68,                    // darker + slower edges
       beat: 1,                       // scales fingerprint + handoff bend
-      bend: 10,                      // ± cents a position bends at a turn/min
-      bloom: 0.5,                    // partial richness (phones like partials)
-      fp: 12,                        // fingerprint max cents
+      bend: 0,                       // ± cents a position bends at a turn/min
+      bloom: 0.3,                    // partial richness
+      fp: 4,                         // fingerprint max cents
       ombak: 1,
       anchors: 'lift',               // lift | phones | pedestal
       vol: 1,
@@ -205,6 +208,8 @@
     return out;
   }
 
+  const PURE_CENTS = [0, 498.045, 701.955, 884.359];   // 1, 4/3, 3/2, 5/3
+  const hash01 = s => (fnv1a(s) % 100000) / 100000;
   const LAYER_INDEX = { anchor: 0, voice: 1, shimmer: 2, air: 3 };
   const RATIOS = { nested: [0.5, 1, 2, 0.25], prime: [5 / 7, 1, 11 / 7, 3 / 7] };
 
@@ -411,11 +416,16 @@
       const scaleNow = c.stretch !== null && this.drift
         ? interpolateScale(this.drift, c.stretch)
         : { scale_cents: this.scale.scale_cents, spectrum: this.scale.spectrum, stretch: this.scale.pseudo_octave_ratio };
+      // tuning: blend the stretched (gamelan-derived) scale toward its pure
+      // counterpart — octave 2, harmonic partials, and the just intervals the
+      // same dissonance-curve method lands on for a harmonic tone
+      const pu = clamp(st.pure, 0, 1), mix = (a, b) => a + (b - a) * pu;
       const es = {
         base_freq_hz: this.scale.base_freq_hz,
-        pseudo_octave_ratio: scaleNow.stretch ?? scaleNow.spectrum.ratios[1],
-        scale_cents: scaleNow.scale_cents,
+        pseudo_octave_ratio: mix(scaleNow.stretch ?? scaleNow.spectrum.ratios[1], 2),
+        scale_cents: scaleNow.scale_cents.map((c, i) => mix(c, PURE_CENTS[i] ?? c)),
       };
+      const partialRatios = scaleNow.spectrum.ratios.map((r, i) => mix(r, i + 1));
       const factor = clamp(Math.abs(rate) * 60, 0, 1.5);   // 1 = a turn a minute
       const breathG = 1 + this.params.breath.ensemble_depth * Math.sin(phase);
       const gongAge = c.sT === null ? Infinity : c.sT - this.score.lastEventAt(c.sT);
@@ -478,12 +488,23 @@
         q: 2.5,
       };
 
+      // Foundation: a deep tone with its octaves and fifth, for a real speaker
+      // in the middle (phones cannot play it). Each part is a pair of tones a
+      // fraction of a hertz apart, so it breathes; the root's pair is uneven,
+      // which keeps the bottom steadier than what sits above it.
+      const O = es.pseudo_octave_ratio, root = pitchHzFor(es, 0, -2), fifth = pitchHzFor(es, 2, -2);
+      const bed = {
+        lvl: st.bed * c.masterM * (0.85 + 0.15 * Math.sin(phase + 1)),
+        parts: [[root, 1, 0.35, 0], [root * O, 0.45, 0.85, 0.75], [fifth, 0.35, 0.85, 0.6], [root * O * O, 0.2, 0.85, 0], [fifth * O, 0.14, 0.85, 0.4]]
+          .map(([f, g, depth, trade], i) => ({ f, g, depth, trade, beat: this.beatHz(f) * (0.8 + 0.4 * hash01(`${st.seed}|bed|${i}`)) })),
+      };
+
       const absRate = Math.abs(rate);
       return {
         tMs, sT: c.sT, label: c.sT === null ? null : (c.sT < 0 ? 'pre-roll' : (c.sT > this.score.duration ? 'end' : this.score.labelAt(c.sT))),
         comp: c.comp, turns, rate, factor, phase, stretch: c.stretch, amDepth: c.amDepth, fpAmp: c.fpAmp,
-        ratios: scaleNow.spectrum.ratios, amps: this.scale.spectrum.amps,
-        ct: adv.ct, lt: adv.lt, soft: st.soft, air,
+        ratios: partialRatios, amps: this.scale.spectrum.amps,
+        ct: adv.ct, lt: adv.lt, soft: st.soft, air, bed,
         // seconds per turn of each layer [anchor, voice, shimmer, air] (signed)
         periods: this.speeds.map(s => absRate < 1e-5 ? Infinity : 1 / (rate * s)),
         voices,
@@ -500,6 +521,12 @@
       return { g: a.lvl * (floor + (1 - floor) * lift), freq: a.freq, q: a.q };
     }
 
+    // beat rate (Hz) for a tone at f: slow, rising gently with pitch
+    beatHz(f) { return this.state.rate * Math.pow(f / 210, 0.6); }
+
+    // the foundation, for the device in the middle
+    bedAt(fr, slot) { return slot === 'pedestal' ? fr.bed : null; }
+
     // What one position plays: each voice with a share here, its gain and its
     // detune (fingerprint + this position's handoff bend, fading as the voice
     // arrives). slot = 'pedestal' plays the anchors in the middle.
@@ -508,7 +535,7 @@
       const out = [];
       for (const vc of fr.voices) {
         if (slot === 'pedestal') {
-          if (vc.role === 'anchor' && st.anchors === 'pedestal') out.push({ v: vc.v, vc, g: 1, detune: vc.fp });
+          if (vc.role === 'anchor' && st.anchors === 'pedestal') out.push({ v: vc.v, vc, g: 1, detune: vc.fp, detunes: [vc.fp, vc.fp, vc.fp, vc.fp] });
           continue;
         }
         if (vc.role === 'anchor' && st.anchors === 'pedestal') continue;
@@ -519,7 +546,18 @@
         // the peak share its width allows)
         const tension = st.bend * st.beat * ombakScale(vc.f0, this.params, st.ombak) * fr.factor;
         const g1 = Math.min(1, g / vc.peak);
-        out.push({ v: vc.v, vc, g, detune: vc.fp + this.positionOffset(slot) * tension * (1 - g1 * g1) });
+        const shared = vc.fp + this.positionOffset(slot) * tension * (1 - g1 * g1);
+        // Breathing: neighboring positions play each partial a fraction of a
+        // hertz apart (alternating above / below), so wherever a tone sounds
+        // on two phones every partial beats slowly between them, each at its
+        // own rate.
+        const side = slot % 2 === 0 ? 0.5 : -0.5;
+        const detunes = fr.ratios.map((r, j) => {
+          const f = vc.f0 * r;
+          const off = side * this.beatHz(f) * (0.75 + 0.5 * hash01(`${st.seed}|${slot}|${vc.v}|${j}`));
+          return shared + 1200 * Math.log2(1 + off / f);
+        });
+        out.push({ v: vc.v, vc, g, detune: detunes[0], detunes });
       }
       return out;
     }

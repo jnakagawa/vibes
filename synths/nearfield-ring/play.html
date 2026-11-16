@@ -81,10 +81,10 @@
   <div class="mono dim" id="cStatus" style="font-size:11px"></div>
 </div>
 
-<script src="ring-core.js?v=2"></script>
-<script src="ring-live.js?v=2"></script>
-<script src="ring-audio.js?v=2"></script>
-<script src="ring-visual.js?v=2"></script>
+<script src="ring-core.js?v=3"></script>
+<script src="ring-live.js?v=3"></script>
+<script src="ring-audio.js?v=3"></script>
+<script src="ring-visual.js?v=3"></script>
 <script>
 'use strict';
 const NR = window.NearfieldRing;
@@ -147,13 +147,11 @@ function buildGrid() {
     b.onclick = () => choose(k);
     g.appendChild(b);
   }
-  if (app.state.anchors === 'pedestal') {
-    const b = document.createElement('button');
-    b.className = 'wide';
-    b.textContent = 'PEDESTAL (anchors, center)';
-    b.onclick = () => choose('pedestal');
-    g.appendChild(b);
-  }
+  const b = document.createElement('button');
+  b.className = 'wide';
+  b.textContent = 'CENTER SPEAKER (foundation)';
+  b.onclick = () => choose('pedestal');
+  g.appendChild(b);
 }
 
 function choose(slot) {
@@ -300,7 +298,7 @@ function tick() {
   if (!app.state || !app.playing) return;
   const fr = app.ring.frame(now());
   const players = app.ring.playersAt(fr, app.slot);
-  app.audio.update(fr, players, app.muted ? 0 : app.state.vol, app.ring.airAt(fr, app.slot));
+  app.audio.update(fr, players, app.muted ? 0 : app.state.vol, app.ring.airAt(fr, app.slot), app.ring.bedAt(fr, app.slot));
   const v = visualState(fr);
   app.visual?.update(v.vis);
   app.lastColor = v.vis.color;
@@ -310,10 +308,11 @@ function tick() {
 const mmss = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 function renderChrome(fr, v) {
   const me = v.me, vc = me.vc;
-  $('cBuild').textContent = app.slot === 'pedestal' ? 'the ring · pedestal' : `the ring · position ${posLabel(app.slot)} of ${app.state.S}`;
+  $('cBuild').textContent = app.slot === 'pedestal' ? 'the ring · center speaker' : `the ring · position ${posLabel(app.slot)} of ${app.state.S}`;
   $('cScore').textContent = fr.sT === null ? '' : fr.sT < 0 ? `starts in ${Math.ceil(-fr.sT / fr.comp)} s` : `${fr.label} · ${mmss(Math.min(fr.sT, 960))}`;
-  $('cRole').textContent = vc.role.toUpperCase();
-  $('cHz').textContent = `${vc.f0.toFixed(1)} Hz`;
+  const center = app.slot === 'pedestal';
+  $('cRole').textContent = center ? 'FOUNDATION' : vc.role.toUpperCase();
+  $('cHz').textContent = `${(center ? fr.bed.parts[0].f : vc.f0).toFixed(1)} Hz`;
   $('cMeta').textContent = `position ${posLabel(app.slot)} · degree ${app.ring.voices[vc.v].degreeIndex} · performance ${app.state.seed}`;
   const others = v.here.filter(p => p !== me);
   const hand = others.length ? `handoff ${Math.round(100 * Math.min(...others.map(p => p.g * p.g)))}%` : 'solo';
@@ -332,7 +331,7 @@ $('mute').onclick = e => {
 };
 $('changePos').onclick = e => {
   e.stopPropagation();
-  const p = prompt(`Position (1–${app.state.S}${app.state.anchors === 'pedestal' ? ', or P for the pedestal' : ''})`, posLabel(app.slot));
+  const p = prompt(`Position (1–${app.state.S}, or P for the center speaker)`, posLabel(app.slot));
   const s = parsePos(p);
   if (s !== null && (s === 'pedestal' || s < app.state.S)) choose(s);
 };
