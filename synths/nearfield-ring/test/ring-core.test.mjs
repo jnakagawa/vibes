@@ -13,7 +13,7 @@ const cfg = { scale: load('scale.json'), params: load('params.json'), score: loa
 const T0 = 1_800_000_000_000;
 // baseline for the handoff/score tests: every layer together, no tides, no air
 // (and the original stretched tuning, fingerprint and handoff bend)
-const PLAIN = { drift: 0, density: 1, L: { anchor: [1, 1, 1], voice: [1, 1, 1], shimmer: [1, 1, 1] }, air: [0, 1], pure: 0, fp: 12, bend: 10, bed: 0, space: 0, stack: 0, choir: 0, glint: 0, voice: 0, bronze: 0, vowelTravel: 0 };
+const PLAIN = { drift: 0, density: 1, L: { anchor: [1, 1, 1], voice: [1, 1, 1], shimmer: [1, 1, 1] }, air: [0, 1], pure: 0, fp: 12, bend: 10, bed: 0, space: 0, stack: 0, choir: 0, glint: 0, voice: 0, bronze: 0, vowelTravel: 0, beatMove: 0 };
 function ring(over = {}) {
   const r = new NR.Ring(cfg);
   r.setState({ ...NR.defaultState(T0), ...PLAIN, ...over });
@@ -237,7 +237,7 @@ test('pure tuning: octaves of 2, harmonic partials, just intervals', () => {
 });
 
 test('breathing: neighbors play each partial a fraction of a hertz apart', () => {
-  const r = cycles({ rate: 0.27, fp: 0, bend: 0, choir: 0 });
+  const r = cycles({ rate: 0.27, fp: 0, bend: 0, choir: 0, beatMove: 0 });
   const fr = r.frame(T0 + 77_000);
   let pairs = 0;
   for (let k = 0; k < 8; k++) {
@@ -343,7 +343,7 @@ test('octave stacking gives the ring more pitches to trade', () => {
 // --- choir ---------------------------------------------------------------------------
 
 test('choir: two singers per phone, drifting a few cents; the bottom stays exact', () => {
-  const r = cycles({ fp: 0, bend: 0, rate: 0 });
+  const r = cycles({ fp: 0, bend: 0, rate: 0, beatMove: 0 });
   const seen = new Map();
   for (let t = T0; t < T0 + 600_000; t += 500) {
     const fr = r.frame(t);
@@ -614,4 +614,28 @@ test('vowels evolve: a slow wander on its own, an opening-and-closing arc with t
   // everyone agrees on the shared vowel
   const p = cycles({ score: { start: T0, comp: 1 } }), q = cycles({ score: { start: T0, comp: 1 } });
   assert.equal(p.frame(T0 + 300_000).vowel, q.frame(T0 + 300_000).vowel);
+});
+
+test('beating evolves: waves drift in speed, the choir draws together and spreads, with calm stretches', () => {
+  const r = cycles({ fp: 0, bend: 0 });
+  const rates = [], spread = [], all = [];
+  for (let t = T0; t < T0 + 2400_000; t += 2000) {
+    const fr = r.frame(t);
+    const v = fr.voices.find(x => x.role === 'voice');
+    rates.push(v.beatMul); spread.push(v.choirMul);
+    all.push(fr.voices.reduce((a, x) => a + x.choirMul, 0) / fr.voices.length);
+    for (const x of fr.voices) assert.ok(x.choirMul >= 0 && x.choirMul <= 1.4 && x.beatMul > 0.55 && x.beatMul < 1.8);
+  }
+  assert.ok(Math.max(...rates) / Math.min(...rates) > 1.8, 'a wave speeds up and slows down');
+  assert.ok(Math.min(...spread) < 0.2 && Math.max(...spread) > 0.9, `one tone's choir goes from near-unison to full: ${Math.min(...spread).toFixed(2)}..${Math.max(...spread).toFixed(2)}`);
+  // calm stretches for the whole ring, not just one tone
+  assert.ok(Math.min(...all) < 0.25 && Math.max(...all) > 0.7, `ring-wide: ${Math.min(...all).toFixed(2)}..${Math.max(...all).toFixed(2)}`);
+  // slowly
+  let step = 0; for (let i = 1; i < spread.length; i++) step = Math.max(step, Math.abs(spread[i] - spread[i - 1]));
+  assert.ok(step < 0.2, `largest change in 2 s: ${step}`);
+  // the foundation's waves drift too, and 0 keeps everything constant
+  const f = [0, 400_000, 900_000].map(d => r.frame(T0 + 2400_000 + d).bed.parts[1].beat);
+  assert.ok(new Set(f.map(x => x.toFixed(3))).size > 1);
+  const still = cycles({ beatMove: 0 }).frame(T0 + 99_000);
+  assert.ok(still.voices.every(x => x.beatMul === 1 && x.choirMul === 1));
 });

@@ -197,6 +197,7 @@
       vowel: 0.4,                    // which vowel: 0 oo .. 0.25 oh .. 0.5 ah .. 0.75 eh .. 1 ee
       vowelMove: 0.5,                // how far each phone's vowel wanders around it
       vowelTravel: 0.6,              // how far the shared vowel journeys over time (0 = held)
+      beatMove: 0.8,                 // how much the beating comes and goes and drifts in speed (0 = constant)
       soft: 0.68,                    // darker + slower edges
       beat: 1,                       // scales fingerprint + handoff bend
       bend: 0,                       // ± cents a position bends at a turn/min
@@ -636,6 +637,7 @@
             : 0.5 + 0.5 * Math.sin(phase + 2 * Math.PI * ai / Math.max(anchors.length, 1));
         }
         // anchors hold (they breathe); the other tones come and go at the turns
+        const ev = this.beatEvolve(vc.v, adv.ct);
         const tide = vc.group < 0 ? 1 : this._groupGate(vc.group, u, vc.stagger);
         // Bronze: a struck bar's bell partials flare and die away while the
         // hum stays. Here the strike is stretched out: as a tone arrives its
@@ -649,6 +651,7 @@
         const shares = windowShares(posU, w).map(([iU, g]) => ({ slot: wrap(iU, S), g }));
         return {
           v: vc.v, role: vc.role, f0, level, tide, flare, posU, pos: wrap(posU, S), shares, peak: peaks[vc.role],
+          beatMul: ev.rate, choirMul: ev.choir,
           color: voiceColor(f0, vc.role, this.scale.base_freq_hz, es.pseudo_octave_ratio),
           fp: this.fingerprint(vc.v, vc.role, f0, tMs, c.fpAmp),
           bloom: vc.role === 'anchor' ? 0.35 : st.bloom * c.bloomM,
@@ -686,7 +689,7 @@
       const bed = {
         lvl: st.bed * c.masterM * (0.85 + 0.15 * Math.sin(phase + 1)),
         parts: [[root, 1 + 0.3 * bump, 0.35, 0], [root * O, 0.45, 0.85, 0.75], [root * O * O, 0.2, 0.85, 0], ...colorParts]
-          .map(([f, g, depth, trade], i) => ({ f, g, depth, trade, beat: this.beatHz(f) * (0.8 + 0.4 * hash01(`${st.seed}|bed|${i}`)) })),
+          .map(([f, g, depth, trade], i) => ({ f, g, depth, trade, beat: this.beatHz(f) * this.beatEvolve(`bed${i}`, adv.ct).rate * (0.8 + 0.4 * hash01(`${st.seed}|bed|${i}`)) })),
       };
       const groupsIn = this.groups.filter((g, i) => this._groupGate(i, u, 0) > 0.5).length;
 
@@ -715,6 +718,25 @@
       let d = Math.abs(slot - a.pos); d = Math.min(d, S - d);
       const lift = d < sw ? Math.pow(Math.cos(Math.PI * d / (2 * sw)), 2) : 0;
       return { g: a.lvl * (floor + (1 - floor) * lift), freq: a.freq, q: a.q };
+    }
+
+    // Beating that evolves. Left alone, every wave runs at one speed and the
+    // choir shimmers at one strength, forever. Instead, per tone:
+    //   rate   the wave between paired phones drifts slower and faster
+    //          (about x0.7 to x1.5) over a couple of phrases
+    //   choir  the singers draw together into near-unison, leaving only the
+    //          slow wave, then spread into shimmer again — partly on a cycle
+    //          the whole ring shares, so there are calm stretches for everyone
+    // `beatMove` is how much of this happens (0 = constant, as before).
+    beatEvolve(id, ct) {
+      const st = this.state, m = clamp(st.beatMove, 0, 1);
+      if (m <= 0) return { rate: 1, choir: 1 };
+      const r = mulberry32(fnv1a(`${st.seed}|${id}|beatmove`)), P = Math.max(20, st.phrase), TAU = 2 * Math.PI;
+      const rate = Math.pow(2, 0.7 * m * Math.sin(TAU * ct / (P * (1.9 + 1.2 * r())) + TAU * r()));
+      const shared = 0.04 + 0.96 * (0.5 + 0.5 * Math.sin(TAU * ct / (P * 1.7) + (fnv1a(`${st.seed}|calm`) % 628) / 100));
+      const own = 0.3 + 0.7 * (0.5 + 0.5 * Math.sin(TAU * ct / (P * (0.9 + 0.9 * r())) + TAU * r()));
+      // as a power, so the calm stretches stay calm at any setting short of 0
+      return { rate, choir: Math.pow(shared * own * 1.3, m) };
     }
 
     // beat rate (Hz) for a tone at f: slow, rising gently with pitch
@@ -750,13 +772,13 @@
         const side = slot % 2 === 0 ? 0.5 : -0.5;
         const detunes = fr.ratios.map((r, j) => {
           const f = vc.f0 * r;
-          const off = side * this.beatHz(f) * (0.75 + 0.5 * hash01(`${st.seed}|${slot}|${vc.v}|${j}`));
+          const off = side * this.beatHz(f) * vc.beatMul * (0.75 + 0.5 * hash01(`${st.seed}|${slot}|${vc.v}|${j}`));
           return shared + 1200 * Math.log2(1 + off / f);
         });
         // Choir: two singers per phone on each tone, each drifting on its own
         const nS = st.choir > 0 ? 2 : 1, singers = [];
         for (let k = 0; k < nS; k++) {
-          const c = this.singerCents(slot, vc.v, k, vc.f0, fr.tMs);
+          const c = this.singerCents(slot, vc.v, k, vc.f0, fr.tMs) * vc.choirMul;
           singers.push({ g: 1 / Math.sqrt(nS), detunes: detunes.map(d => d + c) });
         }
         const vw = this.vowelGains(slot, vc, fr), gl = this.glints(slot, vc, fr);

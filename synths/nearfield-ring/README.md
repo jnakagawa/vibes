@@ -98,6 +98,16 @@ set, changing about as often as the weave turns. With the score it follows an
 arc, a mouth opening over the piece: oo in the buka, through oh and ah, toward
 ee late in cycle II, closing again across the final gong.
 
+### Beating that evolves
+
+Left alone, every wave runs at one speed and the choir shimmers at one
+strength, which never lets up. Instead each tone's wave drifts slower and
+faster (about x0.7 to x1.5) over a couple of phrases, and the singers draw
+together into near-unison, leaving only the slow wave between paired phones,
+then spread into shimmer again. Part of that runs on a cycle the whole ring
+shares, so there are calm stretches for everyone. The foundation's waves drift
+the same way. `evolves` on the beating dial sets how much (0 = constant).
+
 ### What may sustain up high
 
 Only octaves of scale tones. The top partial is tuned to the double octave

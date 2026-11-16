@@ -70,7 +70,7 @@
 <body>
 <header>
   <h1>NEARFIELD</h1>
-  <span class="sub">The ring — host · build 11</span>
+  <span class="sub">The ring — host · build 12</span>
   <span id="status">—</span>
 </header>
 <div id="main">
@@ -96,10 +96,10 @@
 </div>
 <div id="sheet"></div>
 
-<script src="ring-core.js?v=11"></script>
-<script src="ring-live.js?v=11"></script>
-<script src="ring-audio.js?v=11"></script>
-<script src="qr.js?v=11"></script>
+<script src="ring-core.js?v=12"></script>
+<script src="ring-live.js?v=12"></script>
+<script src="ring-audio.js?v=12"></script>
+<script src="qr.js?v=12"></script>
 <script>
 'use strict';
 const NR = window.NearfieldRing;
@@ -270,18 +270,30 @@ function drawTuning(c, w, h, t, st, col) {
   c.strokeStyle = col; line(c, X(0), y, X(oct), y); line(c, X(oct), y - 5, X(oct), y + 5);
   for (const s of steps) dot(c, X(s), y, 3);
 }
-// beating: a row of bars swelling and fading at the real rate (12 s across)
+// beating: a row of bars swelling and fading at the wave's speed right now (12 s
+// across), trembling while the choir is spread and smooth when it draws together
+const beatPic = { phase: 0, last: 0 };
+function evolveNow() {
+  const vs = app.lastFrame ? app.lastFrame.voices : [];
+  if (!vs.length) return { rate: 1, choir: 1 };
+  return { rate: Math.exp(vs.reduce((a, v) => a + Math.log(v.beatMul || 1), 0) / vs.length), choir: vs.reduce((a, v) => a + (v.choirMul ?? 1), 0) / vs.length };
+}
 function drawBeating(c, w, h, t, st) {
-  const n = 30, span = 12, mid = h / 2;
+  const n = 30, span = 12, mid = h / 2, ev = evolveNow(), hz = st.rate * ev.rate;
+  beatPic.phase += hz * Math.min(0.2, Math.max(0, t - beatPic.last)); beatPic.last = t;
+  const fuzz = Math.min(1, st.choir * ev.choir) * 0.22;
   for (let i = 0; i < n; i++) {
-    const x = 6 + (w - 12) * i / (n - 1), a = st.rate > 0 ? Math.abs(Math.cos(Math.PI * st.rate * (t + span * i / n))) : 1;
+    const x = 6 + (w - 12) * i / (n - 1);
+    let a = st.rate > 0 ? Math.abs(Math.cos(Math.PI * (beatPic.phase + hz * span * i / n))) : 1;
+    a = Math.max(0, Math.min(1, a * (1 + fuzz * Math.sin(t * (19 + i * 1.3) + i * 4.1))));
     c.globalAlpha = 0.25 + 0.75 * a; line(c, x, mid - 2 - 22 * a, x, mid + 2 + 22 * a);
   }
+  if (st.beatMove > 0 && app.lastFrame) { c.font = '11px ui-monospace, Menlo, monospace'; c.textAlign = 'right'; c.globalAlpha = 0.7; c.fillText(ev.choir < 0.35 ? 'calm' : ev.choir > 0.9 ? 'shimmer' : '', w - 6, 12); }
   c.globalAlpha = 1;
 }
 // choir: one line, or several wandering around it
 function drawChoir(c, w, h, t, st) {
-  const n = 7, spread = Math.min(1, st.choir / 2) * (w * 0.36);
+  const n = 7, spread = Math.min(1, st.choir * evolveNow().choir / 2) * (w * 0.36);
   c.strokeStyle = GHOST; line(c, w / 2, 8, w / 2, h - 8); c.strokeStyle = c.fillStyle;
   for (let i = 0; i < n; i++) {
     const seat = (i / (n - 1) - 0.5) * 1.4, wander = 0.35 * Math.sin(t * (0.5 + i * 0.17) + i * 2.1);
@@ -439,7 +451,8 @@ function buildPanel() {
   addSeg(tun, () => app.state.scale, v => change({ scale: v }, { now: true }), [['own', '4 tones (ours)'], ['slendro', 'slendro (5)']]);
   addDial(g, { name: 'beating', color: ORANGE, get: () => app.state.rate, patch: v => set('rate', v), min: 0, max: 1.5, step: 0.01,
     fmt: v => v > 0 ? `${(1 / v).toFixed(1)} s wave` : 'still', draw: drawBeating,
-    hint: 'Ombak, the wave. Neighboring phones are tuned as a pair, one a touch high and one a touch low, so each tone swells and fades in the air between them. This sets how long a wave takes.' });
+    hint: 'Ombak, the wave. Neighboring phones are tuned as a pair, one a touch high and one a touch low, so each tone swells and fades in the air between them. This sets how long a wave takes. Evolves: each wave drifts slower and faster, and the choir draws together into calm stretches where only the slow wave is left, then spreads into shimmer again.',
+    extras: [{ label: 'evolves', get: () => app.state.beatMove, patch: v => set('beatMove', v), min: 0, max: 1, step: 0.01, fmt: v => v <= 0 ? 'constant' : pc(v) }] });
 
   g = group('Voice');
   addDial(g, { name: 'choir', color: BLUE, get: () => app.state.choir, patch: v => set('choir', v), min: 0, max: 2, step: 0.01,
