@@ -128,22 +128,28 @@
       const lfoGain = new GainNode(ctx, { gain: 0 });
       lfo.connect(lfoGain).connect(bus.gain);
       lfo.start();
-      const oscs = [], pGains = [];
-      for (let j = 0; j < 4; j++) {
-        const o = new OscillatorNode(ctx, { type: 'sine', frequency: f0 * (j + 1) });
-        const g = new GainNode(ctx, { gain: 0 });
-        o.connect(g).connect(bus);
-        o.start();
-        oscs.push(o); pGains.push(g);
-      }
       bus.connect(this.out);
-      const nodes = { bus, lfo, lfoGain, oscs, pGains, silentSince: null };
+      const nodes = { bus, lfo, lfoGain, sets: [], silentSince: null };
       this.voices.set(v, nodes);
       return nodes;
     }
 
+    // one singer: four sine partials into the voice's bus
+    _singer(nodes, f0) {
+      const set = { oscs: [], pGains: [] };
+      for (let j = 0; j < 4; j++) {
+        const o = new OscillatorNode(this.ctx, { type: 'sine', frequency: f0 * (j + 1) });
+        const g = new GainNode(this.ctx, { gain: 0 });
+        o.connect(g).connect(nodes.bus);
+        o.start();
+        set.oscs.push(o); set.pGains.push(g);
+      }
+      nodes.sets.push(set);
+      return set;
+    }
+
     _drop(v, nodes) {
-      for (const o of nodes.oscs) { try { o.stop(); } catch (_) {} }
+      for (const set of nodes.sets) for (const o of set.oscs) { try { o.stop(); } catch (_) {} }
       try { nodes.lfo.stop(); } catch (_) {}
       nodes.bus.disconnect();
       this.voices.delete(v);
@@ -173,10 +179,16 @@
         const n = this.voices.get(p.v) || this._voice(p.v, vc.f0);
         n.silentSince = null;
         const pg = NR.partialGains(this.params, vc.role, vc.f0, vc.bloom, fr.ratios, fr.amps);
-        for (let j = 0; j < 4; j++) {
-          setT(n.oscs[j].frequency, vc.f0 * fr.ratios[j], now, 1.5, 0.01);
-          setT(n.oscs[j].detune, p.detunes[j], now, 0.08, 0.002);
-          setT(n.pGains[j].gain, pg[j], now, 0.3, 1e-3);
+        const singers = p.singers || [{ g: 1, detunes: p.detunes }];
+        for (let k = 0; k < Math.max(singers.length, n.sets.length); k++) {
+          const sg = singers[k], set = n.sets[k] || this._singer(n, vc.f0);
+          for (let j = 0; j < 4; j++) {
+            if (sg) {
+              setT(set.oscs[j].frequency, vc.f0 * fr.ratios[j], now, 1.5, 0.01);
+              setT(set.oscs[j].detune, sg.detunes[j], now, 0.08, 0.002);
+            }
+            setT(set.pGains[j].gain, sg ? pg[j] * sg.g : 0, now, 0.3, 1e-3);
+          }
         }
         setT(n.bus.gain, g, now, 0.05, 1e-4);
         // rotation is this piece's wind: it drives the shimmer AM (spec §5.3)

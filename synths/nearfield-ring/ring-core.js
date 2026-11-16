@@ -189,6 +189,7 @@
       space: 0.6,                    // how many tones rest at a time (0 = all always in)
       phrase: 80,                    // seconds between turns
       stack: 1,                      // repeat degrees an octave up, for more pitches to trade
+      choir: 1,                      // singers' pitch spread (0 = one exact voice per phone)
       soft: 0.68,                    // darker + slower edges
       beat: 1,                       // scales fingerprint + handoff bend
       bend: 0,                       // ± cents a position bends at a turn/min
@@ -608,7 +609,7 @@
       const out = [];
       for (const vc of fr.voices) {
         if (slot === 'pedestal') {
-          if (vc.role === 'anchor' && st.anchors === 'pedestal') out.push({ v: vc.v, vc, g: 1, detune: vc.fp, detunes: [vc.fp, vc.fp, vc.fp, vc.fp] });
+          if (vc.role === 'anchor' && st.anchors === 'pedestal') { const d = [vc.fp, vc.fp, vc.fp, vc.fp]; out.push({ v: vc.v, vc, g: 1, detune: vc.fp, detunes: d, singers: [{ g: 1, detunes: d }] }); }
           continue;
         }
         if (vc.role === 'anchor' && st.anchors === 'pedestal') continue;
@@ -630,9 +631,34 @@
           const off = side * this.beatHz(f) * (0.75 + 0.5 * hash01(`${st.seed}|${slot}|${vc.v}|${j}`));
           return shared + 1200 * Math.log2(1 + off / f);
         });
-        out.push({ v: vc.v, vc, g, detune: detunes[0], detunes });
+        // Choir: two singers per phone on each tone, each drifting on its own
+        const nS = st.choir > 0 ? 2 : 1, singers = [];
+        for (let k = 0; k < nS; k++) {
+          const c = this.singerCents(slot, vc.v, k, vc.f0, fr.tMs);
+          singers.push({ g: 1 / Math.sqrt(nS), detunes: detunes.map(d => d + c) });
+        }
+        out.push({ v: vc.v, vc, g, detune: singers[0].detunes[0], detunes: singers[0].detunes, singers });
       }
       return out;
+    }
+
+    // Choir: what turns a pure tone into something sung is that it is not one
+    // exact pitch but a few voices near it, each drifting slowly. In Perälä's
+    // "Incandescence" the bass tones are razor lines while every tone above
+    // ~130 Hz is a band about 1% of its pitch wide. So each phone carries two
+    // singers per tone; a singer has its own seat (a fixed offset) and wanders
+    // around it over a few seconds, all its partials together, by a few cents
+    // — none at the bottom, full above ~300 Hz. Every phone is a different
+    // pair of singers, so a tone spread over three phones is six voices.
+    singerCents(slot, v, k, f0, tMs) {
+      const st = this.state;
+      const sigma = 8 * st.choir * clamp((f0 - 90) / 200, 0, 1);
+      if (sigma <= 0) return 0;
+      const r = mulberry32(fnv1a(`${st.seed}|${slot}|${v}|${k}|choir`));
+      const seat = (r() * 2 - 1) * 0.7, ts = (tMs - st.epoch) / 1000;
+      let x = 0;
+      for (let i = 0; i < 3; i++) x += Math.sin(2 * Math.PI * ts / (1.7 + r() * 6.3) + r() * 2 * Math.PI);
+      return sigma * (seat + x * 0.61);
     }
   }
 

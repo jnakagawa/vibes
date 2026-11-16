@@ -51,7 +51,7 @@
 <body>
 <header>
   <h1>NEARFIELD</h1>
-  <span class="sub">The ring — host · build 6</span>
+  <span class="sub">The ring — host · build 7</span>
   <span id="status">—</span>
 </header>
 <div id="main">
@@ -77,10 +77,10 @@
 </div>
 <div id="sheet"></div>
 
-<script src="ring-core.js?v=6"></script>
-<script src="ring-live.js?v=6"></script>
-<script src="ring-audio.js?v=6"></script>
-<script src="qr.js?v=6"></script>
+<script src="ring-core.js?v=7"></script>
+<script src="ring-live.js?v=7"></script>
+<script src="ring-audio.js?v=7"></script>
+<script src="qr.js?v=7"></script>
 <script>
 'use strict';
 const NR = window.NearfieldRing;
@@ -251,8 +251,9 @@ function buildPanel() {
   addRange(fs, 'softness', 'soft', 0, 1, 0.01, v => v.toFixed(2));
   addRange(fs, 'breathing', 'rate', 0, 1.5, 0.01, v => v > 0 ? `${(1 / v).toFixed(1)} s` : 'still');
   addRange(fs, 'tuning', 'pure', 0, 1, 0.01, v => v >= 0.99 ? 'pure' : v <= 0.01 ? 'stretched' : v.toFixed(2));
+  addRange(fs, 'choir', 'choir', 0, 2, 0.01, v => v <= 0 ? 'one voice' : `±${Math.round(8 * v)} ¢`);
   addSelect(fs, 'cycle ratios', 'ratios', [['nested', 'nested 1 : 2 : 4 (gamelan)'], ['prime', 'drifting 5 : 7 : 11']]);
-  addNote(fs, 'The sound never stops; it changes by trading tones. Space: how many of the tones are resting at any time (0 = all always in). Turn every: how often a few tones hand over to others — the new ones arrive before the old ones have left, the anchors and the deep root never leave, and the foundation shifts color. Drift: how far apart the layers turn. Softness: darker tone. Breathing: how long each partial takes to swell and fade where a tone sounds on two phones. Tuning: stretched is the gamelan-derived scale with bell-like partials; pure has true octaves and harmonics, which fuse into one warm sound.');
+  addNote(fs, 'The sound never stops; it changes by trading tones. Space: how many of the tones are resting at any time (0 = all always in). Turn every: how often a few tones hand over to others — the new ones arrive before the old ones have left, the anchors and the deep root never leave, and the foundation shifts color. Drift: how far apart the layers turn. Softness: darker tone. Breathing: how long each partial takes to swell and fade where a tone sounds on two phones. Tuning: stretched is the gamelan-derived scale with bell-like partials; pure has true octaves and harmonics, which fuse into one warm sound. Choir: each phone sings every tone as two voices that drift a few cents around the note, so a tone becomes a small group instead of one exact pitch (the deep tones stay exact); 0 = one exact voice.');
 
   fs = fieldset('Layers');
   for (const [role, name] of [['anchor', 'anchors'], ['voice', 'tones'], ['shimmer', 'shimmer']]) {

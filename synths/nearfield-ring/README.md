@@ -55,6 +55,11 @@ loudness range for ten minutes while trading tones roughly every 80 seconds.
 - **Tuning** — *stretched* is the gamelan-derived scale with bell-like
   partials; *pure* has true octaves, harmonics and just intervals, which fuse
   into one warm sound.
+- **Choir** — each phone sings every tone as two voices that drift a few
+  cents around the note, each on its own, so a tone is a small group rather
+  than one exact pitch. The deep tones stay exact. In the album the bass is a
+  razor line while every tone above ~130 Hz is a band about 1% of its pitch
+  wide; this reproduces that.
 - **Softness** now rolls off much more steeply (24 dB per octave, down to
   500 Hz). Air is off by default.
 

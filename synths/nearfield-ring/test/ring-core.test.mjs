@@ -13,7 +13,7 @@ const cfg = { scale: load('scale.json'), params: load('params.json'), score: loa
 const T0 = 1_800_000_000_000;
 // baseline for the handoff/score tests: every layer together, no tides, no air
 // (and the original stretched tuning, fingerprint and handoff bend)
-const PLAIN = { drift: 0, density: 1, L: { anchor: [1, 1, 1], voice: [1, 1, 1], shimmer: [1, 1, 1] }, air: [0, 1], pure: 0, fp: 12, bend: 10, bed: 0, space: 0, stack: 0 };
+const PLAIN = { drift: 0, density: 1, L: { anchor: [1, 1, 1], voice: [1, 1, 1], shimmer: [1, 1, 1] }, air: [0, 1], pure: 0, fp: 12, bend: 10, bed: 0, space: 0, stack: 0, choir: 0 };
 function ring(over = {}) {
   const r = new NR.Ring(cfg);
   r.setState({ ...NR.defaultState(T0), ...PLAIN, ...over });
@@ -207,7 +207,7 @@ test('air: bounded, silent in the pre-roll, strongest where it is passing', () =
 });
 
 test('beat depth scales fingerprint and bend together; 0 is perfectly in tune', () => {
-  const r = cycles({ beat: 0, rate: 0 });
+  const r = cycles({ beat: 0, rate: 0, choir: 0 });
   const fr = r.frame(T0 + 123_456);
   for (let k = 0; k < 8; k++) for (const p of r.playersAt(fr, k)) assert.ok(p.detune === 0);
 });
@@ -237,7 +237,7 @@ test('pure tuning: octaves of 2, harmonic partials, just intervals', () => {
 });
 
 test('breathing: neighbors play each partial a fraction of a hertz apart', () => {
-  const r = cycles({ rate: 0.27, fp: 0, bend: 0 });
+  const r = cycles({ rate: 0.27, fp: 0, bend: 0, choir: 0 });
   const fr = r.frame(T0 + 77_000);
   let pairs = 0;
   for (let k = 0; k < 8; k++) {
@@ -337,4 +337,46 @@ test('the weave: space sets how many tones rest; 0 keeps everything in; devices 
 test('octave stacking gives the ring more pitches to trade', () => {
   const pitches = stack => new Set(cycles({ stack }).frame(T0 + 1000).voices.map(v => Math.round(v.f0))).size;
   assert.ok(pitches(1) > pitches(0), `${pitches(1)} vs ${pitches(0)}`);
+});
+
+// --- choir ---------------------------------------------------------------------------
+
+test('choir: two singers per phone, drifting a few cents; the bottom stays exact', () => {
+  const r = cycles({ fp: 0, bend: 0, rate: 0 });
+  const seen = new Map();
+  for (let t = T0; t < T0 + 600_000; t += 500) {
+    const fr = r.frame(t);
+    for (let k = 0; k < 8; k++) for (const p of r.playersAt(fr, k)) {
+      assert.equal(p.singers.length, 2);
+      assert.ok(Math.abs(p.singers[0].g ** 2 + p.singers[1].g ** 2 - 1) < 1e-9, 'two singers, same power as one');
+      for (let s = 0; s < 2; s++) {
+        const key = `${k}|${p.v}|${s}`;
+        if (!seen.has(key)) seen.set(key, { f0: p.vc.f0, c: [] });
+        seen.get(key).c.push(p.singers[s].detunes[0]);
+        // a singer's partials move together (it stays one harmonic voice)
+        assert.ok(Math.abs(p.singers[s].detunes[3] - p.singers[s].detunes[0]) < 1e-9);
+      }
+    }
+  }
+  const all = [...seen.values()].filter(x => x.c.length > 200 && x.f0 > 290);
+  assert.ok(all.length > 10);
+  const std = a => { const m = a.reduce((s, v) => s + v, 0) / a.length; return Math.sqrt(a.reduce((s, v) => s + (v - m) ** 2, 0) / a.length); };
+  // each singer wanders about 5 cents around its own seat; seats differ
+  const wander = all.map(x => std(x.c)), seats = all.map(x => x.c.reduce((s, v) => s + v, 0) / x.c.length);
+  const mean = wander.reduce((s, v) => s + v, 0) / wander.length;
+  assert.ok(mean > 3.5 && mean < 7, `mean wander ${mean}`);
+  assert.ok(std(seats) > 1.5 && Math.max(...all.flatMap(x => x.c.map(Math.abs))) < 22, `seat spread ${std(seats)}`);
+  // slow: never more than a fraction of a cent between control ticks
+  const fa = r.frame(T0 + 1000), fb = r.frame(T0 + 1050);
+  const a = r.playersAt(fa, 2)[0], b = r.playersAt(fb, 2).find(p => p.v === a.v);
+  assert.ok(Math.abs(a.singers[0].detunes[0] - b.singers[0].detunes[0]) < 0.6);
+  // the bottom is exact
+  assert.equal(r.singerCents(0, 0, 0, 55, T0 + 5000), 0);
+  assert.equal(r.singerCents(0, 0, 0, 90, T0 + 5000), 0);
+});
+
+test('choir 0 is one exact voice per phone', () => {
+  const r = cycles({ choir: 0, fp: 0, bend: 0, rate: 0 });
+  const fr = r.frame(T0 + 9000);
+  for (let k = 0; k < 8; k++) for (const p of r.playersAt(fr, k)) { assert.equal(p.singers.length, 1); assert.ok(p.detune === 0); }
 });
