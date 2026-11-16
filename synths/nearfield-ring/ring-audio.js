@@ -74,7 +74,7 @@
     const wet = new GainNode(ctx, { gain: Math.sin(T.reverb_wet * Math.PI / 2) });
     const convolver = new ConvolverNode(ctx);
     convolver.buffer = reverbIR(ctx, T);
-    const comp = new DynamicsCompressorNode(ctx, { threshold: -14, knee: 12, ratio: 4, attack: 0.01, release: 0.3 });
+    const comp = new DynamicsCompressorNode(ctx, { threshold: -9, knee: 10, ratio: 2.5, attack: 0.02, release: 0.4 });   // gentle: quiet stays quiet
     const master = new GainNode(ctx, { gain: 0 });
     sum.connect(shelf).connect(lowpass).connect(lowpass2);
     lowpass2.connect(dry).connect(comp);

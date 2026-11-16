@@ -33,6 +33,13 @@ The piece is layers of slow cycles that never quite line up:
 The line under the ring shows each layer's seconds per turn and how many tones
 the tides have up.
 
+### Space
+
+The whole ring swells in and recedes together, phrase by phrase, with rests
+between: the tones leave first and return last, the foundation holds longest.
+**Space** sets how much of each phrase is rest (0 = continuous sound) and
+**phrase length** how long a phrase is.
+
 ### Warmth (measured against Aleksi Perälä's *Incandescence*)
 
 - **Foundation** — a deep tone with its octaves and fifth (55 Hz up). Phones

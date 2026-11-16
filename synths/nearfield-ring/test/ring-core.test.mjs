@@ -13,7 +13,7 @@ const cfg = { scale: load('scale.json'), params: load('params.json'), score: loa
 const T0 = 1_800_000_000_000;
 // baseline for the handoff/score tests: every layer together, no tides, no air
 // (and the original stretched tuning, fingerprint and handoff bend)
-const PLAIN = { drift: 0, density: 1, L: { anchor: [1, 1, 1], voice: [1, 1, 1], shimmer: [1, 1, 1] }, air: [0, 1], pure: 0, fp: 12, bend: 10, bed: 0 };
+const PLAIN = { drift: 0, density: 1, L: { anchor: [1, 1, 1], voice: [1, 1, 1], shimmer: [1, 1, 1] }, air: [0, 1], pure: 0, fp: 12, bend: 10, bed: 0, space: 0 };
 function ring(over = {}) {
   const r = new NR.Ring(cfg);
   r.setState({ ...NR.defaultState(T0), ...PLAIN, ...over });
@@ -276,7 +276,7 @@ test('breathing: neighbors play each partial a fraction of a hertz apart', () =>
 });
 
 test('foundation: a deep octave stack for the middle only, silent before the score', () => {
-  const r = cycles();
+  const r = cycles({ space: 0 });
   const fr = r.frame(T0 + 30_000);
   assert.equal(r.bedAt(fr, 3), null);
   const bed = r.bedAt(fr, 'pedestal');
@@ -286,4 +286,47 @@ test('foundation: a deep octave stack for the middle only, silent before the sco
   assert.ok(bed.lvl > 0.5);
   assert.equal(cycles({ score: { start: T0 + 4000, comp: 1 } }).frame(T0 + 1000).bed.lvl, 0);
   assert.equal(cycles({ bed: 0 }).frame(T0 + 30_000).bed.lvl, 0);
+});
+
+// --- space: phrases and rests ---------------------------------------------------------
+
+test('phrases: the whole ring rests together, and space sets how much', () => {
+  const share = space => {
+    const r = cycles({ space });
+    let n = 0, s = 0;
+    for (let t = T0; t < T0 + 3600_000; t += 3000) { s += r.frame(t).phrase; n++; }
+    return s / n;
+  };
+  assert.equal(share(0), 1);
+  const a = share(0.3), b = share(0.6), c = share(1);
+  assert.ok(a > b && b > c, `${a} ${b} ${c}`);
+  assert.ok(Math.abs(b - 0.64) < 0.05 && Math.abs(c - 0.4) < 0.05, `${b} ${c}`);
+  // at the bottom of a rest nothing sounds: no tone, no anchor, no foundation
+  const r = cycles({ space: 0.6 });
+  let rests = 0;
+  for (let t = T0; t < T0 + 1200_000; t += 2000) {
+    const fr = r.frame(t);
+    if (fr.phrase > 0) continue;
+    if (fr.voices.every(v => v.role === 'anchor' ? v.level < 0.08 : v.level === 0) && fr.bed.lvl < 0.25) rests++;
+  }
+  assert.ok(rests > 10, `silent moments found: ${rests}`);
+});
+
+test('phrases: the foundation holds longer than the tones, and devices agree', () => {
+  const a = cycles(), b = cycles();
+  let bedLonger = 0, n = 0;
+  for (let t = T0; t < T0 + 900_000; t += 1500) {
+    const fa = a.frame(t);
+    assert.equal(fa.phrase, b.frame(t).phrase);
+    if (fa.bed.lvl / (0.8 * (0.85 + 0.15 * Math.sin(fa.phase + 1))) >= fa.phrase - 1e-9) bedLonger++;
+    n++;
+  }
+  assert.equal(bedLonger, n);
+});
+
+test('phrases move slowly: no jump between control ticks', () => {
+  const r = cycles({ space: 1, phrase: 30 });
+  let prev = null, mx = 0;
+  for (let t = T0; t < T0 + 300_000; t += 50) { const p = r.frame(t).phrase; if (prev !== null) mx = Math.max(mx, Math.abs(p - prev)); prev = p; }
+  assert.ok(mx < 0.03, `largest change in 50 ms: ${mx}`);
 });

@@ -186,6 +186,8 @@
       drift: 0.6,                    // 0 = every cycle together .. 1 = fully apart
       density: 0.5,                  // share of the chord sounding at once (tides)
       tide: 50,                      // a voice's swell cycle, seconds
+      space: 0.6,                    // how much of each phrase is rest (0 = continuous)
+      phrase: 70,                    // phrase length, seconds
       soft: 0.68,                    // darker + slower edges
       beat: 1,                       // scales fingerprint + handoff bend
       bend: 0,                       // ± cents a position bends at a turn/min
@@ -367,7 +369,8 @@
     // the threshold at which a tide's average over its cycle equals density
     _tideThreshold(density, w) {
       const key = `${density}|${w}`;
-      if (this._thrKey === key) return this._thr;
+      this._thrCache = this._thrCache || new Map();
+      if (this._thrCache.has(key)) return this._thrCache.get(key);
       const D = clamp(density, 0, 1), N = 256;
       const mean = thr => {
         let s = 0;
@@ -377,9 +380,22 @@
       let lo = -1 - w, hi = 1 + w;   // mean(lo) = 1, mean(hi) = 0
       if (D >= 1) hi = lo; else if (D <= 0) lo = hi;
       else for (let i = 0; i < 40; i++) { const mid = (lo + hi) / 2; if (mean(mid) > D) lo = mid; else hi = mid; }
-      this._thrKey = key;
-      this._thr = (lo + hi) / 2;
-      return this._thr;
+      if (this._thrCache.size > 64) this._thrCache.clear();
+      this._thrCache.set(key, (lo + hi) / 2);
+      return (lo + hi) / 2;
+    }
+
+    // Phrase (0..1): the whole ring swells in and recedes together, leaving
+    // rests — relief from a continuous wall of sound. `space` is how much of
+    // each phrase is rest; `extra` lets a layer arrive earlier and leave
+    // later. Phrase lengths wander a little so they never feel metered.
+    phrase(ct, extra = 0) {
+      const st = this.state;
+      if (st.space <= 0) return 1;
+      const P = Math.max(30, st.phrase), w = 0.9;
+      const wob = 0.11 * Math.sin(2 * Math.PI * ct / (P * 3.3) + (fnv1a(`${st.seed}|phrase`) % 628) / 100);
+      const duty = clamp(1 - 0.6 * st.space + extra, 0, 1);
+      return smoothstep((Math.cos(2 * Math.PI * (ct / P + wob)) - this._tideThreshold(duty, w)) / w + 0.5);
     }
 
     // Deterministic per-voice fingerprint (§13.2 stand-in): three slow
@@ -433,6 +449,8 @@
       const bukaLen = this.score.sections[1]?.at ?? 120;
       const nonAnchors = this.voices.filter(x => x.role !== 'anchor');
       const anchors = this.voices.filter(x => x.role === 'anchor');
+      // the phrase: tones leave first and return last, the foundation holds longest
+      const ph = { voice: this.phrase(adv.ct), anchor: this.phrase(adv.ct, 0.04), bed: this.phrase(adv.ct, 0.1) };
       // each layer: its own width (a voice as a cloud over several phones)
       const widths = {}, peaks = {};
       for (const role of ['anchor', 'voice', 'shimmer']) {
@@ -459,7 +477,9 @@
         }
         // anchors already come and go on the breath; the others ride tides
         const tide = vc.role === 'anchor' ? 1 : this.tide(vc.v, adv.ct);
-        const level = roleP.base_gain * env * breathG * entry * c.masterM * tide * st.L[vc.role][0];
+        // a gong sounds through a rest; otherwise every layer follows the phrase
+        const gather = vc.role === 'anchor' ? (gongOn ? 1 : ph.anchor) : ph.voice;
+        const level = roleP.base_gain * env * breathG * entry * c.masterM * tide * gather * st.L[vc.role][0];
         const posU = vc.v + adv.lt[LAYER_INDEX[vc.role]] * S;
         const shares = windowShares(posU, w).map(([iU, g]) => ({ slot: wrap(iU, S), g }));
         return {
@@ -482,7 +502,7 @@
       const long = 0.5 + 0.5 * Math.sin(2 * Math.PI * adv.ct / (st.tide * 2.3) + (fnv1a(`${st.seed}|air`) % 628) / 100);
       const swell = 0.5 + 0.5 * Math.sin(phase + 2.1);
       const air = {
-        lvl: st.air[0] * c.masterM * (0.1 + 0.9 * swell * (0.35 + 0.65 * long)),
+        lvl: st.air[0] * c.masterM * ph.anchor * (0.1 + 0.9 * swell * (0.35 + 0.65 * long)),
         pos: wrap(adv.lt[3] * S, S),
         freq: fa * Math.pow(fb / fa, glide),
         q: 2.5,
@@ -494,7 +514,7 @@
       // which keeps the bottom steadier than what sits above it.
       const O = es.pseudo_octave_ratio, root = pitchHzFor(es, 0, -2), fifth = pitchHzFor(es, 2, -2);
       const bed = {
-        lvl: st.bed * c.masterM * (0.85 + 0.15 * Math.sin(phase + 1)),
+        lvl: st.bed * c.masterM * ph.bed * (0.85 + 0.15 * Math.sin(phase + 1)),
         parts: [[root, 1, 0.35, 0], [root * O, 0.45, 0.85, 0.75], [fifth, 0.35, 0.85, 0.6], [root * O * O, 0.2, 0.85, 0], [fifth * O, 0.14, 0.85, 0.4]]
           .map(([f, g, depth, trade], i) => ({ f, g, depth, trade, beat: this.beatHz(f) * (0.8 + 0.4 * hash01(`${st.seed}|bed|${i}`)) })),
       };
@@ -504,7 +524,7 @@
         tMs, sT: c.sT, label: c.sT === null ? null : (c.sT < 0 ? 'pre-roll' : (c.sT > this.score.duration ? 'end' : this.score.labelAt(c.sT))),
         comp: c.comp, turns, rate, factor, phase, stretch: c.stretch, amDepth: c.amDepth, fpAmp: c.fpAmp,
         ratios: partialRatios, amps: this.scale.spectrum.amps,
-        ct: adv.ct, lt: adv.lt, soft: st.soft, air, bed,
+        ct: adv.ct, lt: adv.lt, soft: st.soft, air, bed, phrase: ph.voice,
         // seconds per turn of each layer [anchor, voice, shimmer, air] (signed)
         periods: this.speeds.map(s => absRate < 1e-5 ? Infinity : 1 / (rate * s)),
         voices,
