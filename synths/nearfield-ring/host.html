@@ -51,7 +51,7 @@
 <body>
 <header>
   <h1>NEARFIELD</h1>
-  <span class="sub">The ring — host</span>
+  <span class="sub">The ring — host · build 6</span>
   <span id="status">—</span>
 </header>
 <div id="main">
@@ -77,10 +77,10 @@
 </div>
 <div id="sheet"></div>
 
-<script src="ring-core.js?v=5"></script>
-<script src="ring-live.js?v=5"></script>
-<script src="ring-audio.js?v=5"></script>
-<script src="qr.js?v=5"></script>
+<script src="ring-core.js?v=6"></script>
+<script src="ring-live.js?v=6"></script>
+<script src="ring-audio.js?v=6"></script>
+<script src="qr.js?v=6"></script>
 <script>
 'use strict';
 const NR = window.NearfieldRing;
@@ -206,13 +206,28 @@ function buildPanel() {
   fs = fieldset('Listen on headphones');
   row = document.createElement('div'); row.className = 'btnrow';
   const listenBtn = btn('listen to the whole ring', async () => {
-    if (app.mon) { const m = app.mon; app.mon = null; await m.stop(); }
-    else { const m = new NearfieldAudio.RingMonitor(app.ring.params); await m.start(); app.mon = m; }
+    try {
+      if (app.mon) { const m = app.mon; app.mon = null; await m.stop(); }
+      else { monStatus.textContent = 'starting…'; const m = new NearfieldAudio.RingMonitor(app.ring.params); await m.start(); app.mon = m; }
+      app.monError = null;
+    } catch (e) { app.monError = `could not start audio: ${e.message}`; }
     listenBtn.textContent = app.mon ? 'stop listening' : 'listen to the whole ring';
     listenBtn.className = app.mon ? 'primary' : '';
   });
   row.appendChild(listenBtn);
   fs.appendChild(row);
+  // what the audio is actually doing, so a silent phone can be diagnosed
+  const monStatus = document.createElement('p'); monStatus.className = 'note';
+  fs.appendChild(monStatus);
+  setInterval(() => {
+    const m = app.mon;
+    if (app.monError) { monStatus.textContent = app.monError; return; }
+    if (!m) { monStatus.textContent = ''; return; }
+    const st = m.ctx.state, lvl = m.level > 1e-6 ? `${Math.round(20 * Math.log10(m.level))} dB` : 'silent';
+    monStatus.textContent = st !== 'running' ? `audio is ${st} — tap the button again`
+      : `audio running · signal ${lvl} · ${m.el ? 'media player output' : 'direct output'}${m.level > 1e-6 ? '' : ' — raise monitor volume'}`;
+  }, 500);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && app.mon) app.mon.resume(); });
   const mo = app.monOpts;
   addSelectFn(fs, 'you are', () => mo.listen, v => { mo.listen = v; }, [['outside', 'standing outside the ring'], ['walk', 'walking around it'], ['center', 'sitting in the middle']]);
   addRangeFn(fs, 'your distance', () => mo.dist, v => { mo.dist = v; }, 0.6, 3, 0.1, v => `${v.toFixed(1)} m`);

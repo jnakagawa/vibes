@@ -87,6 +87,31 @@
     return { sum, master, setSoft };
   }
 
+  // iOS mutes plain Web Audio when the ring / silent switch is on. Two things
+  // get round it: a "playback" audio session, and playing through an <audio>
+  // element fed by a MediaStream, which makes the page a media player (it
+  // also keeps sounding when the screen locks). Call both from a tap.
+  function playbackSession() {
+    if (navigator.audioSession) { try { navigator.audioSession.type = 'playback'; } catch (_) {} }
+  }
+  async function attachOutput(ctx, master) {
+    let dest = null, el = null;
+    try {
+      dest = ctx.createMediaStreamDestination();
+      master.connect(dest);
+      el = new Audio();
+      el.srcObject = dest.stream;
+      el.setAttribute('playsinline', '');
+      // if the element will not start, fall back rather than wait forever
+      await Promise.race([el.play(), new Promise((_, no) => setTimeout(() => no(new Error('timeout')), 2500))]);
+      return el;
+    } catch (_) {
+      try { if (el) { el.pause(); el.srcObject = null; } if (dest) master.disconnect(dest); } catch (_e) {}
+      master.connect(ctx.destination);
+      return null;
+    }
+  }
+
   class PhoneSynth {
     constructor(ctx, params, out) {
       this.ctx = ctx;
@@ -243,8 +268,7 @@
 
     // call from a tap (browser rule)
     async start() {
-      // iOS: a playback session ignores the ring/silent switch
-      if (navigator.audioSession) { try { navigator.audioSession.type = 'playback'; } catch (_) {} }
+      playbackSession();
       const ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'playback' });
       this.ctx = ctx;
       const resumed = ctx.resume();
@@ -257,20 +281,7 @@
       this.bed = new BedSynth(ctx, this.bedTrim);
       this.analyser = new AnalyserNode(ctx, { fftSize: 512 });
       this.chain.master.connect(this.analyser);
-      // play through an <audio> element (MediaStream): iOS treats the page as
-      // a media player, so it sounds with the silent switch on and survives
-      // screen lock; fall back to the plain destination
-      try {
-        const dest = ctx.createMediaStreamDestination();
-        this.chain.master.connect(dest);
-        const el = new Audio();
-        el.srcObject = dest.stream;
-        el.setAttribute('playsinline', '');
-        await el.play();
-        this.el = el;
-      } catch (_) {
-        this.chain.master.connect(ctx.destination);
-      }
+      this.el = await attachOutput(ctx, this.chain.master);
       await resumed;
       this._buf = new Float32Array(this.analyser.fftSize);
     }
@@ -307,21 +318,31 @@
       this.listener = { x: 0, z: 1.6 };
     }
 
+    // call from a tap
     async start() {
+      playbackSession();
       const ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'playback' });
       this.ctx = ctx;
-      await ctx.resume();
+      const resumed = ctx.resume();
       this.chain = voicingChain(ctx, this.params.timbre);
-      this.chain.master.connect(ctx.destination);
       this.analyser = new AnalyserNode(ctx, { fftSize: 512 });
       this.chain.master.connect(this.analyser);
       this._buf = new Float32Array(this.analyser.fftSize);
+      this.el = await attachOutput(ctx, this.chain.master);
+      await Promise.race([resumed, new Promise(res => setTimeout(res, 2500))]);
+    }
+
+    resume() {
+      if (!this.ctx) return;
+      this.ctx.resume().catch(() => {});
+      this.el?.play().catch(() => {});
     }
 
     async stop() {
       this._dispose();
       const ctx = this.ctx;
       this.ctx = null;
+      if (this.el) { try { this.el.pause(); this.el.srcObject = null; } catch (_) {} this.el = null; }
       if (ctx) await ctx.close().catch(() => {});
     }
 
