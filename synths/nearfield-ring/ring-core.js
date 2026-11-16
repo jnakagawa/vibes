@@ -196,6 +196,7 @@
       voice: 0.5,                    // how sung the tones are (vowel colour amount)
       vowel: 0.4,                    // which vowel: 0 oo .. 0.25 oh .. 0.5 ah .. 0.75 eh .. 1 ee
       vowelMove: 0.5,                // how far each phone's vowel wanders around it
+      vowelTravel: 0.6,              // how far the shared vowel journeys over time (0 = held)
       soft: 0.68,                    // darker + slower edges
       beat: 1,                       // scales fingerprint + handoff bend
       bend: 0,                       // ± cents a position bends at a turn/min
@@ -223,6 +224,8 @@
   const NEAR_CENTS = 290;   // closer than this (about a minor third), two sustained tones grate
   // vowels as (first, second) formant in Hz, ordered so neighbors morph smoothly
   const VOWELS = [['oo', 300, 870], ['oh', 570, 840], ['ah', 730, 1090], ['eh', 530, 1840], ['ee', 270, 2290]];
+  // the score's vowel arc: (fraction of the score, vowel position)
+  const VOWEL_ARC = [[0, 0], [0.125, 0.2], [0.44, 0.5], [0.625, 0.68], [0.81, 0.88], [0.875, 0.6], [1, 0]];
   function vowelFormants(x) {
     const p = clamp(x, 0, 1) * (VOWELS.length - 1), i = Math.min(VOWELS.length - 2, Math.floor(p)), f = p - i;
     const a = VOWELS[i], b = VOWELS[i + 1];
@@ -590,7 +593,14 @@
       };
       // slendro divides whatever the octave currently is into five equal steps
       if (st.scale === 'slendro') es.scale_cents = [0, 1, 2, 3, 4].map(k => k * 1200 * Math.log2(es.pseudo_octave_ratio) / 5);
+      // Partials: the fundamental, its (stretched) octave, the bell partial
+      // (3.2 in gamelan tuning), and the double octave. The top one is tuned
+      // to the octave, not the derived spectrum's 4.4, so that everything
+      // allowed to *sustain* up high is an octave of a scale tone: different
+      // tones' high partials then sit a full scale step apart, where the
+      // spectrum's own would land a few hertz apart and beat harshly.
       const partialRatios = scaleNow.spectrum.ratios.map((r, i) => mix(r, i + 1));
+      partialRatios[3] = es.pseudo_octave_ratio * es.pseudo_octave_ratio;
       const factor = clamp(Math.abs(rate) * 60, 0, 1.5);   // 1 = a turn a minute
       const breathG = 1 + this.params.breath.ensemble_depth * Math.sin(phase);
       const gongAge = c.sT === null ? Infinity : c.sT - this.score.lastEventAt(c.sT);
@@ -685,7 +695,7 @@
         tMs, sT: c.sT, label: c.sT === null ? null : (c.sT < 0 ? 'pre-roll' : (c.sT > this.score.duration ? 'end' : this.score.labelAt(c.sT))),
         comp: c.comp, turns, rate, factor, phase, stretch: c.stretch, amDepth: c.amDepth, fpAmp: c.fpAmp,
         ratios: partialRatios, amps: this.scale.spectrum.amps,
-        ct: adv.ct, lt: adv.lt, soft: st.soft, air, bed,
+        ct: adv.ct, lt: adv.lt, soft: st.soft, air, bed, vowel: this.vowelNow(adv.ct, c.sT),
         // the shimmer's arc: with the score, it follows the bloom (none in the
         // buka, gone by the end); always riding a slow swell of its own
         glintArc: c.bloomM * c.masterM * (0.35 + 0.65 * (0.5 + 0.5 * Math.sin(2 * Math.PI * adv.ct / (st.tide * 2.9) + 1.3))),
@@ -768,26 +778,47 @@
     //   open   extra level for partials the bloom has not opened (x amps)
     //   bright extra level for partials 2-4 above 700 Hz, sent round the
     //          darkening filter with the glints
-    vowelAt(slot, tMs) {
+    vowelAt(slot, fr) {
       const st = this.state;
       const r = mulberry32(fnv1a(`${st.seed}|${slot}|vowel`));
-      const ts = (tMs - st.epoch) / 1000;
-      return vowelFormants(st.vowel + st.vowelMove * 0.18 * Math.sin(2 * Math.PI * ts / (23 + r() * 31) + r() * 2 * Math.PI));
+      const ts = (fr.tMs - st.epoch) / 1000;
+      return vowelFormants(fr.vowel + st.vowelMove * 0.18 * Math.sin(2 * Math.PI * ts / (23 + r() * 31) + r() * 2 * Math.PI));
+    }
+
+    // The vowel everyone shares, evolving. On its own it wanders slowly around
+    // the set vowel, changing about as often as the weave turns. With the
+    // score it follows an arc, a mouth opening over the piece: closed (oo) in
+    // the buka, through oh and ah, brightest (toward ee) late in cycle II,
+    // closing again across the final gong. `vowelTravel` is how far it goes:
+    // 0 holds the set vowel.
+    vowelNow(ct, sT) {
+      const st = this.state, tr = clamp(st.vowelTravel, 0, 1), P = Math.max(20, st.phrase);
+      const ph = (fnv1a(`${st.seed}|vowelpath`) % 628) / 100;
+      const wander = 0.6 * Math.sin(2 * Math.PI * ct / (P * 2.3) + ph) + 0.4 * Math.sin(2 * Math.PI * ct / (P * 5.7) + 2 * ph);
+      if (sT === null) return clamp(st.vowel + tr * 0.45 * wander, 0, 1);
+      const D = this.score.duration, x = clamp(sT, 0, D) / D;
+      let arc = VOWEL_ARC[VOWEL_ARC.length - 1][1];
+      for (let i = 1; i < VOWEL_ARC.length; i++) if (x <= VOWEL_ARC[i][0]) {
+        const [x0, v0] = VOWEL_ARC[i - 1], [x1, v1] = VOWEL_ARC[i];
+        arc = v0 + (v1 - v0) * smoothstep((x - x0) / (x1 - x0)); break;
+      }
+      return clamp(st.vowel + (arc - st.vowel) * tr + tr * 0.12 * wander, 0, 1);
     }
     vowelGains(slot, vc, fr) {
       const amt = clamp(this.state.voice, 0, 1);
       if (amt <= 0) return { body: [1, 1, 1, 1], open: [0, 0, 0, 0], bright: [0, 0, 0] };
-      const fm = this.vowelAt(slot, fr.tMs);
+      const fm = this.vowelAt(slot, fr);
       const V = fr.ratios.map(r => vowelShape(vc.f0 * r, fm));
       return {
         body: V.map((v, j) => 1 + amt * ((j === 0 ? 0.6 + 0.6 * v : 0.3 + 1.5 * v) - 1)),
-        open: V.map((v, j) => j === 0 ? 0 : amt * 0.9 * v),
-        bright: [1, 2, 3].map(j => vc.f0 * fr.ratios[j] < 700 ? 0 : amt * 0.3 * V[j] / j),
+        // (only the octave partials: a held bell partial would clash with its neighbors')
+        open: V.map((v, j) => j === 0 || j === 2 ? 0 : amt * 0.9 * v),
+        bright: [1, 2, 3].map(j => j === 2 || vc.f0 * fr.ratios[j] < 700 ? 0 : amt * 0.3 * V[j] / j),
       };
     }
 
-    // Glints: the shimmer on top. A tone's own harmonics (x2, x3, x4) that
-    // land between about 1 and 2.5 kHz sound very faintly, outside the
+    // Glints: the shimmer on top. A tone's own octave and double octave, where
+    // they land between about 1 and 2.5 kHz, sound very faintly, outside the
     // darkening filter, each twinkling on its own cycle of one to three
     // seconds — and each phone twinkles differently, so the sparkle moves
     // around the ring. They follow an arc: absent while the piece is sparse,
@@ -800,6 +831,7 @@
       if (amt <= 0) return [0, 0, 0];
       const ts = (fr.tMs - st.epoch) / 1000;
       return [1, 2, 3].map(j => {
+        if (j === 2) return 0;   // the bell partial only flares (bronze); it never sustains up here
         const f = vc.f0 * fr.ratios[j];
         const band = smoothstep((f - 800) / 400) * (1 - smoothstep((f - 2400) / 800));
         if (band <= 0) return 0;

@@ -70,7 +70,7 @@
 <body>
 <header>
   <h1>NEARFIELD</h1>
-  <span class="sub">The ring — host · build 10</span>
+  <span class="sub">The ring — host · build 11</span>
   <span id="status">—</span>
 </header>
 <div id="main">
@@ -96,10 +96,10 @@
 </div>
 <div id="sheet"></div>
 
-<script src="ring-core.js?v=10"></script>
-<script src="ring-live.js?v=10"></script>
-<script src="ring-audio.js?v=10"></script>
-<script src="qr.js?v=10"></script>
+<script src="ring-core.js?v=11"></script>
+<script src="ring-live.js?v=11"></script>
+<script src="ring-audio.js?v=11"></script>
+<script src="qr.js?v=11"></script>
 <script>
 'use strict';
 const NR = window.NearfieldRing;
@@ -218,17 +218,19 @@ function addSeg(parent, get, pick, options) {
 const dials = [];
 function addDial(parent, o) {
   const el = document.createElement('div'); el.className = 'dial'; el.style.setProperty('--c', o.color);
+  const extras = o.extras || (o.second ? [o.second] : []);
   el.innerHTML = `<canvas></canvas><div class="dh"><span class="dn">${o.name}</span><span class="dv"></span></div>` +
     `<input type="range" min="${o.min}" max="${o.max}" step="${o.step}" aria-label="${o.name}">` +
-    (o.second ? `<div class="d2"><span>${o.second.label}</span><input type="range" min="${o.second.min}" max="${o.second.max}" step="${o.second.step}" aria-label="${o.second.label}"><output></output></div>` : '') +
+    extras.map(x => `<div class="d2"><span>${x.label}</span><input type="range" min="${x.min}" max="${x.max}" step="${x.step}" aria-label="${x.label}"><output></output></div>`).join('') +
     `<p class="dd">${o.hint}</p>`;
-  const [r1, r2] = el.querySelectorAll('input'), dv = el.querySelector('.dv'), out2 = el.querySelector('output');
+  const r1 = el.querySelector('input'), dv = el.querySelector('.dv');
+  const xs = [...el.querySelectorAll('.d2')].map((d, i) => ({ x: extras[i], r: d.querySelector('input'), out: d.querySelector('output') }));
   r1.addEventListener('input', () => { dv.textContent = o.fmt(+r1.value); change(o.patch(+r1.value)); });
-  if (r2) r2.addEventListener('input', () => { out2.textContent = o.second.fmt(+r2.value); change(o.second.patch(+r2.value)); });
+  for (const e of xs) e.r.addEventListener('input', () => { e.out.textContent = e.x.fmt(+e.r.value); change(e.x.patch(+e.r.value)); });
   syncers.push(() => {
     if (document.activeElement !== r1) r1.value = o.get();
     dv.textContent = o.fmt(+o.get());
-    if (r2) { if (document.activeElement !== r2) r2.value = o.second.get(); out2.textContent = o.second.fmt(+o.second.get()); }
+    for (const e of xs) { if (document.activeElement !== e.r) e.r.value = e.x.get(); e.out.textContent = e.x.fmt(+e.x.get()); }
   });
   parent.appendChild(el);
   dials.push({ canvas: el.querySelector('canvas'), draw: o.draw, color: o.color });
@@ -290,15 +292,12 @@ function drawChoir(c, w, h, t, st) {
 }
 // vowel: the two bright humps, 200 Hz to 3.2 kHz, and the vowel's name
 function drawVowel(c, w, h, t, st, col) {
-  const fm = NR.vowelFormants(st.vowel), base = h - 10, top = 12, n = 60;
+  const nowV = app.lastFrame ? app.lastFrame.vowel : st.vowel, base = h - 10, top = 12, n = 60;
+  const curve = fm => { c.beginPath(); for (let i = 0; i <= n; i++) { const f = 200 * Math.pow(16, i / n), y = base - (base - top) * st.voice * NR.vowelShape(f, fm), x = 6 + (w - 12) * i / n; if (i) c.lineTo(x, y); else c.moveTo(x, y); } c.stroke(); };
   c.strokeStyle = GHOST; line(c, 6, base, w - 6, base);
-  c.strokeStyle = col; c.beginPath();
-  for (let i = 0; i <= n; i++) {
-    const f = 200 * Math.pow(16, i / n), y = base - (base - top) * st.voice * NR.vowelShape(f, fm), x = 6 + (w - 12) * i / n;
-    if (i) c.lineTo(x, y); else c.moveTo(x, y);
-  }
-  c.stroke();
-  c.font = '15px ui-monospace, Menlo, monospace'; c.textAlign = 'right'; c.globalAlpha = 0.9; c.fillText(fm.name, w - 6, 16); c.globalAlpha = 1;
+  if (Math.abs(nowV - st.vowel) > 0.02) curve(NR.vowelFormants(st.vowel));   // the vowel you set
+  c.strokeStyle = col; curve(NR.vowelFormants(nowV));                           // where it is now
+  c.font = '15px ui-monospace, Menlo, monospace'; c.textAlign = 'right'; c.globalAlpha = 0.9; c.fillText(NR.vowelFormants(nowV).name, w - 6, 16); c.globalAlpha = 1;
 }
 // bronze: four partials after an arrival, over a slowed-down ten-second loop:
 // they bloom together and fade at their own rates, the hum (left) staying
@@ -447,9 +446,10 @@ function buildPanel() {
     fmt: v => v <= 0 ? 'one voice' : `±${Math.round(8 * v)} ¢`, draw: drawChoir,
     hint: 'One exact pitch, or a small group of singers each drifting a little around the note.' });
   addDial(g, { name: 'vowel', color: BLUE, get: () => app.state.vowel, patch: v => set('vowel', v), min: 0, max: 1, step: 0.01,
-    fmt: v => NR.vowelFormants(v).name, draw: drawVowel,
-    hint: 'Which vowel the tones sing, oo to ee, and how strongly. The humps are the bright regions that stay put while notes change.',
-    second: { label: 'sung', get: () => app.state.voice, patch: v => set('voice', v), min: 0, max: 1, step: 0.01, fmt: pc } });
+    fmt: v => `home ${NR.vowelFormants(v).name}`, draw: drawVowel,
+    hint: 'Which vowel the tones sing, oo to ee, how strongly, and how far it travels over time. With the score it opens like a mouth: oo at the start, toward ee late in cycle II, closed again at the end. Grey is the vowel you set; the bright line is now.',
+    extras: [{ label: 'sung', get: () => app.state.voice, patch: v => set('voice', v), min: 0, max: 1, step: 0.01, fmt: pc },
+      { label: 'travels', get: () => app.state.vowelTravel, patch: v => set('vowelTravel', v), min: 0, max: 1, step: 0.01, fmt: v => v <= 0 ? 'held' : pc(v) }] });
   addDial(g, { name: 'bronze', color: BLUE, get: () => app.state.bronze, patch: v => set('bronze', v), min: 0, max: 1.5, step: 0.01,
     fmt: pc, draw: drawBronze,
     hint: 'A struck bar in slow motion: as a tone arrives its bell overtones bloom, then die away, the highest first, leaving the hum. No strike, just the color of one.' });
@@ -543,6 +543,7 @@ function draw() {
   cx.fillStyle = '#0c0c10'; cx.fillRect(0, 0, W, H);
   if (!app.state) return;
   const fr = app.ring.frame(now());
+  app.lastFrame = fr;
   const S = app.state.S, R = Math.min(W, H) * 0.36, ox = W / 2, oy = H / 2;
   const ang = p => -Math.PI / 2 + 2 * Math.PI * p / S;
   const levels = new Array(S).fill(0), dom = new Array(S).fill(null);

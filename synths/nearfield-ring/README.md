@@ -93,6 +93,19 @@ that vowel's two formants (oo 300/870 Hz, oh 570/840, ah 730/1090, eh 530/1840,
 ee 270/2290); partials above 700 Hz that the vowel calls for go round the
 darkening filter with the glints.
 
+The shared vowel **travels**. On its own it wanders slowly around the vowel you
+set, changing about as often as the weave turns. With the score it follows an
+arc, a mouth opening over the piece: oo in the buka, through oh and ah, toward
+ee late in cycle II, closing again across the final gong.
+
+### What may sustain up high
+
+Only octaves of scale tones. The top partial is tuned to the double octave
+(not the derived spectrum's 4.4), glints and vowel highs use only the octave
+partials, and the bell partial (3.2) appears only in the brief bronze bloom.
+Otherwise different tones' upper partials land a few hertz apart around
+1–1.5 kHz and beat 15–25 times a second.
+
 ### Warmth (measured against Aleksi Perälä's *Incandescence*)
 
 - **Foundation** — a deep tone with its octaves and fifth (55 Hz up). Phones

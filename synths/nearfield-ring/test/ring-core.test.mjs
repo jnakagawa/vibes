@@ -13,7 +13,7 @@ const cfg = { scale: load('scale.json'), params: load('params.json'), score: loa
 const T0 = 1_800_000_000_000;
 // baseline for the handoff/score tests: every layer together, no tides, no air
 // (and the original stretched tuning, fingerprint and handoff bend)
-const PLAIN = { drift: 0, density: 1, L: { anchor: [1, 1, 1], voice: [1, 1, 1], shimmer: [1, 1, 1] }, air: [0, 1], pure: 0, fp: 12, bend: 10, bed: 0, space: 0, stack: 0, choir: 0, glint: 0, voice: 0, bronze: 0 };
+const PLAIN = { drift: 0, density: 1, L: { anchor: [1, 1, 1], voice: [1, 1, 1], shimmer: [1, 1, 1] }, air: [0, 1], pure: 0, fp: 12, bend: 10, bed: 0, space: 0, stack: 0, choir: 0, glint: 0, voice: 0, bronze: 0, vowelTravel: 0 };
 function ring(over = {}) {
   const r = new NR.Ring(cfg);
   r.setState({ ...NR.defaultState(T0), ...PLAIN, ...over });
@@ -233,7 +233,7 @@ test('pure tuning: octaves of 2, harmonic partials, just intervals', () => {
   assert.ok(Math.abs(sh.f0 / (220 * Math.pow(2, [0, 498.045, 701.955, 884.359][sh.v % 4] / 1200)) - 2) < 1e-6);
   // 0 leaves the stretched scale exactly as derived
   const st = cycles({ pure: 0 }).frame(T0 + 60_000);
-  assert.deepEqual(st.ratios, cfg.scale.spectrum.ratios);
+  assert.deepEqual(st.ratios.slice(0, 3), cfg.scale.spectrum.ratios.slice(0, 3));
 });
 
 test('breathing: neighbors play each partial a fraction of a hertz apart', () => {
@@ -418,7 +418,10 @@ test('glints follow the piece: none in the buka or at the end, off at 0', () => 
 
 test('the default tuning is the gamelan-derived one: stretched octave, bell partials, its own scale', () => {
   const fr = cycles().frame(T0 + 20_000);
-  assert.deepEqual(fr.ratios, cfg.scale.spectrum.ratios);
+  const O = cfg.scale.pseudo_octave_ratio;
+  // fundamental, stretched octave, the bell partial, and the double octave
+  assert.deepEqual(fr.ratios.slice(0, 3), cfg.scale.spectrum.ratios.slice(0, 3));
+  assert.ok(Math.abs(fr.ratios[3] - O * O) < 1e-9);
   const v = fr.voices.find(x => x.role === 'voice' && x.v === 2);
   assert.ok(Math.abs(1200 * Math.log2(v.f0 / 220) - cfg.scale.scale_cents[2]) < 1e-6);
   const sh = fr.voices.find(x => x.role === 'shimmer');
@@ -463,7 +466,7 @@ test('vowels: partials near a formant are lifted, others held back; 0 leaves the
   assert.ok(NR.vowelShape(730, fm) > 0.99 && NR.vowelShape(1090, fm) > 0.79 && NR.vowelShape(3000, fm) < 0.05 && NR.vowelShape(200, fm) < 0.05);
   assert.equal(NR.vowelFormants(0).name, 'oo');
   assert.equal(NR.vowelFormants(1).name, 'ee');
-  const r = cycles({ voice: 1, vowel: 0.5, vowelMove: 0, pure: 1, space: 0, bronze: 0 });
+  const r = cycles({ voice: 1, vowel: 0.5, vowelMove: 0, vowelTravel: 0, pure: 1, space: 0, bronze: 0 });
   const fr = r.frame(T0 + 20_000);
   const p = [0, 1, 2, 3, 4, 5, 6, 7].flatMap(k => r.playersAt(fr, k)).find(x => Math.abs(x.vc.f0 - 330) < 1);
   // 330 Hz tone: partial 2 (660) sits near "ah"'s 730 formant, partial 4 (1320) further from 1090
@@ -476,13 +479,14 @@ test('vowels: partials near a formant are lifted, others held back; 0 leaves the
 });
 
 test('vowels: each phone wanders around the set vowel, slowly, and vowelMove 0 pins it', () => {
-  const r = cycles({ vowel: 0.5, vowelMove: 1 });
-  const f1 = k => { const a = []; for (let t = T0; t < T0 + 600_000; t += 2000) a.push(r.vowelAt(k, t).f1); return a; };
+  const r = cycles({ vowel: 0.5, vowelMove: 1, vowelTravel: 0 });
+  const frames = []; for (let t = T0; t < T0 + 600_000; t += 2000) frames.push(r.frame(t));
+  const f1 = k => frames.map(fr => r.vowelAt(k, fr).f1);
   const a = f1(0), b = f1(3);
   assert.ok(Math.max(...a) - Math.min(...a) > 60, 'it moves');
   assert.ok(a.some((v, i) => Math.abs(v - b[i]) > 30), 'phones differ');
-  const pinned = cycles({ vowel: 0.5, vowelMove: 0 });
-  assert.equal(pinned.vowelAt(0, T0 + 1000).f1, pinned.vowelAt(5, T0 + 400_000).f1);
+  const pinned = cycles({ vowel: 0.5, vowelMove: 0, vowelTravel: 0 });
+  assert.equal(pinned.vowelAt(0, pinned.frame(T0 + 1000)).f1, pinned.vowelAt(5, pinned.frame(T0 + 400_000)).f1);
 });
 
 // --- slendro without the grating: neighbors take turns ---------------------------------------
@@ -570,4 +574,44 @@ test('in every scale, tones closer than a minor third take turns', () => {
   // "all in" (space 0) is the one way to ask for everything at once
   const wall = cycles({ space: 0 }).frame(T0 + 50_000);
   assert.ok(wall.voices.every(v => v.tide === 1));
+});
+
+test('nothing that sustains up high can beat harshly: glints and vowel highs are octaves of scale tones', () => {
+  for (const o of [{}, { scale: 'slendro' }, { vowel: 0.73 }, { score: { start: T0 - 600_000, comp: 1 } }]) {
+    const r = cycles({ bronze: 0, choir: 0, rate: 0, fp: 0, ...o });
+    let worst = Infinity;
+    for (let t = T0; t < T0 + 900_000; t += 3000) {
+      const fr = r.frame(t), highs = [];
+      for (let k = 0; k < 8; k++) for (const p of r.playersAt(fr, k)) {
+        assert.equal(p.glints[1], 0, 'the bell partial is not held in the bright path');
+        assert.equal(p.open[2], 0);
+        p.glints.forEach((g, i) => { if (g * p.vc.level * p.g > 1e-3) highs.push(p.vc.f0 * fr.ratios[i + 1]); });
+      }
+      highs.sort((a, b) => a - b);
+      for (let i = 1; i < highs.length; i++) { const d = highs[i] - highs[i - 1]; if (d > 1) worst = Math.min(worst, d); }
+    }
+    assert.ok(worst > 60, `${JSON.stringify(o)}: two held high partials only ${worst.toFixed(0)} Hz apart`);
+  }
+});
+
+test('vowels evolve: a slow wander on its own, an opening-and-closing arc with the score', () => {
+  // free ring: wanders around the set vowel, slowly, and travel 0 holds it
+  const r = cycles({ vowel: 0.5, vowelTravel: 1 });
+  const vs = []; let step = 0, prev = null;
+  for (let t = T0; t < T0 + 1800_000; t += 1000) { const v = r.frame(t).vowel; vs.push(v); if (prev !== null) step = Math.max(step, Math.abs(v - prev)); prev = v; }
+  assert.ok(Math.max(...vs) - Math.min(...vs) > 0.5, 'it covers real ground');
+  assert.ok(Math.abs(vs.reduce((a, b) => a + b, 0) / vs.length - 0.5) < 0.1, 'around the set vowel');
+  assert.ok(step < 0.02, `largest change in a second: ${step}`);
+  assert.equal(cycles({ vowel: 0.3, vowelTravel: 0 }).frame(T0 + 777_000).vowel, 0.3);
+  // with the score: closed at the start, brightest late in cycle II, closed at the end
+  const s = cycles({ score: { start: T0, comp: 1 }, vowelTravel: 1, vowel: 0.5 });
+  const at = sec => s.frame(T0 + sec * 1000).vowel, name = v => NR.vowelFormants(v).name;
+  const a = at(5), b = at(420), c = at(780), d = at(958);
+  assert.ok(a < 0.15 && name(a) === 'oo', `opening ${a}`);
+  assert.ok(Math.abs(b - 0.5) < 0.15, `the turning ${b}`);
+  assert.ok(c > 0.75, `late cycle II ${c}`);
+  assert.ok(d < 0.15, `the end ${d}`);
+  // everyone agrees on the shared vowel
+  const p = cycles({ score: { start: T0, comp: 1 } }), q = cycles({ score: { start: T0, comp: 1 } });
+  assert.equal(p.frame(T0 + 300_000).vowel, q.frame(T0 + 300_000).vowel);
 });
