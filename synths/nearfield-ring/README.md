@@ -19,18 +19,40 @@ clock, and plays only the voices passing through its position.
 position around your head (with the time sound takes to reach you), so the
 piece can be shaped without setting out phones. It plays on the host only.
 
-The piece is layers of slow cycles that never quite line up:
+### What stays gamelan
 
-- **Mix** — levels for anchors, tones, shimmer and air.
-- **Shape** — *space* and *turn every* (the weave, below), *drift* (how far
-  apart the layers turn), *softness* (darker), *breathing*, *tuning*.
-- **Layers** — each layer's width (a point hopping between two phones, or a
-  cloud over several) and whether it turns with or against the rotation.
-- **Air** — soft noise, each phone its own, circling the ring and swelling with
-  the breath; its tone wanders across the scale's notes.
+The piece borrows gamelan's structure, and these parts are the core:
 
-The ring display shows how many tones are in and the time to the next turn;
-the line under it shows each layer's seconds per rotation.
+- **Tuning** — by default the stretched octave (2.07) with bell-like partials
+  and a scale grown from that sound, the way a gamelan's tuning follows its
+  metal. **Slendro** (five equal steps of the stretched octave) is one switch
+  away. *Pure* (true octaves, harmonics) is the other end of the tuning dial.
+- **Beating (ombak)** — neighboring phones are tuned as a pair, one slightly
+  high and one slightly low, like pengumbang and pengisep, so each tone swells
+  and fades in the air between them.
+- **Nested cycles** — layers turn at 1 : 2 : 4, and the foundation's root
+  swells at each turn like a gong marking the cycle.
+- **The score** — buka, cycles, the turning, final gong.
+
+### The dials
+
+Ten dials, each with a live picture of what it does:
+
+| Group | Dial | What it changes |
+|---|---|---|
+| Tuning and beating | **tuning** | gamelan (stretched) ↔ pure; switch for 4 tones / slendro |
+| | **beating** | how long each wave between paired phones takes |
+| Voice | **choir** | one exact pitch ↔ a small group drifting around it |
+| | **vowel** | which vowel the tones sing (oo → ee), and how strongly |
+| | **dark** | how much of the top is rolled off |
+| | **glints** | faint high harmonics twinkling above |
+| Motion | **turning** | seconds for the sound to go once round the ring |
+| | **width** | a point between two phones ↔ a cloud over several |
+| | **weave** | how many tones rest at a time, and how often they hand over |
+| | **drift** | layers turning together ↔ each at its own speed |
+
+Mix has four levels (foundation, tones, high tones, phone volume). Everything
+else is under **more settings**.
 
 ### The weave
 
@@ -42,6 +64,14 @@ changes at the turns too, and its root swells slightly to mark them. **Space**
 sets how many tones are resting at any time; **turn every** sets the phrase
 length. This follows a full track of *Incandescence*, which keeps a 6 dB
 loudness range for ten minutes while trading tones roughly every 80 seconds.
+
+### Vowels
+
+Each phone has a vowel: the one set on the dial, wandering a little so the
+choir never quite agrees. Every partial is weighted by how close it falls to
+that vowel's two formants (oo 300/870 Hz, oh 570/840, ah 730/1090, eh 530/1840,
+ee 270/2290); partials above 700 Hz that the vowel calls for go round the
+darkening filter with the glints.
 
 ### Warmth (measured against Aleksi Perälä's *Incandescence*)
 

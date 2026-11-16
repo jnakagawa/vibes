@@ -13,7 +13,7 @@ const cfg = { scale: load('scale.json'), params: load('params.json'), score: loa
 const T0 = 1_800_000_000_000;
 // baseline for the handoff/score tests: every layer together, no tides, no air
 // (and the original stretched tuning, fingerprint and handoff bend)
-const PLAIN = { drift: 0, density: 1, L: { anchor: [1, 1, 1], voice: [1, 1, 1], shimmer: [1, 1, 1] }, air: [0, 1], pure: 0, fp: 12, bend: 10, bed: 0, space: 0, stack: 0, choir: 0, glint: 0 };
+const PLAIN = { drift: 0, density: 1, L: { anchor: [1, 1, 1], voice: [1, 1, 1], shimmer: [1, 1, 1] }, air: [0, 1], pure: 0, fp: 12, bend: 10, bed: 0, space: 0, stack: 0, choir: 0, glint: 0, voice: 0 };
 function ring(over = {}) {
   const r = new NR.Ring(cfg);
   r.setState({ ...NR.defaultState(T0), ...PLAIN, ...over });
@@ -260,7 +260,7 @@ test('breathing: neighbors play each partial a fraction of a hertz apart', () =>
 });
 
 test('foundation: root and octaves always, one color at a time, silent before the score', () => {
-  const r = cycles();
+  const r = cycles({ pure: 1 });
   const fr = r.frame(T0 + 30_000);
   assert.equal(r.bedAt(fr, 3), null);
   const bed = r.bedAt(fr, 'pedestal');
@@ -384,7 +384,7 @@ test('choir 0 is one exact voice per phone', () => {
 // --- glints: the shimmer on top ----------------------------------------------------------
 
 test('glints: faint harmonics between 1 and 2.5 kHz, twinkling, different on every phone', () => {
-  const r = cycles();
+  const r = cycles({ voice: 0 });
   const seen = new Map();
   let maxLevel = 0;
   for (let t = T0; t < T0 + 240_000; t += 100) {
@@ -409,6 +409,77 @@ test('glints follow the piece: none in the buka or at the end, off at 0', () => 
   assert.ok(s.frame(T0 + 1000).glintArc < 0.02);
   assert.ok(s.frame(T0 + 400_000).glintArc > 0.3);
   assert.equal(s.frame(T0 + 960_000).glintArc, 0);
-  const off = cycles({ glint: 0 }), fr = off.frame(T0 + 50_000);
+  const off = cycles({ glint: 0, voice: 0 }), fr = off.frame(T0 + 50_000);
   for (let k = 0; k < 8; k++) for (const p of off.playersAt(fr, k)) assert.deepEqual(p.glints, [0, 0, 0]);
+});
+
+// --- ethos: gamelan tuning by default, slendro available -----------------------------------
+
+test('the default tuning is the gamelan-derived one: stretched octave, bell partials, its own scale', () => {
+  const fr = cycles().frame(T0 + 20_000);
+  assert.deepEqual(fr.ratios, cfg.scale.spectrum.ratios);
+  const v = fr.voices.find(x => x.role === 'voice' && x.v === 2);
+  assert.ok(Math.abs(1200 * Math.log2(v.f0 / 220) - cfg.scale.scale_cents[2]) < 1e-6);
+  const sh = fr.voices.find(x => x.role === 'shimmer');
+  assert.ok(Math.abs(sh.f0 / (220 * Math.pow(2, cfg.scale.scale_cents[sh.v % 4] / 1200)) - cfg.scale.pseudo_octave_ratio) < 1e-9, 'octaves are stretched');
+});
+
+test('slendro: five equal steps of the stretched octave', () => {
+  const r = cycles({ scale: 'slendro', stack: 0 });
+  const fr = r.frame(T0 + 20_000);
+  const step = 1200 * Math.log2(cfg.scale.pseudo_octave_ratio) / 5;
+  assert.ok(Math.abs(step - 251.9) < 0.2);
+  const degs = new Set(r.voices.map(v => v.degreeIndex));
+  assert.equal(degs.size, 5);
+  for (const v of fr.voices.filter(x => x.role === 'voice')) {
+    const cents = 1200 * Math.log2(v.f0 / 220), k = Math.round(cents / step);
+    assert.ok(Math.abs(cents - k * step) < 1e-6, `voice at ${cents.toFixed(1)} cents`);
+  }
+  // with pure tuning it becomes five equal steps of a true octave
+  const p = cycles({ scale: 'slendro', pure: 1, stack: 0 }).frame(T0 + 20_000);
+  for (const v of p.voices.filter(x => x.role === 'voice')) assert.ok(Math.abs((1200 * Math.log2(v.f0 / 220)) % 240) < 1e-6 || Math.abs((1200 * Math.log2(v.f0 / 220)) % 240 - 240) < 1e-6);
+});
+
+test('beating is still built on pairs: neighbors sit above and below, as pengumbang and pengisep', () => {
+  const r = cycles({ fp: 0, bend: 0, choir: 0 });
+  const fr = r.frame(T0 + 33_000);
+  let pairs = 0;
+  for (let k = 0; k < 8; k++) for (const a of r.playersAt(fr, k)) {
+    const b = r.playersAt(fr, (k + 1) % 8).find(x => x.v === a.v);
+    if (!b) continue;
+    assert.ok(Math.sign(a.detunes[0]) === -Math.sign(b.detunes[0]), 'one of the pair is tuned up, the other down');
+    pairs++;
+  }
+  assert.ok(pairs > 5);
+});
+
+// --- vowels -------------------------------------------------------------------------------
+
+test('vowels: partials near a formant are lifted, others held back; 0 leaves the tone alone', () => {
+  const fm = NR.vowelFormants(0.5);
+  assert.equal(fm.name, 'ah');
+  assert.ok(Math.abs(fm.f1 - 730) < 1 && Math.abs(fm.f2 - 1090) < 1);
+  assert.ok(NR.vowelShape(730, fm) > 0.99 && NR.vowelShape(1090, fm) > 0.79 && NR.vowelShape(3000, fm) < 0.05 && NR.vowelShape(200, fm) < 0.05);
+  assert.equal(NR.vowelFormants(0).name, 'oo');
+  assert.equal(NR.vowelFormants(1).name, 'ee');
+  const r = cycles({ voice: 1, vowel: 0.5, vowelMove: 0, pure: 1, space: 0 });
+  const fr = r.frame(T0 + 20_000);
+  const p = [0, 1, 2, 3, 4, 5, 6, 7].flatMap(k => r.playersAt(fr, k)).find(x => Math.abs(x.vc.f0 - 330) < 1);
+  // 330 Hz tone: partial 2 (660) sits near "ah"'s 730 formant, partial 4 (1320) further from 1090
+  assert.ok(p.body[1] > 1.3, `partial near the formant ${p.body[1]}`);
+  assert.ok(p.body[0] > 0.55 && p.body[0] < 1, 'the fundamental is never lost');
+  assert.ok(p.open[1] > p.open[3] && p.open[0] === 0);
+  const off = cycles({ voice: 0, space: 0 }), q = off.playersAt(off.frame(T0 + 20_000), 2)[0];
+  assert.deepEqual(q.body, [1, 1, 1, 1]);
+  assert.deepEqual(q.open, [0, 0, 0, 0]);
+});
+
+test('vowels: each phone wanders around the set vowel, slowly, and vowelMove 0 pins it', () => {
+  const r = cycles({ vowel: 0.5, vowelMove: 1 });
+  const f1 = k => { const a = []; for (let t = T0; t < T0 + 600_000; t += 2000) a.push(r.vowelAt(k, t).f1); return a; };
+  const a = f1(0), b = f1(3);
+  assert.ok(Math.max(...a) - Math.min(...a) > 60, 'it moves');
+  assert.ok(a.some((v, i) => Math.abs(v - b[i]) > 30), 'phones differ');
+  const pinned = cycles({ vowel: 0.5, vowelMove: 0 });
+  assert.equal(pinned.vowelAt(0, T0 + 1000).f1, pinned.vowelAt(5, T0 + 400_000).f1);
 });

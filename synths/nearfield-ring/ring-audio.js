@@ -191,7 +191,9 @@
         live.add(p.v);
         const n = this.voices.get(p.v) || this._voice(p.v, vc.f0);
         n.silentSince = null;
-        const pg = NR.partialGains(this.params, vc.role, vc.f0, vc.bloom, fr.ratios, fr.amps);
+        // each partial's level: the bloom's, shaped by this phone's vowel
+        const base = NR.partialGains(this.params, vc.role, vc.f0, vc.bloom, fr.ratios, fr.amps);
+        const pg = base.map((x, j) => x * (p.body ? p.body[j] : 1) + (p.open ? p.open[j] * fr.amps[j] : 0));
         const singers = p.singers || [{ g: 1, detunes: p.detunes }];
         for (let k = 0; k < Math.max(singers.length, n.sets.length); k++) {
           const sg = singers[k], set = n.sets[k] || this._singer(n, vc.f0);

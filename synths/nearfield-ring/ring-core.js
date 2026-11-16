@@ -181,7 +181,8 @@
       L: { anchor: [0.8, 1.5, 1], voice: [0.7, 1.5, 1], shimmer: [0.3, 1.25, -1] },
       air: [0, -1],                  // [level, with / against] — off by default
       bed: 0.8,                      // the foundation (center speaker) level
-      pure: 1,                       // tuning: 0 = stretched (gamelan) .. 1 = pure octaves
+      pure: 0,                       // tuning: 0 = stretched (gamelan) .. 1 = pure octaves
+      scale: 'own',                  // 'own' = the 4 tones derived from the timbre | 'slendro' = 5 equal steps
       rate: 0.27,                    // breathing: beat rate (Hz) of a partial at 210 Hz
       ratios: 'nested',              // layer cycle ratios: nested 1:2:4 | prime 5:7:11
       drift: 0.6,                    // 0 = every cycle together .. 1 = fully apart
@@ -191,6 +192,9 @@
       stack: 1,                      // repeat degrees an octave up, for more pitches to trade
       choir: 1,                      // singers' pitch spread (0 = one exact voice per phone)
       glint: 1,                      // the faint twinkling harmonics on top (0 = none)
+      voice: 0.5,                    // how sung the tones are (vowel colour amount)
+      vowel: 0.4,                    // which vowel: 0 oo .. 0.25 oh .. 0.5 ah .. 0.75 eh .. 1 ee
+      vowelMove: 0.5,                // how far each phone's vowel wanders around it
       soft: 0.68,                    // darker + slower edges
       beat: 1,                       // scales fingerprint + handoff bend
       bend: 0,                       // ± cents a position bends at a turn/min
@@ -214,6 +218,18 @@
   }
 
   const PURE_CENTS = [0, 498.045, 701.955, 884.359];   // 1, 4/3, 3/2, 5/3
+  // vowels as (first, second) formant in Hz, ordered so neighbors morph smoothly
+  const VOWELS = [['oo', 300, 870], ['oh', 570, 840], ['ah', 730, 1090], ['eh', 530, 1840], ['ee', 270, 2290]];
+  function vowelFormants(x) {
+    const p = clamp(x, 0, 1) * (VOWELS.length - 1), i = Math.min(VOWELS.length - 2, Math.floor(p)), f = p - i;
+    const a = VOWELS[i], b = VOWELS[i + 1];
+    return { f1: a[1] * Math.pow(b[1] / a[1], f), f2: a[2] * Math.pow(b[2] / a[2], f), name: f < 0.5 ? a[0] : b[0] };
+  }
+  // 0..1: how close a frequency sits to either formant
+  function vowelShape(f, fm) {
+    const g = (F, w) => Math.exp(-Math.pow(Math.log2(f / F), 2) / (2 * w * w));
+    return Math.max(g(fm.f1, 0.3), 0.8 * g(fm.f2, 0.22));
+  }
   const hash01 = s => (fnv1a(s) % 100000) / 100000;
   const LAYER_INDEX = { anchor: 0, voice: 1, shimmer: 2, air: 3 };
   const RATIOS = { nested: [0.5, 1, 2, 0.25], prime: [5 / 7, 1, 11 / 7, 3 / 7] };
@@ -277,7 +293,9 @@
 
     _voices(S) {
       const st = this.state;
-      return assignRoles(S, this.scale, this.params).map((a, v) => {
+      // slendro: five near-equal steps to the (stretched) octave, as in gamelan
+      const scale = st.scale === 'slendro' ? { ...this.scale, scale_cents: [0, 1, 2, 3, 4] } : this.scale;
+      return assignRoles(S, scale, this.params).map((a, v) => {
         let register = a.register;
         if (a.role === 'anchor' && st.anchors === 'lift') register = a.register + 1;
         return { v, role: a.role, degreeIndex: a.degreeIndex, register };
@@ -487,6 +505,8 @@
         pseudo_octave_ratio: mix(scaleNow.stretch ?? scaleNow.spectrum.ratios[1], 2),
         scale_cents: scaleNow.scale_cents.map((c, i) => mix(c, PURE_CENTS[i] ?? c)),
       };
+      // slendro divides whatever the octave currently is into five equal steps
+      if (st.scale === 'slendro') es.scale_cents = [0, 1, 2, 3, 4].map(k => k * 1200 * Math.log2(es.pseudo_octave_ratio) / 5);
       const partialRatios = scaleNow.spectrum.ratios.map((r, i) => mix(r, i + 1));
       const factor = clamp(Math.abs(rate) * 60, 0, 1.5);   // 1 = a turn a minute
       const breathG = 1 + this.params.breath.ensemble_depth * Math.sin(phase);
@@ -613,7 +633,7 @@
       const out = [];
       for (const vc of fr.voices) {
         if (slot === 'pedestal') {
-          if (vc.role === 'anchor' && st.anchors === 'pedestal') { const d = [vc.fp, vc.fp, vc.fp, vc.fp]; out.push({ v: vc.v, vc, g: 1, detune: vc.fp, detunes: d, singers: [{ g: 1, detunes: d }], glints: [0, 0, 0] }); }
+          if (vc.role === 'anchor' && st.anchors === 'pedestal') { const d = [vc.fp, vc.fp, vc.fp, vc.fp]; out.push({ v: vc.v, vc, g: 1, detune: vc.fp, detunes: d, singers: [{ g: 1, detunes: d }], glints: [0, 0, 0], body: [1, 1, 1, 1], open: [0, 0, 0, 0] }); }
           continue;
         }
         if (vc.role === 'anchor' && st.anchors === 'pedestal') continue;
@@ -641,10 +661,37 @@
           const c = this.singerCents(slot, vc.v, k, vc.f0, fr.tMs);
           singers.push({ g: 1 / Math.sqrt(nS), detunes: detunes.map(d => d + c) });
         }
+        const vw = this.vowelGains(slot, vc, fr), gl = this.glints(slot, vc, fr);
         out.push({ v: vc.v, vc, g, detune: singers[0].detunes[0], detunes: singers[0].detunes, singers,
-          glints: this.glints(slot, vc, fr) });
+          glints: gl.map((x, i) => x + vw.bright[i]), body: vw.body, open: vw.open });
       }
       return out;
+    }
+
+    // Vowel: a sung tone keeps bright regions (formants) that stay put while
+    // the note changes. Each phone has a vowel — the set one, wandering a
+    // little so the choir never quite agrees — and weights every partial by
+    // how close it falls to that vowel's two formants.
+    //   body   multiplier on each partial's normal level
+    //   open   extra level for partials the bloom has not opened (x amps)
+    //   bright extra level for partials 2-4 above 700 Hz, sent round the
+    //          darkening filter with the glints
+    vowelAt(slot, tMs) {
+      const st = this.state;
+      const r = mulberry32(fnv1a(`${st.seed}|${slot}|vowel`));
+      const ts = (tMs - st.epoch) / 1000;
+      return vowelFormants(st.vowel + st.vowelMove * 0.18 * Math.sin(2 * Math.PI * ts / (23 + r() * 31) + r() * 2 * Math.PI));
+    }
+    vowelGains(slot, vc, fr) {
+      const amt = clamp(this.state.voice, 0, 1);
+      if (amt <= 0) return { body: [1, 1, 1, 1], open: [0, 0, 0, 0], bright: [0, 0, 0] };
+      const fm = this.vowelAt(slot, fr.tMs);
+      const V = fr.ratios.map(r => vowelShape(vc.f0 * r, fm));
+      return {
+        body: V.map((v, j) => 1 + amt * ((j === 0 ? 0.6 + 0.6 * v : 0.3 + 1.5 * v) - 1)),
+        open: V.map((v, j) => j === 0 ? 0 : amt * 0.9 * v),
+        bright: [1, 2, 3].map(j => vc.f0 * fr.ratios[j] < 700 ? 0 : amt * 0.3 * V[j] / j),
+      };
     }
 
     // Glints: the shimmer on top. A tone's own harmonics (x2, x3, x4) that
@@ -725,7 +772,7 @@
     STEP_MS, SCORE_LEAD_MS,
     mulberry32, fnv1a, clamp, wrap, smoothstep, pitchHzFor, assignRoles, ombakScale, voiceColor,
     interpolateScale, Score, Ring, windowShares, partialGains,
-    defaultState, normalizeState, layerSpeeds, encodeState, decodeState,
+    defaultState, normalizeState, layerSpeeds, encodeState, decodeState, vowelFormants, vowelShape,
   };
   root.NearfieldRing = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
