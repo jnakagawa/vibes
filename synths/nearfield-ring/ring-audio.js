@@ -64,27 +64,23 @@
     return ir;
   }
 
-  // shelf -> lowpass x2 -> dry / reverb -> compressor -> master
+  // shelf -> dry / reverb -> compressor -> master. (The darkening lowpass
+  // lives in each PhoneSynth, so the glints can go round it.) `halo` is the
+  // reverb's input, for sends that should be mostly tail.
   function voicingChain(ctx, T) {
     const sum = new GainNode(ctx, { gain: 1 });
     const shelf = new BiquadFilterNode(ctx, { type: 'highshelf', frequency: T.shelf_freq_hz, gain: T.shelf_gain_db });
-    const lowpass = new BiquadFilterNode(ctx, { type: 'lowpass', frequency: T.lowpass_hz, Q: 0.5 });
-    const lowpass2 = new BiquadFilterNode(ctx, { type: 'lowpass', frequency: T.lowpass_hz, Q: 0.5 });
     const dry = new GainNode(ctx, { gain: Math.cos(T.reverb_wet * Math.PI / 2) });
     const wet = new GainNode(ctx, { gain: Math.sin(T.reverb_wet * Math.PI / 2) });
     const convolver = new ConvolverNode(ctx);
     convolver.buffer = reverbIR(ctx, T);
     const comp = new DynamicsCompressorNode(ctx, { threshold: -9, knee: 10, ratio: 2.5, attack: 0.02, release: 0.4 });   // gentle: quiet stays quiet
     const master = new GainNode(ctx, { gain: 0 });
-    sum.connect(shelf).connect(lowpass).connect(lowpass2);
-    lowpass2.connect(dry).connect(comp);
-    lowpass2.connect(convolver).connect(wet).connect(comp);
+    sum.connect(shelf);
+    shelf.connect(dry).connect(comp);
+    shelf.connect(convolver).connect(wet).connect(comp);
     comp.connect(master);
-    const setSoft = (soft, now) => {
-      setT(lowpass.frequency, softHz(soft), now, 0.5, 5);
-      setT(lowpass2.frequency, softHz(soft), now, 0.5, 5);
-    };
-    return { sum, master, setSoft };
+    return { sum, master, halo: convolver };
   }
 
   // iOS mutes plain Web Audio when the ring / silent switch is on. Two things
@@ -113,10 +109,21 @@
   }
 
   class PhoneSynth {
-    constructor(ctx, params, out) {
+    constructor(ctx, params, out, halo) {
       this.ctx = ctx;
       this.params = params;
-      this.out = out;
+      // body: tones + air through the darkening lowpass (24 dB / octave)
+      this.body = new GainNode(ctx, { gain: 1 });
+      this.lp1 = new BiquadFilterNode(ctx, { type: 'lowpass', frequency: softHz(0.6), Q: 0.5 });
+      this.lp2 = new BiquadFilterNode(ctx, { type: 'lowpass', frequency: softHz(0.6), Q: 0.5 });
+      this.body.connect(this.lp1).connect(this.lp2).connect(out);
+      // glints: the faint high harmonics go round the lowpass, and mostly
+      // into the reverb, so they hang in the air
+      this.glint = new GainNode(ctx, { gain: 1 });
+      this.glintHp = new BiquadFilterNode(ctx, { type: 'highpass', frequency: 900, Q: 0.5 });
+      this.glint.connect(this.glintHp).connect(out);
+      if (halo) { this.haloSend = new GainNode(ctx, { gain: 1.5 }); this.glintHp.connect(this.haloSend).connect(halo); }
+      this.out = this.body;
       this.voices = new Map();   // v -> nodes
       this.air = null;
     }
@@ -136,20 +143,24 @@
 
     // one singer: four sine partials into the voice's bus
     _singer(nodes, f0) {
-      const set = { oscs: [], pGains: [] };
+      const set = { oscs: [], pGains: [], glints: [] };
       for (let j = 0; j < 4; j++) {
         const o = new OscillatorNode(this.ctx, { type: 'sine', frequency: f0 * (j + 1) });
         const g = new GainNode(this.ctx, { gain: 0 });
         o.connect(g).connect(nodes.bus);
         o.start();
         set.oscs.push(o); set.pGains.push(g);
+        if (j > 0) { const gl = new GainNode(this.ctx, { gain: 0 }); o.connect(gl).connect(this.glint); set.glints.push(gl); }
       }
       nodes.sets.push(set);
       return set;
     }
 
     _drop(v, nodes) {
-      for (const set of nodes.sets) for (const o of set.oscs) { try { o.stop(); } catch (_) {} }
+      for (const set of nodes.sets) {
+        for (const o of set.oscs) { try { o.stop(); } catch (_) {} }
+        for (const gl of set.glints) gl.disconnect();
+      }
       try { nodes.lfo.stop(); } catch (_) {}
       nodes.bus.disconnect();
       this.voices.delete(v);
@@ -170,6 +181,8 @@
     update(fr, players, air) {
       const now = this.ctx.currentTime;
       const am = this.params.shimmer_am;
+      setT(this.lp1.frequency, softHz(fr.soft), now, 0.5, 5);
+      setT(this.lp2.frequency, softHz(fr.soft), now, 0.5, 5);
       const live = new Set();
       for (const p of players) {
         const vc = p.vc;
@@ -188,6 +201,8 @@
               setT(set.oscs[j].detune, sg.detunes[j], now, 0.08, 0.002);
             }
             setT(set.pGains[j].gain, sg ? pg[j] * sg.g : 0, now, 0.3, 1e-3);
+            // the glint taps the partial directly, so it carries the tone's level itself
+            if (j > 0) setT(set.glints[j - 1].gain, sg && p.glints ? p.glints[j - 1] * sg.g * g : 0, now, 0.15, 1e-5);
           }
         }
         setT(n.bus.gain, g, now, 0.05, 1e-4);
@@ -203,6 +218,7 @@
         if (live.has(v)) continue;
         setT(n.bus.gain, 0, now, 0.05, 1e-4);
         setT(n.lfoGain.gain, 0, now, 0.05, 1e-4);
+        for (const set of n.sets) for (const gl of set.glints) setT(gl.gain, 0, now, 0.1, 1e-5);
         if (n.silentSince === null) n.silentSince = now;
         else if (now - n.silentSince > 2) this._drop(v, n);
       }
@@ -220,6 +236,7 @@
     dispose() {
       for (const [v, n] of [...this.voices]) this._drop(v, n);
       if (this.air) { try { this.air.src.stop(); } catch (_) {} this.air.gain.disconnect(); this.air = null; }
+      this.lp2.disconnect(); this.glintHp.disconnect();
     }
   }
   // The foundation: each part is two sines a fraction of a hertz apart, so it
@@ -285,7 +302,7 @@
       this.ctx = ctx;
       const resumed = ctx.resume();
       this.chain = voicingChain(ctx, this.params.timbre);
-      this.synth = new PhoneSynth(ctx, this.params, this.chain.sum);
+      this.synth = new PhoneSynth(ctx, this.params, this.chain.sum, this.chain.halo);
       // only sounds on the device in the middle; trimmed so its stack of
       // tones stays under full scale on one speaker
       this.bedTrim = new GainNode(ctx, { gain: 0.2 });
@@ -308,7 +325,6 @@
       if (!this.ctx) return;
       const now = this.ctx.currentTime;
       setT(this.chain.master.gain, vol, now, 0.6, 1e-3);
-      this.chain.setSoft(fr.soft, now);
       this.synth.update(fr, players, air || null);
       this.bed.update(bed || SILENT_BED);
       this.analyser.getFloatTimeDomainData(this._buf);
@@ -377,7 +393,7 @@
           panningModel: 'HRTF', distanceModel: 'inverse', refDistance: 0.5, maxDistance: 50, rolloffFactor: 1,
         });
         input.connect(delay).connect(panner).connect(this.chain.sum);
-        this.slots.push({ slot: k < S ? k : 'pedestal', delay, panner, synth: new PhoneSynth(ctx, this.params, input) });
+        this.slots.push({ slot: k < S ? k : 'pedestal', delay, panner, synth: new PhoneSynth(ctx, this.params, input, this.chain.halo) });
       }
       // the foundation comes from the speaker in the middle; low tones have
       // no direction, so it goes straight to both ears
@@ -424,6 +440,9 @@
         setT(s.panner.positionZ, z, now, 0.05, 1e-3);
         const d = Math.hypot(x - lx, z - lz, phoneH - earH);
         setT(s.delay.delayTime, Math.min(0.1, d / C_AIR), now, 0.05, 2e-5);
+        // the glints' reverb send does not pass the panner, so give it the
+        // same fall-off with distance by hand
+        if (s.synth.haloSend) setT(s.synth.haloSend.gain, 1.5 * 0.5 / Math.max(d, 0.5), now, 0.1, 1e-3);
         // the middle only sounds when the piece has a pedestal device
         const hasAir = s.slot !== 'pedestal' || st.anchors === 'pedestal';
         s.synth.update(fr, ring.playersAt(fr, s.slot), hasAir ? ring.airAt(fr, s.slot) : null);
@@ -432,8 +451,7 @@
       const dBed = Math.max(0.5, Math.hypot(lx, lz, phoneH - earH));
       setT(this.bedBus.gain, 0.5 / dBed, now, 0.1, 1e-3);
       this.bed.update(fr.bed);
-      setT(this.chain.master.gain, opts.vol * st.vol * 0.8, now, 0.3, 1e-3);
-      this.chain.setSoft(fr.soft, now);
+      setT(this.chain.master.gain, opts.vol * st.vol * 0.6, now, 0.3, 1e-3);
       this.analyser.getFloatTimeDomainData(this._buf);
       let sum = 0;
       for (const v of this._buf) sum += v * v;

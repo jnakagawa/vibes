@@ -190,6 +190,7 @@
       phrase: 80,                    // seconds between turns
       stack: 1,                      // repeat degrees an octave up, for more pitches to trade
       choir: 1,                      // singers' pitch spread (0 = one exact voice per phone)
+      glint: 1,                      // the faint twinkling harmonics on top (0 = none)
       soft: 0.68,                    // darker + slower edges
       beat: 1,                       // scales fingerprint + handoff bend
       bend: 0,                       // ± cents a position bends at a turn/min
@@ -577,6 +578,9 @@
         comp: c.comp, turns, rate, factor, phase, stretch: c.stretch, amDepth: c.amDepth, fpAmp: c.fpAmp,
         ratios: partialRatios, amps: this.scale.spectrum.amps,
         ct: adv.ct, lt: adv.lt, soft: st.soft, air, bed,
+        // the shimmer's arc: with the score, it follows the bloom (none in the
+        // buka, gone by the end); always riding a slow swell of its own
+        glintArc: c.bloomM * c.masterM * (0.35 + 0.65 * (0.5 + 0.5 * Math.sin(2 * Math.PI * adv.ct / (st.tide * 2.9) + 1.3))),
         // the weave: seconds to the next turn, and how many tone groups are in
         turn: { u, nextS: (Math.ceil(u) - u) * Math.max(20, st.phrase) / c.comp, groupsIn, groups: this.groups.length },
         // seconds per turn of each layer [anchor, voice, shimmer, air] (signed)
@@ -609,7 +613,7 @@
       const out = [];
       for (const vc of fr.voices) {
         if (slot === 'pedestal') {
-          if (vc.role === 'anchor' && st.anchors === 'pedestal') { const d = [vc.fp, vc.fp, vc.fp, vc.fp]; out.push({ v: vc.v, vc, g: 1, detune: vc.fp, detunes: d, singers: [{ g: 1, detunes: d }] }); }
+          if (vc.role === 'anchor' && st.anchors === 'pedestal') { const d = [vc.fp, vc.fp, vc.fp, vc.fp]; out.push({ v: vc.v, vc, g: 1, detune: vc.fp, detunes: d, singers: [{ g: 1, detunes: d }], glints: [0, 0, 0] }); }
           continue;
         }
         if (vc.role === 'anchor' && st.anchors === 'pedestal') continue;
@@ -637,9 +641,33 @@
           const c = this.singerCents(slot, vc.v, k, vc.f0, fr.tMs);
           singers.push({ g: 1 / Math.sqrt(nS), detunes: detunes.map(d => d + c) });
         }
-        out.push({ v: vc.v, vc, g, detune: singers[0].detunes[0], detunes: singers[0].detunes, singers });
+        out.push({ v: vc.v, vc, g, detune: singers[0].detunes[0], detunes: singers[0].detunes, singers,
+          glints: this.glints(slot, vc, fr) });
       }
       return out;
+    }
+
+    // Glints: the shimmer on top. A tone's own harmonics (x2, x3, x4) that
+    // land between about 1 and 2.5 kHz sound very faintly, outside the
+    // darkening filter, each twinkling on its own cycle of one to three
+    // seconds — and each phone twinkles differently, so the sparkle moves
+    // around the ring. They follow an arc: absent while the piece is sparse,
+    // present when it is full. (In "Incandescence": six tones at 1.06–2.1 kHz,
+    // 40–55 dB under the bass, exact x2 / x3 / x4 of the tones below,
+    // flickering 10–13 dB at 0.3–1.6 Hz, strongest mid-piece.)
+    // Returns the level of partials 2, 3, 4 relative to the tone's level.
+    glints(slot, vc, fr) {
+      const st = this.state, amt = st.glint * fr.glintArc;
+      if (amt <= 0) return [0, 0, 0];
+      const ts = (fr.tMs - st.epoch) / 1000;
+      return [1, 2, 3].map(j => {
+        const f = vc.f0 * fr.ratios[j];
+        const band = smoothstep((f - 800) / 400) * (1 - smoothstep((f - 2400) / 800));
+        if (band <= 0) return 0;
+        const r = mulberry32(fnv1a(`${st.seed}|${slot}|${vc.v}|${j}|glint`));
+        const twinkle = 0.3 + 0.7 * Math.pow(0.5 + 0.5 * Math.sin(2 * Math.PI * ts / (0.6 + r() * 2.7) + r() * 2 * Math.PI), 2);
+        return 0.45 * amt * band * twinkle / j;
+      });
     }
 
     // Choir: what turns a pure tone into something sung is that it is not one

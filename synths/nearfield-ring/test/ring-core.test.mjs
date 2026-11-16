@@ -13,7 +13,7 @@ const cfg = { scale: load('scale.json'), params: load('params.json'), score: loa
 const T0 = 1_800_000_000_000;
 // baseline for the handoff/score tests: every layer together, no tides, no air
 // (and the original stretched tuning, fingerprint and handoff bend)
-const PLAIN = { drift: 0, density: 1, L: { anchor: [1, 1, 1], voice: [1, 1, 1], shimmer: [1, 1, 1] }, air: [0, 1], pure: 0, fp: 12, bend: 10, bed: 0, space: 0, stack: 0, choir: 0 };
+const PLAIN = { drift: 0, density: 1, L: { anchor: [1, 1, 1], voice: [1, 1, 1], shimmer: [1, 1, 1] }, air: [0, 1], pure: 0, fp: 12, bend: 10, bed: 0, space: 0, stack: 0, choir: 0, glint: 0 };
 function ring(over = {}) {
   const r = new NR.Ring(cfg);
   r.setState({ ...NR.defaultState(T0), ...PLAIN, ...over });
@@ -379,4 +379,36 @@ test('choir 0 is one exact voice per phone', () => {
   const r = cycles({ choir: 0, fp: 0, bend: 0, rate: 0 });
   const fr = r.frame(T0 + 9000);
   for (let k = 0; k < 8; k++) for (const p of r.playersAt(fr, k)) { assert.equal(p.singers.length, 1); assert.ok(p.detune === 0); }
+});
+
+// --- glints: the shimmer on top ----------------------------------------------------------
+
+test('glints: faint harmonics between 1 and 2.5 kHz, twinkling, different on every phone', () => {
+  const r = cycles();
+  const seen = new Map();
+  let maxLevel = 0;
+  for (let t = T0; t < T0 + 240_000; t += 100) {
+    const fr = r.frame(t);
+    for (let k = 0; k < 8; k++) for (const p of r.playersAt(fr, k)) p.glints.forEach((g, i) => {
+      const f = p.vc.f0 * fr.ratios[i + 1];
+      if (f < 800 || f > 3200) assert.equal(g, 0, `a glint at ${f.toFixed(0)} Hz`);
+      if (g > 0) { const key = `${k}|${p.v}|${i}`; if (!seen.has(key)) seen.set(key, []); seen.get(key).push(g / fr.glintArc); maxLevel = Math.max(maxLevel, g); }
+    });
+  }
+  assert.ok(seen.size > 12, `glinting partials: ${seen.size}`);
+  assert.ok(maxLevel < 0.46, 'always below the tone itself');
+  // each twinkles about 10 dB, and no two phones twinkle alike
+  const long = [...seen.values()].filter(a => a.length > 400);
+  for (const a of long) { const swing = 20 * Math.log10(Math.max(...a) / Math.min(...a)); assert.ok(swing > 8 && swing < 12, `swing ${swing}`); }
+  const corr = (a, b) => { const n = Math.min(a.length, b.length); let ma = 0, mb = 0; for (let i = 0; i < n; i++) { ma += a[i]; mb += b[i]; } ma /= n; mb /= n; let x = 0, da = 0, db = 0; for (let i = 0; i < n; i++) { x += (a[i] - ma) * (b[i] - mb); da += (a[i] - ma) ** 2; db += (b[i] - mb) ** 2; } return x / Math.sqrt(da * db); };
+  assert.ok(Math.abs(corr(long[0], long[1])) < 0.6 && Math.abs(corr(long[2], long[3])) < 0.6);
+});
+
+test('glints follow the piece: none in the buka or at the end, off at 0', () => {
+  const s = cycles({ score: { start: T0, comp: 1 } });
+  assert.ok(s.frame(T0 + 1000).glintArc < 0.02);
+  assert.ok(s.frame(T0 + 400_000).glintArc > 0.3);
+  assert.equal(s.frame(T0 + 960_000).glintArc, 0);
+  const off = cycles({ glint: 0 }), fr = off.frame(T0 + 50_000);
+  for (let k = 0; k < 8; k++) for (const p of off.playersAt(fr, k)) assert.deepEqual(p.glints, [0, 0, 0]);
 });

@@ -51,7 +51,7 @@
 <body>
 <header>
   <h1>NEARFIELD</h1>
-  <span class="sub">The ring — host · build 7</span>
+  <span class="sub">The ring — host · build 8</span>
   <span id="status">—</span>
 </header>
 <div id="main">
@@ -77,10 +77,10 @@
 </div>
 <div id="sheet"></div>
 
-<script src="ring-core.js?v=7"></script>
-<script src="ring-live.js?v=7"></script>
-<script src="ring-audio.js?v=7"></script>
-<script src="qr.js?v=7"></script>
+<script src="ring-core.js?v=8"></script>
+<script src="ring-live.js?v=8"></script>
+<script src="ring-audio.js?v=8"></script>
+<script src="qr.js?v=8"></script>
 <script>
 'use strict';
 const NR = window.NearfieldRing;
@@ -240,9 +240,10 @@ function buildPanel() {
   addRangeFn(fs, 'anchors', () => layerGet('anchor', 0), v => layerPatch('anchor', 0, v), 0, 1.5, 0.01, v => v.toFixed(2));
   addRangeFn(fs, 'tones', () => layerGet('voice', 0), v => layerPatch('voice', 0, v), 0, 1.5, 0.01, v => v.toFixed(2));
   addRangeFn(fs, 'shimmer', () => layerGet('shimmer', 0), v => layerPatch('shimmer', 0, v), 0, 1.5, 0.01, v => v.toFixed(2));
+  addRange(fs, 'glints', 'glint', 0, 2, 0.01, v => v.toFixed(2));
   addRangeFn(fs, 'air', () => layerGet('air', 0), v => layerPatch('air', 0, v), 0, 1.5, 0.01, v => v.toFixed(2));
   addRange(fs, 'phone volume', 'vol', 0, 1.5, 0.01, v => v.toFixed(2));
-  addNote(fs, 'Foundation: a deep tone with its octaves (55 Hz and up). Phones cannot play it — it needs a real speaker in the middle of the ring: open the center-speaker link on a laptop or phone plugged into one. The headphone monitor always includes it.');
+  addNote(fs, 'Foundation: a deep tone with its octaves (55 Hz and up). Phones cannot play it — it needs a real speaker in the middle of the ring: open the center-speaker link on a laptop or phone plugged into one. The headphone monitor always includes it. Glints: the shimmer on top — each tone\'s own harmonics between about 1 and 2.5 kHz, very faint and mostly reverb, each twinkling on its own, differently on every phone. They fade in as the score fills and are gone by its end.');
 
   fs = fieldset('Shape');
   addRange(fs, 'space', 'space', 0, 1, 0.01, v => v <= 0 ? 'all in' : `${Math.round(60 * v)}% rest`);
