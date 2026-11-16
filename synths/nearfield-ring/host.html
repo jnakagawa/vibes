@@ -77,10 +77,10 @@
 </div>
 <div id="sheet"></div>
 
-<script src="ring-core.js?v=4"></script>
-<script src="ring-live.js?v=4"></script>
-<script src="ring-audio.js?v=4"></script>
-<script src="qr.js?v=4"></script>
+<script src="ring-core.js?v=5"></script>
+<script src="ring-live.js?v=5"></script>
+<script src="ring-audio.js?v=5"></script>
+<script src="qr.js?v=5"></script>
 <script>
 'use strict';
 const NR = window.NearfieldRing;
@@ -230,16 +230,14 @@ function buildPanel() {
   addNote(fs, 'Foundation: a deep tone with its octaves (55 Hz and up). Phones cannot play it — it needs a real speaker in the middle of the ring: open the center-speaker link on a laptop or phone plugged into one. The headphone monitor always includes it.');
 
   fs = fieldset('Shape');
-  addRange(fs, 'space', 'space', 0, 1, 0.01, v => v <= 0 ? 'none' : `${Math.round(60 * v)}% rest`);
-  addRange(fs, 'phrase length', 'phrase', 30, 240, 1, v => `${v} s`);
-  addRange(fs, 'density', 'density', 0.15, 1, 0.01, v => `${Math.round(v * 100)}%`);
+  addRange(fs, 'space', 'space', 0, 1, 0.01, v => v <= 0 ? 'all in' : `${Math.round(60 * v)}% rest`);
+  addRange(fs, 'turn every', 'phrase', 30, 240, 1, v => `${v} s`);
   addRange(fs, 'drift', 'drift', 0, 1, 0.01, v => v.toFixed(2));
   addRange(fs, 'softness', 'soft', 0, 1, 0.01, v => v.toFixed(2));
   addRange(fs, 'breathing', 'rate', 0, 1.5, 0.01, v => v > 0 ? `${(1 / v).toFixed(1)} s` : 'still');
   addRange(fs, 'tuning', 'pure', 0, 1, 0.01, v => v >= 0.99 ? 'pure' : v <= 0.01 ? 'stretched' : v.toFixed(2));
-  addRange(fs, 'tide length', 'tide', 15, 120, 1, v => `${v} s`);
   addSelect(fs, 'cycle ratios', 'ratios', [['nested', 'nested 1 : 2 : 4 (gamelan)'], ['prime', 'drifting 5 : 7 : 11']]);
-  addNote(fs, 'Space: the whole ring swells in and recedes together, phrase by phrase, with rests between — the tones leave first, the foundation last. 0 = continuous sound. Density: how much of the chord sounds at once — each tone swells in and out on its own tide. Drift: how far apart all the cycles run (0 = everything together, 1 = never lining up). Softness: darker tone, slower fades. Breathing: how long each partial takes to swell and fade where a tone sounds on two phones (shown for a 210 Hz partial; higher ones go a little faster). Tuning: stretched is the gamelan-derived scale with bell-like partials; pure has true octaves and harmonics, which fuse into one warm sound.');
+  addNote(fs, 'The sound never stops; it changes by trading tones. Space: how many of the tones are resting at any time (0 = all always in). Turn every: how often a few tones hand over to others — the new ones arrive before the old ones have left, the anchors and the deep root never leave, and the foundation shifts color. Drift: how far apart the layers turn. Softness: darker tone. Breathing: how long each partial takes to swell and fade where a tone sounds on two phones. Tuning: stretched is the gamelan-derived scale with bell-like partials; pure has true octaves and harmonics, which fuse into one warm sound.');
 
   fs = fieldset('Layers');
   for (const [role, name] of [['anchor', 'anchors'], ['voice', 'tones'], ['shimmer', 'shimmer']]) {
@@ -335,14 +333,12 @@ function draw() {
   const sec = fr.sT === null ? 'free ring' : fr.sT < 0 ? `score in ${Math.ceil(-fr.sT / fr.comp)} s` : `${fr.label} ${mmss(Math.min(fr.sT, 960))}${fr.stretch ? ` · stretch ${fr.stretch.toFixed(3)}` : ''}`;
   cx.fillText(sec, ox, oy - 4);
   cx.fillText(rot, ox, oy + 14);
-  if (app.state.space > 0) cx.fillText(fr.phrase < 0.03 ? 'resting' : fr.phrase > 0.97 ? '' : (fr.phrase > (app.lastPhrase ?? 0) ? 'gathering' : 'receding'), ox, oy + 32);
-  app.lastPhrase = fr.phrase;
+  const x = fr.turn.u - Math.round(fr.turn.u);
+  cx.fillText(Math.abs(x) < 0.2 && app.state.space > 0 ? 'turning' : `${fr.turn.groupsIn} of ${fr.turn.groups} tones in · next turn ${Math.round(fr.turn.nextS)} s`, ox, oy + 32);
   // each layer's cycle, and how much of the chord the tides have up
   const per = (name, p) => Number.isFinite(p) ? `${name} ${p > 0 ? '↻' : '↺'} ${Math.round(Math.abs(p))} s` : `${name} —`;
-  const tones = fr.voices.filter(v => v.role !== 'anchor');
-  const up = tones.filter(v => v.tide > 0.5).length;
   cx.fillStyle = '#6a6a76'; cx.font = '11px -apple-system, sans-serif';
-  cx.fillText(`${per('anchors', fr.periods[0])} · ${per('tones', fr.periods[1])} · ${per('shimmer', fr.periods[2])} · ${per('air', fr.periods[3])} · sounding ${up} of ${tones.length}`, ox, H - 10);
+  cx.fillText(`${per('anchors', fr.periods[0])} · ${per('tones', fr.periods[1])} · ${per('shimmer', fr.periods[2])} · ${per('air', fr.periods[3])}`, ox, H - 10);
   // you, when the headphone monitor is on
   if (app.mon) {
     const ppm = R / (app.monOpts.diameter / 2), L = app.mon.listener;

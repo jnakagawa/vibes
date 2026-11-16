@@ -16,9 +16,10 @@
 // the ring by equal-power handoffs, and each position bends what it plays so
 // a voice beats against itself mid-handoff.
 //
-// On top of that sit slow cycles that never quite line up: each layer
-// (anchors, tones, shimmer, air) turns at its own speed and width; every tone
-// swells in and out on its own tide; soft noise circles as air.
+// On top of that: each layer (anchors, tones, shimmer, air) turns at its own
+// speed and width; the tones are woven — at each turn a few hand over to
+// others while a core never leaves (see "the weave" below); a deep foundation
+// sits in the middle; every partial breathes slowly between neighboring phones.
 // ============================================================================
 (function (root) {
   'use strict';
@@ -184,10 +185,10 @@
       rate: 0.27,                    // breathing: beat rate (Hz) of a partial at 210 Hz
       ratios: 'nested',              // layer cycle ratios: nested 1:2:4 | prime 5:7:11
       drift: 0.6,                    // 0 = every cycle together .. 1 = fully apart
-      density: 0.5,                  // share of the chord sounding at once (tides)
-      tide: 50,                      // a voice's swell cycle, seconds
-      space: 0.6,                    // how much of each phrase is rest (0 = continuous)
-      phrase: 70,                    // phrase length, seconds
+      tide: 50,                      // sets the air's pace
+      space: 0.6,                    // how many tones rest at a time (0 = all always in)
+      phrase: 80,                    // seconds between turns
+      stack: 1,                      // repeat degrees an octave up, for more pitches to trade
       soft: 0.68,                    // darker + slower edges
       beat: 1,                       // scales fingerprint + handoff bend
       bend: 0,                       // ± cents a position bends at a turn/min
@@ -268,7 +269,7 @@
           ct: st.seg.ct0, lt: st.seg.lt0.slice() };
       }
       this.speeds = layerSpeeds(st);
-      this.voices = this._voices(st.S);
+      this.voices = this._stack(this._voices(st.S));
       return st;
     }
 
@@ -279,6 +280,30 @@
         if (a.role === 'anchor' && st.anchors === 'lift') register = a.register + 1;
         return { v, role: a.role, degreeIndex: a.degreeIndex, register };
       });
+    }
+
+    // Octave stacking: when a degree comes round again among the tones, it
+    // takes the octave above (quieter), so the ring holds more distinct
+    // pitches to trade. Then the groups: tones of one pitch turn together.
+    _stack(voices) {
+      const seen = {};
+      for (const vc of voices) {
+        vc.gain = 1;
+        if (vc.role === 'shimmer') continue;
+        const n = seen[vc.degreeIndex] = (seen[vc.degreeIndex] ?? -1) + 1;
+        if (this.state.stack && vc.role === 'voice' && n % 2 === 1) { vc.register += 1; vc.gain = 0.6; }
+      }
+      const groups = [];
+      for (const vc of voices) {
+        if (vc.role === 'anchor') { vc.group = -1; continue; }
+        const key = `${vc.degreeIndex}|${vc.register}`;
+        let gi = groups.findIndex(g => g.key === key);
+        if (gi < 0) { gi = groups.length; groups.push({ key, degree: vc.degreeIndex }); }
+        vc.group = gi;
+        vc.stagger = (hash01(`${this.state.seed}|${vc.v}|stagger`) - 0.5) * 0.24;
+      }
+      this.groups = groups;
+      return voices;
     }
 
     // score time (s) at absolute ms, or null when no score is on
@@ -353,49 +378,68 @@
         ct0: r(I.ct, 1e3), lt0: I.lt.map(x => r(x, 1e6)) };
     }
 
-    // Tide (0..1): each voice swells in and out on its own slow cycle, so only
-    // part of the chord sounds at once. density = the share of a cycle a voice
-    // is up; drift spreads the voices' periods and phases apart; soft widens
-    // the fade. A pure function of composed time, so every phone agrees.
-    tide(v, ct) {
-      const st = this.state;
-      const r = mulberry32(fnv1a(`${v}|${st.seed}|tide`));
-      const period = Math.max(4, st.tide * (1 + st.drift * (r() - 0.5) * 1.2));
-      const phase = 2 * Math.PI * r() * Math.min(1, st.drift / 0.2);
-      const w = 0.35 + 0.95 * st.soft;
-      return smoothstep((Math.cos(2 * Math.PI * ct / period + phase) - this._tideThreshold(st.density, w)) / w + 0.5);
+    // --- the weave -------------------------------------------------------------
+    // The sound never stops. Relief comes from *which* tones are sounding:
+    // time runs in phrases, and at each turn a few tones hand over to others
+    // — the incoming ones start before the outgoing ones have left — while a
+    // core (the anchors and the foundation's root) never leaves. Modeled on
+    // Aleksi Perälä's "Incandescence", where a 12-minute track keeps a 6 dB
+    // loudness range and changes color by trading tones roughly every 80 s.
+
+    // phrase position: whole numbers are the turns (lengths wander a little)
+    turnPos(ct) {
+      const st = this.state, P = Math.max(20, st.phrase);
+      return ct / P + 0.09 * Math.sin(2 * Math.PI * ct / (P * 3.3) + (fnv1a(`${st.seed}|phrase`) % 628) / 100);
     }
 
-    // the threshold at which a tide's average over its cycle equals density
-    _tideThreshold(density, w) {
-      const key = `${density}|${w}`;
-      this._thrCache = this._thrCache || new Map();
-      if (this._thrCache.has(key)) return this._thrCache.get(key);
-      const D = clamp(density, 0, 1), N = 256;
-      const mean = thr => {
-        let s = 0;
-        for (let i = 0; i < N; i++) s += smoothstep((Math.cos(Math.PI * (i + 0.5) / N) - thr) / w + 0.5);
-        return s / N;
-      };
-      let lo = -1 - w, hi = 1 + w;   // mean(lo) = 1, mean(hi) = 0
-      if (D >= 1) hi = lo; else if (D <= 0) lo = hi;
-      else for (let i = 0; i < 40; i++) { const mid = (lo + hi) / 2; if (mean(mid) > D) lo = mid; else hi = mid; }
-      if (this._thrCache.size > 64) this._thrCache.clear();
-      this._thrCache.set(key, (lo + hi) / 2);
-      return (lo + hi) / 2;
+    // The plan: for each phrase, which tone groups are in and which color the
+    // foundation takes. A seeded walk — every turn swaps one group in for one
+    // out, sometimes thickens or thins by one — played forward then backward,
+    // so every turn (the wrap included) keeps tones in common with the last.
+    _plan() {
+      const st = this.state, G = this.groups.length;
+      const key = `${st.seed}|${st.space}|${this.groups.map(g => g.key).join(',')}`;
+      if (this._planKey === key) return this._planned;
+      const rng = mulberry32(fnv1a(`${st.seed}|turns`));
+      const pick = a => a[Math.floor(rng() * a.length)];
+      const k0 = clamp(Math.round((1 - 0.6 * clamp(st.space, 0, 1)) * G), Math.min(2, G), G);
+      const kmin = Math.max(Math.min(2, G), k0 - 1), kmax = Math.min(G, k0 + 1);
+      const order = Array.from({ length: G }, (_, i) => i);
+      for (let i = G - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }
+      const cur = new Array(G).fill(0);
+      for (let i = 0; i < k0; i++) cur[order[i]] = 1;
+      const seq = [];
+      let color = 0;
+      for (let n = 0; n < 16; n++) {
+        if (n > 0 && st.space > 0) {
+          const ins = () => cur.map((v, i) => v ? i : -1).filter(i => i >= 0), outs = () => cur.map((v, i) => v ? -1 : i).filter(i => i >= 0);
+          let brought = -1;
+          if (outs().length && ins().length) { brought = pick(outs()); const sent = pick(ins()); cur[brought] = 1; cur[sent] = 0; }
+          const r = rng(), size = ins().length;
+          if (r < 0.3 && size < kmax && outs().length) cur[pick(outs())] = 1;
+          else if (r < 0.6 && size > kmin) { const c = ins().filter(i => i !== brought); if (c.length) cur[pick(c)] = 0; }
+        }
+        // the foundation's color: one featured degree at a time, held when it can be
+        const feat = [...new Set(this.groups.filter((g, i) => cur[i] && g.degree !== 0).map(g => g.degree))];
+        if (!feat.includes(color) || rng() > 0.6) color = feat.length ? pick(feat) : 0;
+        seq.push({ in: cur.slice(), color });
+      }
+      this._planKey = key;
+      this._planned = seq.concat(seq.slice(1, -1).reverse());
+      return this._planned;
     }
 
-    // Phrase (0..1): the whole ring swells in and recedes together, leaving
-    // rests — relief from a continuous wall of sound. `space` is how much of
-    // each phrase is rest; `extra` lets a layer arrive earlier and leave
-    // later. Phrase lengths wander a little so they never feel metered.
-    phrase(ct, extra = 0) {
-      const st = this.state;
-      if (st.space <= 0) return 1;
-      const P = Math.max(30, st.phrase), w = 0.9;
-      const wob = 0.11 * Math.sin(2 * Math.PI * ct / (P * 3.3) + (fnv1a(`${st.seed}|phrase`) % 628) / 100);
-      const duty = clamp(1 - 0.6 * st.space + extra, 0, 1);
-      return smoothstep((Math.cos(2 * Math.PI * (ct / P + wob)) - this._tideThreshold(duty, w)) / w + 0.5);
+    // 0..1: is this group in at phrase position u? Around a turn a tone fades
+    // over 0.4 of a phrase; entries lead and exits trail, so the incoming
+    // tones overlap the outgoing ones and the level never dips.
+    // (lead < 0 does the opposite — out first, then in — for the foundation's
+    // colors, which sit a few hertz apart and would growl if they overlapped.)
+    _gate(isIn, u, stagger, lead = 0.08, width = 0.4) {
+      const plan = this._plan(), L = plan.length, m = Math.round(u);
+      const before = isIn(plan[wrap(m - 1, L)]) ? 1 : 0, after = isIn(plan[wrap(m, L)]) ? 1 : 0;
+      if (before === after) return before;
+      const shift = stagger + (after ? -lead : lead);
+      return before + (after - before) * smoothstep((u - (m + shift)) / width + 0.5);
     }
 
     // Deterministic per-voice fingerprint (§13.2 stand-in): three slow
@@ -449,8 +493,8 @@
       const bukaLen = this.score.sections[1]?.at ?? 120;
       const nonAnchors = this.voices.filter(x => x.role !== 'anchor');
       const anchors = this.voices.filter(x => x.role === 'anchor');
-      // the phrase: tones leave first and return last, the foundation holds longest
-      const ph = { voice: this.phrase(adv.ct), anchor: this.phrase(adv.ct, 0.04), bed: this.phrase(adv.ct, 0.1) };
+      // where we are in the weave (whole numbers of u are the turns)
+      const u = this.turnPos(adv.ct);
       // each layer: its own width (a voice as a cloud over several phones)
       const widths = {}, peaks = {};
       for (const role of ['anchor', 'voice', 'shimmer']) {
@@ -475,11 +519,9 @@
           env = gongOn ? Math.sin(Math.PI * gongAge / GONG_S)
             : 0.5 + 0.5 * Math.sin(phase + 2 * Math.PI * ai / Math.max(anchors.length, 1));
         }
-        // anchors already come and go on the breath; the others ride tides
-        const tide = vc.role === 'anchor' ? 1 : this.tide(vc.v, adv.ct);
-        // a gong sounds through a rest; otherwise every layer follows the phrase
-        const gather = vc.role === 'anchor' ? (gongOn ? 1 : ph.anchor) : ph.voice;
-        const level = roleP.base_gain * env * breathG * entry * c.masterM * tide * gather * st.L[vc.role][0];
+        // anchors hold (they breathe); the other tones come and go at the turns
+        const tide = vc.group < 0 ? 1 : this._gate(p => p.in[vc.group], u, vc.stagger);
+        const level = roleP.base_gain * vc.gain * env * breathG * entry * c.masterM * tide * st.L[vc.role][0];
         const posU = vc.v + adv.lt[LAYER_INDEX[vc.role]] * S;
         const shares = windowShares(posU, w).map(([iU, g]) => ({ slot: wrap(iU, S), g }));
         return {
@@ -502,7 +544,7 @@
       const long = 0.5 + 0.5 * Math.sin(2 * Math.PI * adv.ct / (st.tide * 2.3) + (fnv1a(`${st.seed}|air`) % 628) / 100);
       const swell = 0.5 + 0.5 * Math.sin(phase + 2.1);
       const air = {
-        lvl: st.air[0] * c.masterM * ph.anchor * (0.1 + 0.9 * swell * (0.35 + 0.65 * long)),
+        lvl: st.air[0] * c.masterM * (0.1 + 0.9 * swell * (0.35 + 0.65 * long)),
         pos: wrap(adv.lt[3] * S, S),
         freq: fa * Math.pow(fb / fa, glide),
         q: 2.5,
@@ -512,19 +554,30 @@
       // in the middle (phones cannot play it). Each part is a pair of tones a
       // fraction of a hertz apart, so it breathes; the root's pair is uneven,
       // which keeps the bottom steadier than what sits above it.
-      const O = es.pseudo_octave_ratio, root = pitchHzFor(es, 0, -2), fifth = pitchHzFor(es, 2, -2);
+      const O = es.pseudo_octave_ratio, root = pitchHzFor(es, 0, -2);
+      // The root and its octaves never leave; at each turn the root swells a
+      // little, like a gong marking it. One color (a featured degree, two
+      // octaves down, with its octave) sits on top and changes at the turns.
+      const bump = Math.exp(-Math.pow((u - Math.round(u)) / 0.1, 2));
+      const colorParts = [1, 2, 3].flatMap(deg => {
+        const g = this._gate(p => p.color === deg, u, 0, -0.13, 0.26), f = pitchHzFor(es, deg, -2);
+        return [[f, 0.35 * g, 0.85, 0.6], [f * O, 0.14 * g, 0.85, 0.4]];
+      });
       const bed = {
-        lvl: st.bed * c.masterM * ph.bed * (0.85 + 0.15 * Math.sin(phase + 1)),
-        parts: [[root, 1, 0.35, 0], [root * O, 0.45, 0.85, 0.75], [fifth, 0.35, 0.85, 0.6], [root * O * O, 0.2, 0.85, 0], [fifth * O, 0.14, 0.85, 0.4]]
+        lvl: st.bed * c.masterM * (0.85 + 0.15 * Math.sin(phase + 1)),
+        parts: [[root, 1 + 0.3 * bump, 0.35, 0], [root * O, 0.45, 0.85, 0.75], [root * O * O, 0.2, 0.85, 0], ...colorParts]
           .map(([f, g, depth, trade], i) => ({ f, g, depth, trade, beat: this.beatHz(f) * (0.8 + 0.4 * hash01(`${st.seed}|bed|${i}`)) })),
       };
+      const groupsIn = this.groups.filter((g, i) => this._gate(p => p.in[i], u, 0) > 0.5).length;
 
       const absRate = Math.abs(rate);
       return {
         tMs, sT: c.sT, label: c.sT === null ? null : (c.sT < 0 ? 'pre-roll' : (c.sT > this.score.duration ? 'end' : this.score.labelAt(c.sT))),
         comp: c.comp, turns, rate, factor, phase, stretch: c.stretch, amDepth: c.amDepth, fpAmp: c.fpAmp,
         ratios: partialRatios, amps: this.scale.spectrum.amps,
-        ct: adv.ct, lt: adv.lt, soft: st.soft, air, bed, phrase: ph.voice,
+        ct: adv.ct, lt: adv.lt, soft: st.soft, air, bed,
+        // the weave: seconds to the next turn, and how many tone groups are in
+        turn: { u, nextS: (Math.ceil(u) - u) * Math.max(20, st.phrase) / c.comp, groupsIn, groups: this.groups.length },
         // seconds per turn of each layer [anchor, voice, shimmer, air] (signed)
         periods: this.speeds.map(s => absRate < 1e-5 ? Infinity : 1 / (rate * s)),
         voices,

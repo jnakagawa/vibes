@@ -22,23 +22,26 @@ piece can be shaped without setting out phones. It plays on the host only.
 The piece is layers of slow cycles that never quite line up:
 
 - **Mix** — levels for anchors, tones, shimmer and air.
-- **Shape** — *density* (how much of the chord sounds at once; each tone swells
-  in and out on its own tide), *drift* (how far apart the cycles run),
-  *softness* (darker, slower fades), *beat depth* (how much the tuning shimmers).
+- **Shape** — *space* and *turn every* (the weave, below), *drift* (how far
+  apart the layers turn), *softness* (darker), *breathing*, *tuning*.
 - **Layers** — each layer's width (a point hopping between two phones, or a
   cloud over several) and whether it turns with or against the rotation.
 - **Air** — soft noise, each phone its own, circling the ring and swelling with
   the breath; its tone wanders across the scale's notes.
 
-The line under the ring shows each layer's seconds per turn and how many tones
-the tides have up.
+The ring display shows how many tones are in and the time to the next turn;
+the line under it shows each layer's seconds per rotation.
 
-### Space
+### The weave
 
-The whole ring swells in and recedes together, phrase by phrase, with rests
-between: the tones leave first and return last, the foundation holds longest.
-**Space** sets how much of each phrase is rest (0 = continuous sound) and
-**phrase length** how long a phrase is.
+The sound never stops; relief comes from *which* tones are sounding. Time runs
+in phrases, and at each **turn** a few tones hand over to others — the new ones
+arrive before the old ones have left — while the anchors and the foundation's
+deep root never leave. The foundation's color (one degree, two octaves down)
+changes at the turns too, and its root swells slightly to mark them. **Space**
+sets how many tones are resting at any time; **turn every** sets the phrase
+length. This follows a full track of *Incandescence*, which keeps a 6 dB
+loudness range for ten minutes while trading tones roughly every 80 seconds.
 
 ### Warmth (measured against Aleksi Perälä's *Incandescence*)
 

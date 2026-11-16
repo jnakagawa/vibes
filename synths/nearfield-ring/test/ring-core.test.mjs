@@ -13,7 +13,7 @@ const cfg = { scale: load('scale.json'), params: load('params.json'), score: loa
 const T0 = 1_800_000_000_000;
 // baseline for the handoff/score tests: every layer together, no tides, no air
 // (and the original stretched tuning, fingerprint and handoff bend)
-const PLAIN = { drift: 0, density: 1, L: { anchor: [1, 1, 1], voice: [1, 1, 1], shimmer: [1, 1, 1] }, air: [0, 1], pure: 0, fp: 12, bend: 10, bed: 0, space: 0 };
+const PLAIN = { drift: 0, density: 1, L: { anchor: [1, 1, 1], voice: [1, 1, 1], shimmer: [1, 1, 1] }, air: [0, 1], pure: 0, fp: 12, bend: 10, bed: 0, space: 0, stack: 0 };
 function ring(over = {}) {
   const r = new NR.Ring(cfg);
   r.setState({ ...NR.defaultState(T0), ...PLAIN, ...over });
@@ -172,23 +172,7 @@ test('a settings change continues every layer and the tides without a jump', () 
   assert.ok(Math.abs(after.ct - before.ct) < 0.06);
 });
 
-test('tides: density sets how much of the chord sounds; 1 is everything, always', () => {
-  const up = d => {
-    const r = cycles({ density: d });
-    let n = 0, on = 0;
-    for (let t = T0; t < T0 + 3600_000; t += 7000) {
-      for (const v of r.frame(t).voices) if (v.role !== 'anchor') { n++; on += v.tide; }
-    }
-    return on / n;
-  };
-  const lo = up(0.3), mid = up(0.6), full = up(1);
-  assert.ok(lo < mid && mid < full, `${lo} ${mid} ${full}`);
-  assert.ok(Math.abs(lo - 0.3) < 0.04 && Math.abs(mid - 0.6) < 0.04, `${lo} ${mid}`);
-  assert.equal(full, 1);
-  assert.equal(up(0), 0);
-});
-
-test('tides never touch the anchors, and move slowly', () => {
+test('the weave never touches the anchors, and moves slowly', () => {
   const r = cycles();
   let maxStep = 0, prev = null;
   for (let t = T0; t < T0 + 600_000; t += 50) {
@@ -275,58 +259,82 @@ test('breathing: neighbors play each partial a fraction of a hertz apart', () =>
   assert.ok(Math.abs(r.beatHz(210) - 0.27) < 1e-9 && r.beatHz(475) > r.beatHz(210) && r.beatHz(475) < 0.5);
 });
 
-test('foundation: a deep octave stack for the middle only, silent before the score', () => {
-  const r = cycles({ space: 0 });
+test('foundation: root and octaves always, one color at a time, silent before the score', () => {
+  const r = cycles();
   const fr = r.frame(T0 + 30_000);
   assert.equal(r.bedAt(fr, 3), null);
   const bed = r.bedAt(fr, 'pedestal');
-  assert.ok(Math.abs(bed.parts[0].f - 55) < 1e-6 && Math.abs(bed.parts[1].f - 110) < 1e-6 && Math.abs(bed.parts[2].f - 82.5) < 0.01);
+  assert.ok(Math.abs(bed.parts[0].f - 55) < 1e-6 && Math.abs(bed.parts[1].f - 110) < 1e-6 && Math.abs(bed.parts[2].f - 220) < 1e-6);
   assert.ok(bed.parts.every(p => p.beat > 0.05 && p.beat < 0.6));
   assert.ok(bed.parts[0].depth < bed.parts[1].depth, 'the bottom is steadier than what sits above it');
   assert.ok(bed.lvl > 0.5);
+  // colors: three candidate degrees two octaves down; never two strong at once
+  // (they would sit a few hertz apart and growl)
+  for (let t = T0; t < T0 + 1800_000; t += 5000) {
+    const p = r.frame(t).bed.parts, colors = [p[3].g, p[5].g, p[7].g].map(g => g / 0.35);
+    assert.ok(colors.filter(g => g > 0.3).length <= 1, `two colors up at once: ${colors}`);
+    assert.ok(p[0].g >= 1 && p[1].g > 0 && p[2].g > 0, 'the root and its octaves never leave');
+  }
   assert.equal(cycles({ score: { start: T0 + 4000, comp: 1 } }).frame(T0 + 1000).bed.lvl, 0);
   assert.equal(cycles({ bed: 0 }).frame(T0 + 30_000).bed.lvl, 0);
 });
 
-// --- space: phrases and rests ---------------------------------------------------------
+// --- the weave: turns instead of rests -------------------------------------------------
 
-test('phrases: the whole ring rests together, and space sets how much', () => {
+test('the weave: the sound never stops, and every turn keeps tones in common', () => {
+  const r = cycles();
+  const plan = r._plan(), G = r.groups.length;
+  assert.ok(G >= 5, `groups ${G}`);
+  for (let n = 0; n < plan.length; n++) {
+    const a = plan[n].in, b = plan[(n + 1) % plan.length].in;
+    const kept = a.filter((v, i) => v && b[i]).length, changed = a.filter((v, i) => v !== b[i]).length;
+    assert.ok(kept >= 1, `turn ${n} keeps nothing`);
+    assert.ok(changed <= 3, `turn ${n} changes ${changed} groups`);
+    assert.ok(b.filter(Boolean).length >= 2);
+  }
+  // and in sound: tones are always present, the anchor and the foundation always
+  let minTones = Infinity, minIn = Infinity;
+  for (let t = T0; t < T0 + 2400_000; t += 1000) {
+    const fr = r.frame(t);
+    minTones = Math.min(minTones, fr.voices.filter(v => v.role !== 'anchor').reduce((s, v) => s + v.level, 0));
+    minIn = Math.min(minIn, fr.turn.groupsIn);
+    assert.ok(fr.bed.lvl > 0.5);
+  }
+  assert.ok(minTones > 0.4, `quietest moment: tone levels sum to ${minTones}`);
+  assert.ok(minIn >= 2);
+});
+
+test('the weave: incoming tones overlap outgoing ones at a turn', () => {
+  const r = cycles({ phrase: 80 });
+  // find turns where one group enters and another leaves; mid-turn both sound
+  const plan = r._plan();
+  let checked = 0;
+  for (let m = 1; m < 12; m++) {
+    const a = plan[m - 1].in, b = plan[m].in;
+    const entering = a.findIndex((v, i) => !v && b[i]), leaving = a.findIndex((v, i) => v && !b[i]);
+    if (entering < 0 || leaving < 0) continue;
+    const gIn = r._gate(p => p.in[entering], m, 0), gOut = r._gate(p => p.in[leaving], m, 0);
+    assert.ok(gIn > 0.6 && gOut > 0.6, `turn ${m}: entering ${gIn.toFixed(2)}, leaving ${gOut.toFixed(2)}`);
+    checked++;
+  }
+  assert.ok(checked >= 3);
+});
+
+test('the weave: space sets how many tones rest; 0 keeps everything in; devices agree', () => {
   const share = space => {
     const r = cycles({ space });
-    let n = 0, s = 0;
-    for (let t = T0; t < T0 + 3600_000; t += 3000) { s += r.frame(t).phrase; n++; }
+    let s = 0, n = 0;
+    for (let t = T0; t < T0 + 3600_000; t += 4000) { const fr = r.frame(t); s += fr.turn.groupsIn / fr.turn.groups; n++; }
     return s / n;
   };
   assert.equal(share(0), 1);
-  const a = share(0.3), b = share(0.6), c = share(1);
-  assert.ok(a > b && b > c, `${a} ${b} ${c}`);
-  assert.ok(Math.abs(b - 0.64) < 0.05 && Math.abs(c - 0.4) < 0.05, `${b} ${c}`);
-  // at the bottom of a rest nothing sounds: no tone, no anchor, no foundation
-  const r = cycles({ space: 0.6 });
-  let rests = 0;
-  for (let t = T0; t < T0 + 1200_000; t += 2000) {
-    const fr = r.frame(t);
-    if (fr.phrase > 0) continue;
-    if (fr.voices.every(v => v.role === 'anchor' ? v.level < 0.08 : v.level === 0) && fr.bed.lvl < 0.25) rests++;
-  }
-  assert.ok(rests > 10, `silent moments found: ${rests}`);
-});
-
-test('phrases: the foundation holds longer than the tones, and devices agree', () => {
+  const lo = share(0.3), hi = share(0.9);
+  assert.ok(lo > hi && Math.abs(lo - 0.82) < 0.15 && Math.abs(hi - 0.46) < 0.15, `${lo} ${hi}`);
   const a = cycles(), b = cycles();
-  let bedLonger = 0, n = 0;
-  for (let t = T0; t < T0 + 900_000; t += 1500) {
-    const fa = a.frame(t);
-    assert.equal(fa.phrase, b.frame(t).phrase);
-    if (fa.bed.lvl / (0.8 * (0.85 + 0.15 * Math.sin(fa.phase + 1))) >= fa.phrase - 1e-9) bedLonger++;
-    n++;
-  }
-  assert.equal(bedLonger, n);
+  for (let t = T0; t < T0 + 600_000; t += 7000) assert.deepEqual(a.frame(t).voices.map(v => v.tide), b.frame(t).voices.map(v => v.tide));
 });
 
-test('phrases move slowly: no jump between control ticks', () => {
-  const r = cycles({ space: 1, phrase: 30 });
-  let prev = null, mx = 0;
-  for (let t = T0; t < T0 + 300_000; t += 50) { const p = r.frame(t).phrase; if (prev !== null) mx = Math.max(mx, Math.abs(p - prev)); prev = p; }
-  assert.ok(mx < 0.03, `largest change in 50 ms: ${mx}`);
+test('octave stacking gives the ring more pitches to trade', () => {
+  const pitches = stack => new Set(cycles({ stack }).frame(T0 + 1000).voices.map(v => Math.round(v.f0))).size;
+  assert.ok(pitches(1) > pitches(0), `${pitches(1)} vs ${pitches(0)}`);
 });
