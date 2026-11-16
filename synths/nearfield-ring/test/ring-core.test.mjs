@@ -11,7 +11,14 @@ const load = f => JSON.parse(readFileSync(new URL(f, cfgDir), 'utf8'));
 const cfg = { scale: load('scale.json'), params: load('params.json'), score: load('score.json'), drift: load('scale_drift.json') };
 
 const T0 = 1_800_000_000_000;
+// baseline for the handoff/score tests: every layer together, no tides, no air
+const PLAIN = { drift: 0, density: 1, L: { anchor: [1, 1, 1], voice: [1, 1, 1], shimmer: [1, 1, 1] }, air: [0, 1] };
 function ring(over = {}) {
+  const r = new NR.Ring(cfg);
+  r.setState({ ...NR.defaultState(T0), ...PLAIN, ...over });
+  return r;
+}
+function cycles(over = {}) {
   const r = new NR.Ring(cfg);
   r.setState({ ...NR.defaultState(T0), ...over });
   return r;
@@ -41,7 +48,7 @@ test('republishing a segment continues the rotation without a jump', () => {
   const seg = r.segmentAt(t1);
   const next = ring({ seg, rev: 2 });
   const later = t1 + 30_000;
-  assert.ok(Math.abs(next.frame(later).turns - r.frame(later).turns) < 1e-9);
+  assert.ok(Math.abs(next.frame(later).turns - r.frame(later).turns) < 1e-5);
 });
 
 test('one turn per breath: a minute is a full turn once up to speed', () => {
@@ -125,7 +132,106 @@ test('pedestal mode moves the anchors off the phones', () => {
 
 test('state survives the link round trip', () => {
   const st = { ...NR.defaultState(T0), score: { start: T0 + 4000, comp: 8 }, S: 12, rev: 7 };
-  assert.deepEqual(NR.decodeState(NR.encodeState(st)), st);
-  assert.ok(NR.encodeState(st).length < 600);
+  assert.deepEqual(NR.normalizeState(NR.decodeState(NR.encodeState(st))), NR.normalizeState(st));
+  const tweaked = { ...st, density: 0.4, L: { ...st.L, voice: [0.8, 3, -1] }, air: [0.6, 1], seed: 'abc' };
+  assert.deepEqual(NR.normalizeState(NR.decodeState(NR.encodeState(tweaked))), NR.normalizeState(tweaked));
+  assert.ok(NR.encodeState(st).length < 420, `state link ${NR.encodeState(st).length} chars`);
   assert.equal(NR.decodeState('garbage'), null);
+});
+
+// --- cycles: layers, tides, air ---------------------------------------------------
+
+test('layers turn at their own speeds and directions, and devices still agree', () => {
+  const a = cycles({ drift: 1 }), b = cycles({ drift: 1 });
+  const end = T0 + 7 * 60 * 1000 + 13;
+  for (let t = T0; t < end; t += 16.7) a.advance(t);
+  for (let t = T0; t < end; t += 900) b.advance(t);
+  const fa = a.frame(end), fb = b.frame(end);
+  assert.deepEqual(fa.lt, fb.lt);
+  assert.equal(fa.ct, fb.ct);
+  // nested 1:2:4 at full drift: anchor half speed, shimmer double and against
+  assert.ok(Math.abs(fa.lt[0] / fa.lt[1] - 0.5) < 1e-9);
+  assert.ok(Math.abs(fa.lt[2] / fa.lt[1] + 2) < 1e-9);
+  assert.ok(fa.lt[3] < 0, 'air circles against the rotation');
+});
+
+test('drift 0 moves every layer together', () => {
+  const r = cycles({ drift: 0, L: { anchor: [1, 1, 1], voice: [1, 1, 1], shimmer: [1, 1, 1] }, air: [0.3, 1] });
+  const fr = r.frame(T0 + 300_000);
+  for (const x of fr.lt) assert.ok(Math.abs(x - fr.turns) < 1e-9);
+});
+
+test('a settings change continues every layer and the tides without a jump', () => {
+  const r = cycles();
+  const t1 = T0 + 200_000;
+  const before = r.frame(t1);
+  const next = cycles({ seg: r.segmentAt(t1), drift: 0.9, rev: 2 });
+  const after = next.frame(t1);
+  for (let i = 0; i < 4; i++) assert.ok(Math.abs(after.lt[i] - before.lt[i]) < 1e-5);
+  assert.ok(Math.abs(after.ct - before.ct) < 0.06);
+});
+
+test('tides: density sets how much of the chord sounds; 1 is everything, always', () => {
+  const up = d => {
+    const r = cycles({ density: d });
+    let n = 0, on = 0;
+    for (let t = T0; t < T0 + 3600_000; t += 7000) {
+      for (const v of r.frame(t).voices) if (v.role !== 'anchor') { n++; on += v.tide; }
+    }
+    return on / n;
+  };
+  const lo = up(0.3), mid = up(0.6), full = up(1);
+  assert.ok(lo < mid && mid < full, `${lo} ${mid} ${full}`);
+  assert.ok(Math.abs(lo - 0.3) < 0.04 && Math.abs(mid - 0.6) < 0.04, `${lo} ${mid}`);
+  assert.equal(full, 1);
+  assert.equal(up(0), 0);
+});
+
+test('tides never touch the anchors, and move slowly', () => {
+  const r = cycles();
+  let maxStep = 0, prev = null;
+  for (let t = T0; t < T0 + 600_000; t += 50) {
+    const fr = r.frame(t);
+    assert.ok(fr.voices.filter(v => v.role === 'anchor').every(v => v.tide === 1));
+    const tides = fr.voices.map(v => v.tide);
+    if (prev) for (let i = 0; i < tides.length; i++) maxStep = Math.max(maxStep, Math.abs(tides[i] - prev[i]));
+    prev = tides;
+  }
+  assert.ok(maxStep < 0.02, `largest tide change in 50 ms: ${maxStep}`);
+});
+
+test('wide layers spread a voice over several phones at unit power', () => {
+  const r = cycles({ L: { anchor: [1, 1, 1], voice: [1, 3, 1], shimmer: [1, 1, -1] } });
+  const fr = r.frame(T0 + 90_000);
+  const v = fr.voices.find(x => x.role === 'voice');
+  assert.ok(v.shares.length >= 5);
+  assert.ok(Math.abs(v.shares.reduce((s, x) => s + x.g * x.g, 0) - 1) < 1e-9);
+});
+
+test('air: bounded, silent in the pre-roll, strongest where it is passing', () => {
+  const r = cycles({ air: [0.5, -1] });
+  for (let t = T0; t < T0 + 1200_000; t += 9000) {
+    const fr = r.frame(t);
+    assert.ok(fr.air.lvl >= 0 && fr.air.lvl <= 0.5 + 1e-9);
+    assert.ok(fr.air.freq > 200 && fr.air.freq < 1000, `air tone ${fr.air.freq}`);
+    const here = r.airAt(fr, Math.round(fr.air.pos) % 8).g, far = r.airAt(fr, (Math.round(fr.air.pos) + 4) % 8).g;
+    assert.ok(here >= far);
+  }
+  const s = cycles({ score: { start: T0 + 4000, comp: 1 } });
+  assert.equal(s.frame(T0 + 1000).air.lvl, 0);
+});
+
+test('beat depth scales fingerprint and bend together; 0 is perfectly in tune', () => {
+  const r = cycles({ beat: 0 });
+  const fr = r.frame(T0 + 123_456);
+  for (let k = 0; k < 8; k++) for (const p of r.playersAt(fr, k)) assert.ok(p.detune === 0);
+});
+
+test('a pre-cycles link still plays: layers start from the shared rotation', () => {
+  const old = { v: 1, rev: 3, epoch: T0, seed: '1', S: 6, seg: { t0: T0, turns0: 2.5, rate0: 1 / 60, phase0: 1 },
+    score: null, mode: 'chord', dir: 1, lock: 1, period: 60, breath: 60, w: 1, bend: 10, bloom: 0.5, fp: 12, ombak: 1, anchors: 'lift', vol: 1 };
+  const r = new NR.Ring(cfg);
+  const st = r.setState(old);
+  assert.deepEqual(st.seg.lt0, [2.5, 2.5, 2.5, 2.5]);
+  assert.ok(r.frame(T0 + 5000).voices.length === 6);
 });

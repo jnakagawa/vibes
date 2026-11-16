@@ -15,6 +15,10 @@
 // piece's (config/*.json copied from nearfield-ios); the chord rotates around
 // the ring by equal-power handoffs, and each position bends what it plays so
 // a voice beats against itself mid-handoff.
+//
+// On top of that sit slow cycles that never quite line up: each layer
+// (anchors, tones, shimmer, air) turns at its own speed and width; every tone
+// swells in and out on its own tide; soft noise circles as air.
 // ============================================================================
 (function (root) {
   'use strict';
@@ -164,14 +168,23 @@
       epoch: now,                    // fingerprint + bend seed time origin
       seed: String(now % 1000000),   // performance seed
       S: 8,                          // marked positions on the ring
-      seg: { t0: now, turns0: 0, rate0: 0, phase0: 0 },
+      // ct = composed seconds elapsed (tides + air run on it); lt = turns per
+      // layer [anchor, voice, shimmer, air]
+      seg: { t0: now, turns0: 0, rate0: 0, phase0: 0, ct0: 0, lt0: [0, 0, 0, 0] },
       score: null,                   // { start: ms, comp } while a score is on
-      mode: 'chord',                 // chord | counter | sweep
       dir: 1,                        // 1 clockwise, -1 counter, 0 stopped
       lock: 1,                       // one turn per breath
       period: 60,                    // seconds per turn when not locked
       breath: 60,                    // breath period outside the score
-      w: 1,                          // handoff width (1..2)
+      // layers: [level, width in positions, 1 with / -1 against the rotation]
+      L: { anchor: [1, 1.5, 1], voice: [1, 1.5, 1], shimmer: [1, 1.25, -1] },
+      air: [0.35, -1],               // [level, with / against]
+      ratios: 'nested',              // layer cycle ratios: nested 1:2:4 | prime 5:7:11
+      drift: 0.6,                    // 0 = every cycle together .. 1 = fully apart
+      density: 0.6,                  // share of the chord sounding at once (tides)
+      tide: 50,                      // a voice's swell cycle, seconds
+      soft: 0.5,                     // darker + slower edges
+      beat: 1,                       // scales fingerprint + handoff bend
       bend: 10,                      // ± cents a position bends at a turn/min
       bloom: 0.5,                    // partial richness (phones like partials)
       fp: 12,                        // fingerprint max cents
@@ -181,9 +194,35 @@
     };
   }
 
+  // fill in whatever an older link or saved state lacks (pre-cycles states
+  // rotated every layer together: their layers start from the shared turns)
+  function normalizeState(st) {
+    const d = defaultState(st.epoch || 0);
+    const out = { ...d, ...st };
+    out.L = { ...d.L, ...(st.L || {}) };
+    const t = st.seg.turns0 || 0;
+    out.seg = { ct0: 0, lt0: [t, t, t, t], ...st.seg };
+    return out;
+  }
+
+  const LAYER_INDEX = { anchor: 0, voice: 1, shimmer: 2, air: 3 };
+  const RATIOS = { nested: [0.5, 1, 2, 0.25], prime: [5 / 7, 1, 11 / 7, 3 / 7] };
+
+  // signed speed of each layer relative to the base rotation
+  function layerSpeeds(st) {
+    const r = RATIOS[st.ratios] || RATIOS.nested;
+    const dirs = [st.L.anchor[2], st.L.voice[2], st.L.shimmer[2], st.air[1]];
+    return r.map((x, i) => Math.pow(x, st.drift) * (dirs[i] < 0 ? -1 : 1));
+  }
+
   // base64url JSON — compact enough for a QR code
+  // (settings still at their defaults are left out; normalizeState restores them)
   function encodeState(st) {
-    const s = JSON.stringify(st);
+    const d = defaultState(st.epoch || 0), lean = {};
+    for (const k of Object.keys(st)) {
+      if (k === 'v' || k === 'rev' || k === 'epoch' || k === 'seg' || JSON.stringify(st[k]) !== JSON.stringify(d[k])) lean[k] = st[k];
+    }
+    const s = JSON.stringify(lean);
     const b64 = typeof btoa === 'function'
       ? btoa(unescape(encodeURIComponent(s)))
       : Buffer.from(s, 'utf8').toString('base64');
@@ -212,11 +251,18 @@
       this.integ = null;
     }
 
-    setState(st) {
+    // returns the normalized state (callers keep that one)
+    setState(raw) {
+      const st = normalizeState(raw);
       const segChanged = !this.state || JSON.stringify(st.seg) !== JSON.stringify(this.state.seg);
       this.state = st;
-      if (segChanged) this.integ = { t: st.seg.t0, turns: st.seg.turns0, rate: st.seg.rate0, phase: st.seg.phase0 };
+      if (segChanged) {
+        this.integ = { t: st.seg.t0, turns: st.seg.turns0, rate: st.seg.rate0, phase: st.seg.phase0,
+          ct: st.seg.ct0, lt: st.seg.lt0.slice() };
+      }
+      this.speeds = layerSpeeds(st);
       this.voices = this._voices(st.S);
+      return st;
     }
 
     _voices(S) {
@@ -264,6 +310,8 @@
       const target = st.dir === 0 ? 0 : (st.dir / period) * c.bloomM;
       I.rate += (target - I.rate) * Math.min(1, dtM / 3);   // ease speed changes
       I.turns += I.rate * dtM;
+      for (let i = 0; i < 4; i++) I.lt[i] += I.rate * this.speeds[i] * dtM;
+      I.ct += dtM;
       I.phase = wrap(I.phase + 2 * Math.PI * dtM / c.breath, 2 * Math.PI);
       I.t += STEP_MS;
     }
@@ -272,7 +320,7 @@
     // values at tMs (the sub-step remainder is extrapolated, never stored)
     advance(tMs) {
       const I = this.integ;
-      if (tMs < I.t) return { turns: I.turns, rate: I.rate, phase: I.phase };
+      if (tMs < I.t) return { turns: I.turns, rate: I.rate, phase: I.phase, ct: I.ct, lt: I.lt.slice() };
       let guard = 0;
       while (I.t + STEP_MS <= tMs && guard++ < 2e6) this._stepOnce();
       const c = this.curves(I.t);
@@ -281,6 +329,8 @@
         turns: I.turns + I.rate * r,
         rate: I.rate,
         phase: wrap(I.phase + 2 * Math.PI * r / c.breath, 2 * Math.PI),
+        ct: I.ct + r,
+        lt: I.lt.map((x, i) => x + I.rate * this.speeds[i] * r),
       };
     }
 
@@ -289,7 +339,42 @@
     segmentAt(tMs) {
       this.advance(tMs);
       const I = this.integ;
-      return { t0: I.t, turns0: I.turns, rate0: I.rate, phase0: I.phase };
+      // rounded so the link stays short enough for an easy QR code; everyone
+      // (the host included) continues from these same rounded numbers
+      const r = (x, d) => Math.round(x * d) / d;
+      return { t0: I.t, turns0: r(I.turns, 1e6), rate0: r(I.rate, 1e9), phase0: r(I.phase, 1e6),
+        ct0: r(I.ct, 1e3), lt0: I.lt.map(x => r(x, 1e6)) };
+    }
+
+    // Tide (0..1): each voice swells in and out on its own slow cycle, so only
+    // part of the chord sounds at once. density = the share of a cycle a voice
+    // is up; drift spreads the voices' periods and phases apart; soft widens
+    // the fade. A pure function of composed time, so every phone agrees.
+    tide(v, ct) {
+      const st = this.state;
+      const r = mulberry32(fnv1a(`${v}|${st.seed}|tide`));
+      const period = Math.max(4, st.tide * (1 + st.drift * (r() - 0.5) * 1.2));
+      const phase = 2 * Math.PI * r() * Math.min(1, st.drift / 0.2);
+      const w = 0.35 + 0.95 * st.soft;
+      return smoothstep((Math.cos(2 * Math.PI * ct / period + phase) - this._tideThreshold(st.density, w)) / w + 0.5);
+    }
+
+    // the threshold at which a tide's average over its cycle equals density
+    _tideThreshold(density, w) {
+      const key = `${density}|${w}`;
+      if (this._thrKey === key) return this._thr;
+      const D = clamp(density, 0, 1), N = 256;
+      const mean = thr => {
+        let s = 0;
+        for (let i = 0; i < N; i++) s += smoothstep((Math.cos(Math.PI * (i + 0.5) / N) - thr) / w + 0.5);
+        return s / N;
+      };
+      let lo = -1 - w, hi = 1 + w;   // mean(lo) = 1, mean(hi) = 0
+      if (D >= 1) hi = lo; else if (D <= 0) lo = hi;
+      else for (let i = 0; i < 40; i++) { const mid = (lo + hi) / 2; if (mean(mid) > D) lo = mid; else hi = mid; }
+      this._thrKey = key;
+      this._thr = (lo + hi) / 2;
+      return this._thr;
     }
 
     // Deterministic per-voice fingerprint (§13.2 stand-in): three slow
@@ -306,7 +391,7 @@
         x += Math.sin(2 * Math.PI * ts / per + r() * 2 * Math.PI);
       }
       const mult = this.params.drift.role_multipliers[role] ?? 1;
-      const max = st.fp * mult * ombakScale(f0, this.params, st.ombak);
+      const max = st.fp * st.beat * mult * ombakScale(f0, this.params, st.ombak);
       return clamp((x / 3) * max * 0.82, -max, max) * amp;   // std ≈ max/3
     }
 
@@ -321,7 +406,8 @@
     frame(tMs) {
       const st = this.state, S = st.S;
       const c = this.curves(tMs);
-      const { turns, rate, phase } = this.advance(tMs);
+      const adv = this.advance(tMs);
+      const { turns, rate, phase } = adv;
       const scaleNow = c.stretch !== null && this.drift
         ? interpolateScale(this.drift, c.stretch)
         : { scale_cents: this.scale.scale_cents, spectrum: this.scale.spectrum, stretch: this.scale.pseudo_octave_ratio };
@@ -337,10 +423,16 @@
       const bukaLen = this.score.sections[1]?.at ?? 120;
       const nonAnchors = this.voices.filter(x => x.role !== 'anchor');
       const anchors = this.voices.filter(x => x.role === 'anchor');
-      const w = clamp(st.w, 1, 2);
+      // each layer: its own width (a voice as a cloud over several phones)
+      const widths = {}, peaks = {};
+      for (const role of ['anchor', 'voice', 'shimmer']) {
+        widths[role] = clamp(st.L[role][1], 1, Math.max(1, S / 2));
+        peaks[role] = Math.max(...windowShares(0, widths[role]).map(s => s[1]));
+      }
 
       const voices = this.voices.map(vc => {
         const roleP = this.params.roles[vc.role];
+        const w = widths[vc.role];
         const f0 = pitchHzFor(es, vc.degreeIndex, vc.register);
         // entries (buka): anchors first, then voices one by one around the ring
         let entry = 1;
@@ -355,37 +447,57 @@
           env = gongOn ? Math.sin(Math.PI * gongAge / GONG_S)
             : 0.5 + 0.5 * Math.sin(phase + 2 * Math.PI * ai / Math.max(anchors.length, 1));
         }
-        const level = roleP.base_gain * env * breathG * entry * c.masterM;
-        const vTurns = st.mode === 'sweep' ? 0
-          : (st.mode === 'counter' && vc.role === 'shimmer') ? -turns : turns;
-        const posU = vc.v + vTurns * S;
+        // anchors already come and go on the breath; the others ride tides
+        const tide = vc.role === 'anchor' ? 1 : this.tide(vc.v, adv.ct);
+        const level = roleP.base_gain * env * breathG * entry * c.masterM * tide * st.L[vc.role][0];
+        const posU = vc.v + adv.lt[LAYER_INDEX[vc.role]] * S;
         const shares = windowShares(posU, w).map(([iU, g]) => ({ slot: wrap(iU, S), g }));
         return {
-          v: vc.v, role: vc.role, f0, level, posU, pos: wrap(posU, S), shares,
+          v: vc.v, role: vc.role, f0, level, tide, posU, pos: wrap(posU, S), shares, peak: peaks[vc.role],
           color: voiceColor(f0, vc.role, this.scale.base_freq_hz, es.pseudo_octave_ratio),
           fp: this.fingerprint(vc.v, vc.role, f0, tMs, c.fpAmp),
           bloom: vc.role === 'anchor' ? 0.35 : st.bloom * c.bloomM,
         };
       });
 
-      // sweep: voices stay home; a bloom window circles and lifts each
-      // position it passes
-      let lift = null;
-      if (st.mode === 'sweep') {
-        const sp = wrap(turns * S, S), sw = Math.max(1.5, w * 1.5), floor = 0.12;
-        lift = Array.from({ length: S }, (_, k) => {
-          let d = Math.abs(k - sp); d = Math.min(d, S - d);
-          const l = d < sw ? Math.pow(Math.cos(Math.PI * d / (2 * sw)), 2) : 0;
-          return floor + (1 - floor) * l;
-        });
-      }
+      // Air: soft noise, each phone its own. It circles the ring on its own
+      // cycle (against the rotation by default), swells with the breath and a
+      // longer tide, and its tone wanders note to note across the scale —
+      // dwelling on each pitch, then gliding to the next.
+      const notes = [0, 1].flatMap(reg => es.scale_cents.map((_, d) => pitchHzFor(es, d, reg)));
+      const path = notes.concat(notes.slice(1, -1).reverse());
+      const x = adv.ct / Math.max(6, st.tide * 0.45);
+      const i = Math.floor(x), glide = smoothstep((x - i - 0.25) / 0.5);
+      const fa = path[wrap(i, path.length)], fb = path[wrap(i + 1, path.length)];
+      const long = 0.5 + 0.5 * Math.sin(2 * Math.PI * adv.ct / (st.tide * 2.3) + (fnv1a(`${st.seed}|air`) % 628) / 100);
+      const swell = 0.5 + 0.5 * Math.sin(phase + 2.1);
+      const air = {
+        lvl: st.air[0] * c.masterM * (0.1 + 0.9 * swell * (0.35 + 0.65 * long)),
+        pos: wrap(adv.lt[3] * S, S),
+        freq: fa * Math.pow(fb / fa, glide),
+        q: 2.5,
+      };
 
+      const absRate = Math.abs(rate);
       return {
         tMs, sT: c.sT, label: c.sT === null ? null : (c.sT < 0 ? 'pre-roll' : (c.sT > this.score.duration ? 'end' : this.score.labelAt(c.sT))),
         comp: c.comp, turns, rate, factor, phase, stretch: c.stretch, amDepth: c.amDepth, fpAmp: c.fpAmp,
         ratios: scaleNow.spectrum.ratios, amps: this.scale.spectrum.amps,
-        voices, lift,
+        ct: adv.ct, lt: adv.lt, soft: st.soft, air,
+        // seconds per turn of each layer [anchor, voice, shimmer, air] (signed)
+        periods: this.speeds.map(s => absRate < 1e-5 ? Infinity : 1 / (rate * s)),
+        voices,
       };
+    }
+
+    // the air's gain + tone at one position
+    airAt(fr, slot) {
+      const a = fr.air, S = this.state.S;
+      if (slot === 'pedestal') return { g: a.lvl * 0.5, freq: a.freq, q: a.q };
+      const sw = Math.max(1.5, S / 3), floor = 0.15;
+      let d = Math.abs(slot - a.pos); d = Math.min(d, S - d);
+      const lift = d < sw ? Math.pow(Math.cos(Math.PI * d / (2 * sw)), 2) : 0;
+      return { g: a.lvl * (floor + (1 - floor) * lift), freq: a.freq, q: a.q };
     }
 
     // What one position plays: each voice with a share here, its gain and its
@@ -403,10 +515,11 @@
         let g = 0;
         for (const s of vc.shares) if (s.slot === slot) g += s.g;
         if (g <= 1e-4) continue;
-        const lift = fr.lift ? fr.lift[slot] : 1;
-        const tension = st.bend * ombakScale(vc.f0, this.params, st.ombak) * fr.factor;
-        const g1 = Math.min(1, g);
-        out.push({ v: vc.v, vc, g: g * lift, detune: vc.fp + this.positionOffset(slot) * tension * (1 - g1 * g1) });
+        // the bend fades as the voice centers on this position (relative to
+        // the peak share its width allows)
+        const tension = st.bend * st.beat * ombakScale(vc.f0, this.params, st.ombak) * fr.factor;
+        const g1 = Math.min(1, g / vc.peak);
+        out.push({ v: vc.v, vc, g, detune: vc.fp + this.positionOffset(slot) * tension * (1 - g1 * g1) });
       }
       return out;
     }
@@ -447,7 +560,7 @@
     STEP_MS, SCORE_LEAD_MS,
     mulberry32, fnv1a, clamp, wrap, smoothstep, pitchHzFor, assignRoles, ombakScale, voiceColor,
     interpolateScale, Score, Ring, windowShares, partialGains,
-    defaultState, encodeState, decodeState,
+    defaultState, normalizeState, layerSpeeds, encodeState, decodeState,
   };
   root.NearfieldRing = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

@@ -81,10 +81,10 @@
   <div class="mono dim" id="cStatus" style="font-size:11px"></div>
 </div>
 
-<script src="ring-core.js"></script>
-<script src="ring-live.js"></script>
-<script src="ring-audio.js"></script>
-<script src="ring-visual.js"></script>
+<script src="ring-core.js?v=2"></script>
+<script src="ring-live.js?v=2"></script>
+<script src="ring-audio.js?v=2"></script>
+<script src="ring-visual.js?v=2"></script>
 <script>
 'use strict';
 const NR = window.NearfieldRing;
@@ -126,8 +126,7 @@ function parsePos(p) {
 const posLabel = s => s === 'pedestal' ? 'P' : String(s + 1);
 
 function applyState(st) {
-  app.state = st;
-  app.ring.setState(st);
+  st = app.state = app.ring.setState(st);
   if (app.slot !== null && app.slot !== 'pedestal' && app.slot >= st.S) {
     app.slot = null;   // the ring got smaller: choose again
     if (app.playing) stopPlaying();
@@ -301,7 +300,7 @@ function tick() {
   if (!app.state || !app.playing) return;
   const fr = app.ring.frame(now());
   const players = app.ring.playersAt(fr, app.slot);
-  app.audio.update(fr, players, app.muted ? 0 : app.state.vol);
+  app.audio.update(fr, players, app.muted ? 0 : app.state.vol, app.ring.airAt(fr, app.slot));
   const v = visualState(fr);
   app.visual?.update(v.vis);
   app.lastColor = v.vis.color;

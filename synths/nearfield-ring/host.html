@@ -76,9 +76,10 @@
 </div>
 <div id="sheet"></div>
 
-<script src="ring-core.js"></script>
-<script src="ring-live.js"></script>
-<script src="qr.js"></script>
+<script src="ring-core.js?v=2"></script>
+<script src="ring-live.js?v=2"></script>
+<script src="ring-audio.js?v=2"></script>
+<script src="qr.js?v=2"></script>
 <script>
 'use strict';
 const NR = window.NearfieldRing;
@@ -87,7 +88,9 @@ const $ = id => document.getElementById(id);
 const rgb = c => `rgb(${c.map(x => Math.round(255 * x)).join(',')})`;
 const mmss = s => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
-const app = { ring: null, state: null, live: null, topic: null, clock: { offset: 0 }, status: '…', roster: new Map() };
+const app = { ring: null, state: null, live: null, topic: null, clock: { offset: 0 }, status: '…', roster: new Map(),
+  // headphone monitor (local to this page, not part of the performance)
+  mon: null, monOpts: { vol: 1, diameter: 1, listen: 'outside', dist: 1.6 } };
 const now = () => Date.now() + app.clock.offset;
 const base = location.href.split('#')[0].replace(/host\.html.*$/, '');
 
@@ -101,8 +104,7 @@ let pubTimer = null;
 function change(patch, { now: immediate = false } = {}) {
   const seg = app.ring.segmentAt(now());
   const st = { ...app.state, ...patch, seg, rev: app.state.rev + 1 };
-  app.state = st;
-  app.ring.setState(st);
+  app.state = app.ring.setState(st);
   saveLocal();
   refreshLinks();
   syncPanel();
@@ -151,22 +153,33 @@ function fieldset(title) {
   $('panel').appendChild(fs);
   return fs;
 }
-function addRange(fs, label, key, min, max, step, fmt = v => v) {
+// get() reads the control's value from the state; patch(v) returns the change
+function addRangeFn(fs, label, get, patch, min, max, step, fmt = v => v) {
   const row = document.createElement('div'); row.className = 'row';
   row.innerHTML = `<label>${label}</label><input type="range" min="${min}" max="${max}" step="${step}"><output></output>`;
   const input = row.querySelector('input'), out = row.querySelector('output');
-  input.addEventListener('input', () => { out.textContent = fmt(+input.value); change({ [key]: +input.value }); });
-  syncers.push(() => { if (document.activeElement !== input) input.value = app.state[key]; out.textContent = fmt(+app.state[key]); });
+  input.addEventListener('input', () => { out.textContent = fmt(+input.value); const p = patch(+input.value); if (p) change(p); });
+  syncers.push(() => { if (document.activeElement !== input) input.value = get(); out.textContent = fmt(+get()); });
   fs.appendChild(row);
 }
-function addSelect(fs, label, key, options, parse = v => v) {
+function addSelectFn(fs, label, get, patch, options) {
   const row = document.createElement('div'); row.className = 'row';
   row.innerHTML = `<label>${label}</label><select>${options.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select>`;
   const sel = row.querySelector('select');
-  sel.addEventListener('change', () => change({ [key]: parse(sel.value) }, { now: true }));
-  syncers.push(() => { sel.value = String(app.state[key]); });
+  sel.addEventListener('change', () => { const p = patch(sel.value); if (p) change(p, { now: true }); });
+  syncers.push(() => { sel.value = String(get()); });
   fs.appendChild(row);
 }
+const addRange = (fs, label, key, min, max, step, fmt) =>
+  addRangeFn(fs, label, () => app.state[key], v => ({ [key]: v }), min, max, step, fmt);
+const addSelect = (fs, label, key, options, parse = v => v) =>
+  addSelectFn(fs, label, () => app.state[key], v => ({ [key]: parse(v) }), options);
+// a layer's [level, width, direction] / the air's [level, direction]
+const layerPatch = (role, i, v) => {
+  if (role === 'air') { const a = app.state.air.slice(); a[i] = v; return { air: a }; }
+  const L = { ...app.state.L, [role]: app.state.L[role].slice() }; L[role][i] = v; return { L };
+};
+const layerGet = (role, i) => role === 'air' ? app.state.air[i] : app.state.L[role][i];
 function addNote(fs, t) { const p = document.createElement('p'); p.className = 'note'; p.textContent = t; fs.appendChild(p); }
 function btn(text, fn, cls) { const b = document.createElement('button'); b.textContent = text; b.onclick = fn; if (cls) b.className = cls; return b; }
 
@@ -186,28 +199,66 @@ function buildPanel() {
   row = document.createElement('div'); row.className = 'btnrow';
   for (const s of score.sections.filter(s => s.label !== 'end')) row.appendChild(btn(`from ${s.label}`, () => startAt(s.at)));
   fs.appendChild(row);
-  addNote(fs, 'The ensemble score, unchanged: buka (anchors, then voices enter one by one around the ring), cycle I, the turning (breath 60 → 40 s), cycle II, final gong; the scale ages from stretch 2.04 to 2.10. Rotation follows the score\'s bloom: it gathers through the buka and comes to rest at the final gong. The score starts 4 s after you press, so phones can fade out first.');
+  addNote(fs, 'The ensemble score, unchanged: buka (anchors, then voices enter one by one around the ring), cycle I, the turning (breath 60 → 40 s), cycle II, final gong; the scale ages from stretch 2.04 to 2.10. Rotation follows the score\'s bloom: it gathers through the buka and comes to rest at the final gong; tides, air and the layer cycles run underneath throughout. The score starts 4 s after you press, so phones can fade out first.');
+
+  fs = fieldset('Listen on headphones');
+  row = document.createElement('div'); row.className = 'btnrow';
+  const listenBtn = btn('listen to the whole ring', async () => {
+    if (app.mon) { const m = app.mon; app.mon = null; await m.stop(); }
+    else { const m = new NearfieldAudio.RingMonitor(app.ring.params); await m.start(); app.mon = m; }
+    listenBtn.textContent = app.mon ? 'stop listening' : 'listen to the whole ring';
+    listenBtn.className = app.mon ? 'primary' : '';
+  });
+  row.appendChild(listenBtn);
+  fs.appendChild(row);
+  const mo = app.monOpts;
+  addSelectFn(fs, 'you are', () => mo.listen, v => { mo.listen = v; }, [['outside', 'standing outside the ring'], ['walk', 'walking around it'], ['center', 'sitting in the middle']]);
+  addRangeFn(fs, 'your distance', () => mo.dist, v => { mo.dist = v; }, 0.6, 3, 0.1, v => `${v.toFixed(1)} m`);
+  addRangeFn(fs, 'ring diameter', () => mo.diameter, v => { mo.diameter = v; }, 0.4, 4, 0.1, v => `${v.toFixed(1)} m`);
+  addRangeFn(fs, 'monitor volume', () => mo.vol, v => { mo.vol = v; }, 0, 1.5, 0.01, v => v.toFixed(2));
+  addNote(fs, 'Every position is rendered around your head, with the time sound takes to reach you, so you can compose without setting out phones. Headphones only; this plays on this computer, not on the phones.');
+
+  fs = fieldset('Mix');
+  addRangeFn(fs, 'anchors', () => layerGet('anchor', 0), v => layerPatch('anchor', 0, v), 0, 1.5, 0.01, v => v.toFixed(2));
+  addRangeFn(fs, 'tones', () => layerGet('voice', 0), v => layerPatch('voice', 0, v), 0, 1.5, 0.01, v => v.toFixed(2));
+  addRangeFn(fs, 'shimmer', () => layerGet('shimmer', 0), v => layerPatch('shimmer', 0, v), 0, 1.5, 0.01, v => v.toFixed(2));
+  addRangeFn(fs, 'air', () => layerGet('air', 0), v => layerPatch('air', 0, v), 0, 1.5, 0.01, v => v.toFixed(2));
+  addRange(fs, 'phone volume', 'vol', 0, 1.5, 0.01, v => v.toFixed(2));
+
+  fs = fieldset('Shape');
+  addRange(fs, 'density', 'density', 0.15, 1, 0.01, v => `${Math.round(v * 100)}%`);
+  addRange(fs, 'drift', 'drift', 0, 1, 0.01, v => v.toFixed(2));
+  addRange(fs, 'softness', 'soft', 0, 1, 0.01, v => v.toFixed(2));
+  addRange(fs, 'beat depth', 'beat', 0, 2, 0.01, v => `${v.toFixed(2)}×`);
+  addRange(fs, 'tide length', 'tide', 15, 120, 1, v => `${v} s`);
+  addSelect(fs, 'cycle ratios', 'ratios', [['nested', 'nested 1 : 2 : 4 (gamelan)'], ['prime', 'drifting 5 : 7 : 11']]);
+  addNote(fs, 'Density: how much of the chord sounds at once — each tone swells in and out on its own tide. Drift: how far apart all the cycles run (0 = everything together, 1 = never lining up). Softness: darker tone, slower fades. Beat depth: how much the tuning shimmers (0 = perfectly in tune).');
+
+  fs = fieldset('Layers');
+  for (const [role, name] of [['anchor', 'anchors'], ['voice', 'tones'], ['shimmer', 'shimmer']]) {
+    addRangeFn(fs, `${name} width`, () => layerGet(role, 1), v => layerPatch(role, 1, v), 1, 4, 0.05, v => v.toFixed(2));
+    addSelectFn(fs, `${name} turn`, () => layerGet(role, 2), v => layerPatch(role, 2, +v), [['1', 'with the rotation'], ['-1', 'against it']]);
+  }
+  addSelectFn(fs, 'air turns', () => layerGet('air', 1), v => layerPatch('air', 1, +v), [['1', 'with the rotation'], ['-1', 'against it']]);
+  addNote(fs, 'Width, in phones: 1 = a tone hops between two neighbors; wider = a soft cloud over several. Each layer turns at its own speed (set by drift and the cycle ratios).');
+
+  fs = fieldset('Rotation');
+  addSelect(fs, 'direction', 'dir', [['1', 'clockwise'], ['-1', 'counter-clockwise'], ['0', 'stopped']], v => +v);
+  addSelect(fs, 'speed', 'lock', [['1', 'one turn per breath'], ['0', 'seconds per turn ↓']], v => +v);
+  addRange(fs, 'seconds per turn', 'period', 8, 240, 1, v => `${v} s`);
+  addRange(fs, 'breath (free ring)', 'breath', 20, 90, 1, v => `${v} s`);
 
   fs = fieldset('Ring');
   addRange(fs, 'positions', 'S', 2, 24, 1);
   addSelect(fs, 'anchors', 'anchors', [['lift', 'lifted (phones can play them)'], ['phones', 'true pitch on phones'], ['pedestal', 'on a pedestal device']]);
   addNote(fs, 'Positions = phones around the circle; each position is a voice. Anchors sit near 106 Hz, below what phone speakers can play: "lifted" moves them up one pseudo-octave; "pedestal" moves them to a laptop or speaker in the middle (open the P link on it).');
 
-  fs = fieldset('Rotation');
-  addSelect(fs, 'mode', 'mode', [['chord', 'rotate the chord'], ['counter', 'counter-rotate shimmer'], ['sweep', 'sweep (voices stay home)']]);
-  addSelect(fs, 'direction', 'dir', [['1', 'clockwise'], ['-1', 'counter-clockwise'], ['0', 'stopped']], v => +v);
-  addSelect(fs, 'speed', 'lock', [['1', 'one turn per breath'], ['0', 'seconds per turn ↓']], v => +v);
-  addRange(fs, 'seconds per turn', 'period', 8, 240, 1, v => `${v} s`);
-  addRange(fs, 'handoff width', 'w', 1, 2, 0.05, v => v.toFixed(2));
-  addRange(fs, 'handoff bend', 'bend', 0, 20, 0.5, v => `±${v} ¢`);
-  addNote(fs, 'Handoff bend: each position bends what it plays, fading as a voice arrives — a voice beats against itself mid-handoff and settles as it lands. Scales with rotation speed and register (ombak).');
-
-  fs = fieldset('Sound');
+  fs = fieldset('Fine tuning');
   addRange(fs, 'bloom', 'bloom', 0, 1, 0.01, v => v.toFixed(2));
+  addRange(fs, 'handoff bend', 'bend', 0, 20, 0.5, v => `±${v} ¢`);
   addRange(fs, 'fingerprint max', 'fp', 0, 24, 0.5, v => `±${v} ¢`);
   addSelect(fs, 'ombak', 'ombak', [['1', 'on (even beat rate)'], ['0', 'off']], v => +v);
-  addRange(fs, 'breath (free ring)', 'breath', 20, 90, 1, v => `${v} s`);
-  addRange(fs, 'phone volume', 'vol', 0, 1.5, 0.01, v => v.toFixed(2));
+  addNote(fs, 'Bloom: how many partials each tone carries. Bend and fingerprint are the two sources of beating; beat depth scales both.');
 
   fs = fieldset('Performance');
   row = document.createElement('div'); row.className = 'btnrow';
@@ -234,11 +285,19 @@ function draw() {
   const ang = p => -Math.PI / 2 + 2 * Math.PI * p / S;
   const levels = new Array(S).fill(0), dom = new Array(S).fill(null);
   for (const vc of fr.voices) for (const s of vc.shares) {
-    const l = s.g * s.g * vc.level * (fr.lift ? fr.lift[s.slot] : 1);
+    const l = s.g * s.g * vc.level;
     if (l > levels[s.slot]) dom[s.slot] = vc.color;
     levels[s.slot] += l;
   }
   const present = new Set([...app.roster.values()].map(r => r.pos));
+  // the air: a soft arc where it is passing
+  if (fr.air.lvl > 0.005) {
+    const a0 = ang(fr.air.pos), half = Math.PI * 2 * Math.max(1.5, S / 3) / S;
+    cx.strokeStyle = `rgba(200,205,220,${Math.min(0.55, 0.08 + fr.air.lvl * 0.9)})`;
+    cx.lineWidth = 10; cx.lineCap = 'round';
+    cx.beginPath(); cx.arc(ox, oy, R + 46, a0 - half * 0.6, a0 + half * 0.6); cx.stroke();
+    cx.lineWidth = 1; cx.lineCap = 'butt';
+  }
   cx.strokeStyle = '#1e1e26'; cx.beginPath(); cx.arc(ox, oy, R, 0, Math.PI * 2); cx.stroke();
   for (let k = 0; k < S; k++) {
     const a = ang(k), x = ox + R * Math.cos(a), y = oy + R * Math.sin(a), l = Math.min(1, levels[k]);
@@ -263,6 +322,21 @@ function draw() {
   const sec = fr.sT === null ? 'free ring' : fr.sT < 0 ? `score in ${Math.ceil(-fr.sT / fr.comp)} s` : `${fr.label} ${mmss(Math.min(fr.sT, 960))}${fr.stretch ? ` · stretch ${fr.stretch.toFixed(3)}` : ''}`;
   cx.fillText(sec, ox, oy - 4);
   cx.fillText(rot, ox, oy + 14);
+  // each layer's cycle, and how much of the chord the tides have up
+  const per = (name, p) => Number.isFinite(p) ? `${name} ${p > 0 ? '↻' : '↺'} ${Math.round(Math.abs(p))} s` : `${name} —`;
+  const tones = fr.voices.filter(v => v.role !== 'anchor');
+  const up = tones.filter(v => v.tide > 0.5).length;
+  cx.fillStyle = '#6a6a76'; cx.font = '11px -apple-system, sans-serif';
+  cx.fillText(`${per('anchors', fr.periods[0])} · ${per('tones', fr.periods[1])} · ${per('shimmer', fr.periods[2])} · ${per('air', fr.periods[3])} · sounding ${up} of ${tones.length}`, ox, H - 10);
+  // you, when the headphone monitor is on
+  if (app.mon) {
+    const ppm = R / (app.monOpts.diameter / 2), L = app.mon.listener;
+    const lx = Math.max(12, Math.min(W - 12, ox + L.x * ppm)), ly = Math.max(12, Math.min(H - 26, oy + L.z * ppm));
+    cx.strokeStyle = '#59d6a0'; cx.lineWidth = 1.5;
+    cx.beginPath(); cx.arc(lx, ly, 8, 0, Math.PI * 2); cx.stroke();
+    cx.beginPath(); cx.arc(lx, ly, 2.5, 0, Math.PI * 2); cx.stroke();
+    cx.lineWidth = 1;
+  }
   $('status').textContent = `${app.topic} · rev ${app.state.rev} · ${app.status}${app.clock.offset ? ` · clock ${app.clock.offset} ms` : ''}`;
 }
 
@@ -292,11 +366,10 @@ $('printSheet').onclick = () => { buildSheet(); window.print(); };
     app.topic = NearfieldLive.newTopic();
     history.replaceState(null, '', `#t=${app.topic}`);
   }
-  app.state = loadLocal(app.topic) || NR.defaultState(Date.now());
-  app.ring.setState(app.state);
+  app.state = app.ring.setState(loadLocal(app.topic) || NR.defaultState(Date.now()));
   app.live = new NearfieldLive.Live(app.topic, {
     // a newer state from elsewhere (another host tab) wins
-    onState: st => { if (st.rev > app.state.rev) { app.state = st; app.ring.setState(st); saveLocal(); refreshLinks(); syncPanel(); } },
+    onState: st => { if (st.rev > app.state.rev) { app.state = app.ring.setState(st); saveLocal(); refreshLinks(); syncPanel(); } },
     onJoin: (m, at) => { app.roster.set(m.dev, { pos: String(m.pos), at }); renderRoster(); },
     onStatus: s => { app.status = s === 'live' ? 'relay live' : `relay ${s}`; },
   });
@@ -307,6 +380,7 @@ $('printSheet').onclick = () => { buildSheet(); window.print(); };
   publish();
   setInterval(publish, 10 * 60 * 1000);   // keep the relay's copy fresh for late joiners
   setInterval(renderRoster, 30 * 1000);
+  setInterval(() => { if (app.mon) app.mon.update(app.ring, app.ring.frame(now()), app.monOpts); }, 50);
   requestAnimationFrame(draw);
 })();
 </script>

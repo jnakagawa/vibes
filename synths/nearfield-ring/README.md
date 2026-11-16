@@ -9,9 +9,29 @@ clock, and plays only the voices passing through its position.
 - `play.html` — what each phone opens (`#t=<topic>&pos=<n>&s=<state>`)
 - `ring-core.js` — the piece (deterministic; tested in `test/`)
 - `ring-live.js` — live control via a public ntfy.sh topic + clock check
-- `ring-audio.js` — per-phone synthesis and voicing chain
+- `ring-audio.js` — per-phone synthesis, the air layer, and the host's headphone monitor
 - `qr.js` — tiny QR encoder (no CDN)
 - `config/` — tuning, voicing and score, copied from `nearfield-ios/config`
+
+## Composing on headphones
+
+**Listen on headphones → listen to the whole ring** on the host renders every
+position around your head (with the time sound takes to reach you), so the
+piece can be shaped without setting out phones. It plays on the host only.
+
+The piece is layers of slow cycles that never quite line up:
+
+- **Mix** — levels for anchors, tones, shimmer and air.
+- **Shape** — *density* (how much of the chord sounds at once; each tone swells
+  in and out on its own tide), *drift* (how far apart the cycles run),
+  *softness* (darker, slower fades), *beat depth* (how much the tuning shimmers).
+- **Layers** — each layer's width (a point hopping between two phones, or a
+  cloud over several) and whether it turns with or against the rotation.
+- **Air** — soft noise, each phone its own, circling the ring and swelling with
+  the breath; its tone wanders across the scale's notes.
+
+The line under the ring shows each layer's seconds per turn and how many tones
+the tides have up.
 
 ## Testing with a bunch of phones
 
