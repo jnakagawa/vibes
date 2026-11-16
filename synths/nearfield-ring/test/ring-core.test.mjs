@@ -13,7 +13,7 @@ const cfg = { scale: load('scale.json'), params: load('params.json'), score: loa
 const T0 = 1_800_000_000_000;
 // baseline for the handoff/score tests: every layer together, no tides, no air
 // (and the original stretched tuning, fingerprint and handoff bend)
-const PLAIN = { drift: 0, density: 1, L: { anchor: [1, 1, 1], voice: [1, 1, 1], shimmer: [1, 1, 1] }, air: [0, 1], pure: 0, fp: 12, bend: 10, bed: 0, space: 0, stack: 0, choir: 0, glint: 0, voice: 0 };
+const PLAIN = { drift: 0, density: 1, L: { anchor: [1, 1, 1], voice: [1, 1, 1], shimmer: [1, 1, 1] }, air: [0, 1], pure: 0, fp: 12, bend: 10, bed: 0, space: 0, stack: 0, choir: 0, glint: 0, voice: 0, bronze: 0 };
 function ring(over = {}) {
   const r = new NR.Ring(cfg);
   r.setState({ ...NR.defaultState(T0), ...PLAIN, ...over });
@@ -268,12 +268,12 @@ test('foundation: root and octaves always, one color at a time, silent before th
   assert.ok(bed.parts.every(p => p.beat > 0.05 && p.beat < 0.6));
   assert.ok(bed.parts[0].depth < bed.parts[1].depth, 'the bottom is steadier than what sits above it');
   assert.ok(bed.lvl > 0.5);
-  // colors: three candidate degrees two octaves down; never two strong at once
-  // (they would sit a few hertz apart and growl)
+  // colors: one at a time, an octave under the tones, clear of the root's octaves
   for (let t = T0; t < T0 + 1800_000; t += 5000) {
-    const p = r.frame(t).bed.parts, colors = [p[3].g, p[5].g, p[7].g].map(g => g / 0.35);
-    assert.ok(colors.filter(g => g > 0.3).length <= 1, `two colors up at once: ${colors}`);
+    const p = r.frame(t).bed.parts, colors = p.slice(3);
+    assert.ok(colors.filter(x => x.g / 0.3 > 0.3).length <= 1, 'two colors up at once');
     assert.ok(p[0].g >= 1 && p[1].g > 0 && p[2].g > 0, 'the root and its octaves never leave');
+    for (const x of colors) assert.ok(Math.min(Math.abs(x.f - 110), Math.abs(x.f - 220)) >= 36, `color at ${x.f.toFixed(1)} Hz crowds the root`);
   }
   assert.equal(cycles({ score: { start: T0 + 4000, comp: 1 } }).frame(T0 + 1000).bed.lvl, 0);
   assert.equal(cycles({ bed: 0 }).frame(T0 + 30_000).bed.lvl, 0);
@@ -289,7 +289,7 @@ test('the weave: the sound never stops, and every turn keeps tones in common', (
     const a = plan[n].in, b = plan[(n + 1) % plan.length].in;
     const kept = a.filter((v, i) => v && b[i]).length, changed = a.filter((v, i) => v !== b[i]).length;
     assert.ok(kept >= 1, `turn ${n} keeps nothing`);
-    assert.ok(changed <= 3, `turn ${n} changes ${changed} groups`);
+    assert.ok(changed <= 4, `turn ${n} changes ${changed} groups`);
     assert.ok(b.filter(Boolean).length >= 2);
   }
   // and in sound: tones are always present, the anchor and the foundation always
@@ -300,7 +300,7 @@ test('the weave: the sound never stops, and every turn keeps tones in common', (
     minIn = Math.min(minIn, fr.turn.groupsIn);
     assert.ok(fr.bed.lvl > 0.5);
   }
-  assert.ok(minTones > 0.4, `quietest moment: tone levels sum to ${minTones}`);
+  assert.ok(minTones > 0.3, `quietest moment: tone levels sum to ${minTones}`);
   assert.ok(minIn >= 2);
 });
 
@@ -328,8 +328,9 @@ test('the weave: space sets how many tones rest; 0 keeps everything in; devices 
     return s / n;
   };
   assert.equal(share(0), 1);
+  // more space, fewer tones in — and never more than the pairing rule allows
   const lo = share(0.3), hi = share(0.9);
-  assert.ok(lo > hi && Math.abs(lo - 0.82) < 0.15 && Math.abs(hi - 0.46) < 0.15, `${lo} ${hi}`);
+  assert.ok(lo > hi && lo <= 0.75 && hi >= 0.25, `${lo} ${hi}`);
   const a = cycles(), b = cycles();
   for (let t = T0; t < T0 + 600_000; t += 7000) assert.deepEqual(a.frame(t).voices.map(v => v.tide), b.frame(t).voices.map(v => v.tide));
 });
@@ -384,7 +385,7 @@ test('choir 0 is one exact voice per phone', () => {
 // --- glints: the shimmer on top ----------------------------------------------------------
 
 test('glints: faint harmonics between 1 and 2.5 kHz, twinkling, different on every phone', () => {
-  const r = cycles({ voice: 0 });
+  const r = cycles({ voice: 0, bronze: 0 });
   const seen = new Map();
   let maxLevel = 0;
   for (let t = T0; t < T0 + 240_000; t += 100) {
@@ -409,7 +410,7 @@ test('glints follow the piece: none in the buka or at the end, off at 0', () => 
   assert.ok(s.frame(T0 + 1000).glintArc < 0.02);
   assert.ok(s.frame(T0 + 400_000).glintArc > 0.3);
   assert.equal(s.frame(T0 + 960_000).glintArc, 0);
-  const off = cycles({ glint: 0, voice: 0 }), fr = off.frame(T0 + 50_000);
+  const off = cycles({ glint: 0, voice: 0, bronze: 0 }), fr = off.frame(T0 + 50_000);
   for (let k = 0; k < 8; k++) for (const p of off.playersAt(fr, k)) assert.deepEqual(p.glints, [0, 0, 0]);
 });
 
@@ -462,14 +463,14 @@ test('vowels: partials near a formant are lifted, others held back; 0 leaves the
   assert.ok(NR.vowelShape(730, fm) > 0.99 && NR.vowelShape(1090, fm) > 0.79 && NR.vowelShape(3000, fm) < 0.05 && NR.vowelShape(200, fm) < 0.05);
   assert.equal(NR.vowelFormants(0).name, 'oo');
   assert.equal(NR.vowelFormants(1).name, 'ee');
-  const r = cycles({ voice: 1, vowel: 0.5, vowelMove: 0, pure: 1, space: 0 });
+  const r = cycles({ voice: 1, vowel: 0.5, vowelMove: 0, pure: 1, space: 0, bronze: 0 });
   const fr = r.frame(T0 + 20_000);
   const p = [0, 1, 2, 3, 4, 5, 6, 7].flatMap(k => r.playersAt(fr, k)).find(x => Math.abs(x.vc.f0 - 330) < 1);
   // 330 Hz tone: partial 2 (660) sits near "ah"'s 730 formant, partial 4 (1320) further from 1090
   assert.ok(p.body[1] > 1.3, `partial near the formant ${p.body[1]}`);
   assert.ok(p.body[0] > 0.55 && p.body[0] < 1, 'the fundamental is never lost');
   assert.ok(p.open[1] > p.open[3] && p.open[0] === 0);
-  const off = cycles({ voice: 0, space: 0 }), q = off.playersAt(off.frame(T0 + 20_000), 2)[0];
+  const off = cycles({ voice: 0, space: 0, bronze: 0 }), q = off.playersAt(off.frame(T0 + 20_000), 2)[0];
   assert.deepEqual(q.body, [1, 1, 1, 1]);
   assert.deepEqual(q.open, [0, 0, 0, 0]);
 });
@@ -482,4 +483,91 @@ test('vowels: each phone wanders around the set vowel, slowly, and vowelMove 0 p
   assert.ok(a.some((v, i) => Math.abs(v - b[i]) > 30), 'phones differ');
   const pinned = cycles({ vowel: 0.5, vowelMove: 0 });
   assert.equal(pinned.vowelAt(0, T0 + 1000).f1, pinned.vowelAt(5, T0 + 400_000).f1);
+});
+
+// --- slendro without the grating: neighbors take turns ---------------------------------------
+
+test('slendro: neighboring steps never sound together, in the plan or during a turn', () => {
+  for (const S of [8, 6, 12]) {
+    const r = cycles({ scale: 'slendro', S });
+    const plan = r._plan(), G = r.groups.length;
+    for (let n = 0; n < plan.length; n++) {
+      const a = plan[n].in, b = plan[(n + 1) % plan.length].in;
+      for (let i = 0; i < G; i++) for (let j = i + 1; j < G; j++) if (a[i] && a[j]) assert.ok(Math.abs(r.groups[i].step - r.groups[j].step) !== 1, `S=${S} phrase ${n}: steps ${r.groups[i].step} and ${r.groups[j].step} together`);
+      for (let i = 0; i < G; i++) if (a[i]) assert.ok(!r.anchorSteps.some(s => Math.abs(s - r.groups[i].step) === 1), 'a tone a step from an anchor');
+      if (a.some(Boolean)) assert.ok(a.some((v, i) => v && b[i]), `S=${S} turn ${n} keeps nothing`);
+      assert.ok(a.filter(Boolean).length >= 1);
+    }
+  }
+  // in sound, through every handover: two tones a step apart are never both up
+  const r = cycles({ scale: 'slendro' });
+  let worst = 0;
+  for (let t = T0; t < T0 + 2400_000; t += 500) {
+    const fr = r.frame(t), tones = fr.voices.filter(v => v.role !== 'anchor');
+    for (const a of tones) for (const b of tones) {
+      const sa = r.groups[r.voices[a.v].group].step, sb = r.groups[r.voices[b.v].group].step;
+      if (Math.abs(sa - sb) === 1) worst = Math.max(worst, Math.min(a.tide, b.tide));
+    }
+  }
+  assert.ok(worst < 0.3, `neighbors overlapped at ${worst.toFixed(2)}`);
+});
+
+test('slendro: the foundation only takes a color that sits clear of the root, the kempyung', () => {
+  const r = cycles({ scale: 'slendro' });
+  assert.deepEqual(r.colorDegs, [3]);
+  for (const p of r._plan()) assert.ok([0, 3].includes(p.color));
+  const fr = r.frame(T0 + 100_000);
+  assert.equal(fr.bed.parts.length, 4);
+  const cents = 1200 * Math.log2(fr.bed.parts[3].f / fr.bed.parts[1].f), step = 1200 * Math.log2(cfg.scale.pseudo_octave_ratio) / 5;
+  assert.ok(Math.abs(cents - 3 * step) < 2, `foundation color ${cents.toFixed(0)} cents above the root's octave`);
+});
+
+// --- bronze: a strike stretched out -----------------------------------------------------------
+
+test('bronze: as a tone arrives its bell partials flare, then fade — the higher, the sooner', () => {
+  const r = cycles({ phrase: 80 });
+  // find an entry in the plan and follow that voice through it
+  const plan = r._plan();
+  let m = -1, gi = -1;
+  // (one that then stays for the next phrase too, so its hum can be checked)
+  for (let k = 1; k < 12 && m < 0; k++) { const g = plan[k - 1].in.findIndex((v, i) => !v && plan[k].in[i] && plan[k + 1].in[i]); if (g >= 0) { m = k; gi = g; } }
+  assert.ok(m > 0);
+  const vc = r.voices.find(v => v.group === gi);
+  // the model only runs forward, so walk through time once and note the
+  // voice at each moment of interest (seconds after the turn)
+  const P = 80, wanted = [-45, 0, 20, 70], got = [];
+  for (let t = T0; got.length < wanted.length && t < T0 + 3600_000; t += 250) {
+    const fr = r.frame(t);
+    if (fr.turn.u >= m + wanted[got.length] / P) got.push(fr.voices[vc.v]);
+  }
+  const [early, peak, later, late] = got;
+  assert.ok(early.flare[0] < 0.05, `before it arrives ${early.flare[0]}`);
+  assert.ok(peak.flare[0] > 0.6 && peak.flare[2] > 0.3, `at arrival ${peak.flare}`);
+  assert.ok(later.flare[0] > later.flare[1] && later.flare[1] > later.flare[2], 'high partials die first');
+  assert.ok(late.flare[0] < 0.05 && late.tide > 0.9, 'the hum stays after the bloom has gone');
+});
+
+test('bronze 0 adds nothing; with everything always in there is nothing to strike', () => {
+  const a = cycles({ bronze: 0, voice: 0 }), fa = a.frame(T0 + 100_000);
+  for (let k = 0; k < 8; k++) for (const p of a.playersAt(fa, k)) assert.deepEqual(p.open, [0, 0, 0, 0]);
+  const b = cycles({ space: 0 }), fb = b.frame(T0 + 100_000);
+  assert.ok(fb.voices.filter(v => v.role !== 'anchor').every(v => v.flare.every(x => x === 0)));
+});
+
+test('in every scale, tones closer than a minor third take turns', () => {
+  for (const scale of ['own', 'slendro']) for (const pure of [0, 1]) {
+    const r = cycles({ scale, pure });
+    let worst = 0;
+    for (let t = T0; t < T0 + 1800_000; t += 500) {
+      const tones = r.frame(t).voices.filter(v => v.role !== 'anchor' && v.tide > 0);
+      for (const a of tones) for (const b of tones) {
+        const cents = Math.abs(1200 * Math.log2(a.f0 / b.f0));
+        if (a.v < b.v && cents > 1 && cents < 280) worst = Math.max(worst, Math.min(a.tide, b.tide));
+      }
+    }
+    assert.ok(worst < 0.3, `${scale} pure ${pure}: close tones overlapped at ${worst.toFixed(2)}`);
+  }
+  // "all in" (space 0) is the one way to ask for everything at once
+  const wall = cycles({ space: 0 }).frame(T0 + 50_000);
+  assert.ok(wall.voices.every(v => v.tide === 1));
 });

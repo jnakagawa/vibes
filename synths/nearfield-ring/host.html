@@ -70,7 +70,7 @@
 <body>
 <header>
   <h1>NEARFIELD</h1>
-  <span class="sub">The ring — host · build 9</span>
+  <span class="sub">The ring — host · build 10</span>
   <span id="status">—</span>
 </header>
 <div id="main">
@@ -96,10 +96,10 @@
 </div>
 <div id="sheet"></div>
 
-<script src="ring-core.js?v=9"></script>
-<script src="ring-live.js?v=9"></script>
-<script src="ring-audio.js?v=9"></script>
-<script src="qr.js?v=9"></script>
+<script src="ring-core.js?v=10"></script>
+<script src="ring-live.js?v=10"></script>
+<script src="ring-audio.js?v=10"></script>
+<script src="qr.js?v=10"></script>
 <script>
 'use strict';
 const NR = window.NearfieldRing;
@@ -300,6 +300,21 @@ function drawVowel(c, w, h, t, st, col) {
   c.stroke();
   c.font = '15px ui-monospace, Menlo, monospace'; c.textAlign = 'right'; c.globalAlpha = 0.9; c.fillText(fm.name, w - 6, 16); c.globalAlpha = 1;
 }
+// bronze: four partials after an arrival, over a slowed-down ten-second loop:
+// they bloom together and fade at their own rates, the hum (left) staying
+function drawBronze(c, w, h, t, st) {
+  const age = (t % 10) * 2.6 - 3, taus = [Infinity, 16, 9, 5], base = h - 10;
+  const amps = app.ring.scale.spectrum.amps;
+  for (let j = 0; j < 4; j++) {
+    const fl = j === 0 ? 1 : st.bronze * (age < 0 ? Math.exp(age / 1.2) : Math.exp(-age / taus[j]));
+    const rise = age < 0 ? Math.exp(age / 1.2) : 1;
+    const hgt = (h - 22) * Math.min(1, (j === 0 ? rise : fl) * Math.sqrt(amps[j]) * (j === 0 ? 1 : 1.25));
+    const x = w * (0.2 + 0.2 * j);
+    c.globalAlpha = j === 0 ? 0.9 : 0.35 + 0.65 * Math.min(1, fl);
+    c.lineWidth = 5; line(c, x, base, x, base - Math.max(1, hgt)); c.lineWidth = 1.5;
+  }
+  c.globalAlpha = 1; c.strokeStyle = GHOST; line(c, 6, base + 4, w - 6, base + 4);
+}
 // dark: what is kept (left) and rolled off (right), 100 Hz to 8 kHz
 function drawDark(c, w, h, t, st, col) {
   const fc = 6000 * Math.pow(500 / 6000, st.soft), base = h - 10, top = 14, n = 60;
@@ -421,7 +436,7 @@ function buildPanel() {
   let g = group('Tuning and beating — the gamelan core');
   const tun = addDial(g, { name: 'tuning', color: ORANGE, get: () => app.state.pure, patch: v => set('pure', v), min: 0, max: 1, step: 0.01,
     fmt: v => v <= 0.02 ? 'gamelan' : v >= 0.98 ? 'pure' : `${pc(v)} pure`, draw: drawTuning,
-    hint: 'Gamelan: stretched octaves and bell-like partials, with a scale grown from that sound. Pure: true octaves and harmonics that fuse smooth. Grey marks show pure.' });
+    hint: 'Gamelan: stretched octaves and bell-like partials, with a scale grown from that sound. Pure: true octaves and harmonics that fuse smooth. Grey marks show pure. In slendro, neighboring steps take turns; tones that sound together sit three steps or an octave apart.' });
   addSeg(tun, () => app.state.scale, v => change({ scale: v }, { now: true }), [['own', '4 tones (ours)'], ['slendro', 'slendro (5)']]);
   addDial(g, { name: 'beating', color: ORANGE, get: () => app.state.rate, patch: v => set('rate', v), min: 0, max: 1.5, step: 0.01,
     fmt: v => v > 0 ? `${(1 / v).toFixed(1)} s wave` : 'still', draw: drawBeating,
@@ -435,6 +450,9 @@ function buildPanel() {
     fmt: v => NR.vowelFormants(v).name, draw: drawVowel,
     hint: 'Which vowel the tones sing, oo to ee, and how strongly. The humps are the bright regions that stay put while notes change.',
     second: { label: 'sung', get: () => app.state.voice, patch: v => set('voice', v), min: 0, max: 1, step: 0.01, fmt: pc } });
+  addDial(g, { name: 'bronze', color: BLUE, get: () => app.state.bronze, patch: v => set('bronze', v), min: 0, max: 1.5, step: 0.01,
+    fmt: pc, draw: drawBronze,
+    hint: 'A struck bar in slow motion: as a tone arrives its bell overtones bloom, then die away, the highest first, leaving the hum. No strike, just the color of one.' });
   addDial(g, { name: 'dark', color: WHITE, get: () => app.state.soft, patch: v => set('soft', v), min: 0, max: 1, step: 0.01,
     fmt: v => { const hz = 6000 * Math.pow(500 / 6000, v); return hz >= 1000 ? `${(hz / 1000).toFixed(1)} kHz` : `${Math.round(hz)} Hz`; }, draw: drawDark,
     hint: 'How much of the top is rolled off. Everything right of the slope is removed from the body of the sound.' });

@@ -275,6 +275,11 @@
         setT(n.gbl.gain, unit * p.depth, now, 0.3, 1e-4);
         setT(n.gbr.gain, unit * p.depth * (1 - 2 * p.trade), now, 0.3, 1e-4);
       });
+      // parts the current scale no longer has fall silent
+      for (let i = bed.parts.length; i < this.parts.length; i++) {
+        const n = this.parts[i];
+        setT(n.ga.gain, 0, now, 0.3, 1e-4); setT(n.gbl.gain, 0, now, 0.3, 1e-4); setT(n.gbr.gain, 0, now, 0.3, 1e-4);
+      }
       setT(this.gain.gain, bed.lvl * BED_GAIN, now, 0.4, 1e-4);
     }
     dispose() {

@@ -36,13 +36,14 @@ The piece borrows gamelan's structure, and these parts are the core:
 
 ### The dials
 
-Ten dials, each with a live picture of what it does:
+Eleven dials, each with a live picture of what it does:
 
 | Group | Dial | What it changes |
 |---|---|---|
 | Tuning and beating | **tuning** | gamelan (stretched) ↔ pure; switch for 4 tones / slendro |
 | | **beating** | how long each wave between paired phones takes |
 | Voice | **choir** | one exact pitch ↔ a small group drifting around it |
+| | **bronze** | bell overtones blooming as a tone arrives, then fading |
 | | **vowel** | which vowel the tones sing (oo → ee), and how strongly |
 | | **dark** | how much of the top is rolled off |
 | | **glints** | faint high harmonics twinkling above |
@@ -64,6 +65,25 @@ changes at the turns too, and its root swells slightly to mark them. **Space**
 sets how many tones are resting at any time; **turn every** sets the phrase
 length. This follows a full track of *Incandescence*, which keeps a 6 dB
 loudness range for ten minutes while trading tones roughly every 80 seconds.
+
+### Keeping close tones from grating
+
+Sustained tones a step apart grate. Gamelan avoids it by damping (a player
+stops the last key when striking the next), by sounding together only tones
+on the scale's consonances, and by keeping the low register nearly empty. The
+weave does the same in every scale:
+
+- tones closer than about a minor third take turns: when one comes in, its
+  neighbor leaves first;
+- partners are sought on the consonant intervals (in slendro, three steps or
+  an octave; in our own scale, its derived intervals);
+- every tone comes round: the longer one has waited, the sooner it is due;
+- the foundation carries its root, its octaves and at most one color, an
+  octave under the tones and clear of the root's octaves.
+
+**Bronze** gives the color of a struck bar without the strike: as a tone
+arrives its bell partials bloom, then die away over seconds, the highest
+first, leaving the hum. Anchors flare the same way at each turn.
 
 ### Vowels
 

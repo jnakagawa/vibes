@@ -192,6 +192,7 @@
       stack: 1,                      // repeat degrees an octave up, for more pitches to trade
       choir: 1,                      // singers' pitch spread (0 = one exact voice per phone)
       glint: 1,                      // the faint twinkling harmonics on top (0 = none)
+      bronze: 0.7,                   // bell partials blooming as a tone arrives (0 = none)
       voice: 0.5,                    // how sung the tones are (vowel colour amount)
       vowel: 0.4,                    // which vowel: 0 oo .. 0.25 oh .. 0.5 ah .. 0.75 eh .. 1 ee
       vowelMove: 0.5,                // how far each phone's vowel wanders around it
@@ -218,6 +219,8 @@
   }
 
   const PURE_CENTS = [0, 498.045, 701.955, 884.359];   // 1, 4/3, 3/2, 5/3
+  const BED_CLEAR_HZ = 38;   // a foundation color keeps at least this far from the root's octaves
+  const NEAR_CENTS = 290;   // closer than this (about a minor third), two sustained tones grate
   // vowels as (first, second) formant in Hz, ordered so neighbors morph smoothly
   const VOWELS = [['oo', 300, 870], ['oh', 570, 840], ['ah', 730, 1090], ['eh', 530, 1840], ['ee', 270, 2290]];
   function vowelFormants(x) {
@@ -313,16 +316,34 @@
         const n = seen[vc.degreeIndex] = (seen[vc.degreeIndex] ?? -1) + 1;
         if (this.state.stack && vc.role === 'voice' && n % 2 === 1) { vc.register += 1; vc.gain = 0.6; }
       }
-      const groups = [];
+      const slendro = this.state.scale === 'slendro', octC = 1200 * Math.log2(this.scale.pseudo_octave_ratio);
+      const degC = slendro ? [0, 1, 2, 3, 4].map(k => k * octC / 5) : this.scale.scale_cents;
+      const groups = [], anchorSteps = [], anchorCents = [], nDeg = degC.length;
       for (const vc of voices) {
-        if (vc.role === 'anchor') { vc.group = -1; continue; }
+        const step = vc.register * nDeg + vc.degreeIndex;   // position on the whole scale
+        const cents = vc.register * octC + degC[vc.degreeIndex];
+        if (vc.role === 'anchor') { vc.group = -1; anchorSteps.push(step); anchorCents.push(cents); continue; }
         const key = `${vc.degreeIndex}|${vc.register}`;
         let gi = groups.findIndex(g => g.key === key);
-        if (gi < 0) { gi = groups.length; groups.push({ key, degree: vc.degreeIndex }); }
+        if (gi < 0) { gi = groups.length; groups.push({ key, degree: vc.degreeIndex, step, cents }); }
         vc.group = gi;
         vc.stagger = (hash01(`${this.state.seed}|${vc.v}|stagger`) - 0.5) * 0.24;
       }
       this.groups = groups;
+      this.anchorSteps = anchorSteps;
+      this.anchorCents = anchorCents;
+      // The foundation's colors. Low tones crowd each other far sooner than
+      // high ones (gamelan keeps its bottom register nearly empty), so a color
+      // sits one octave under the tones, and only degrees that land clear of
+      // the root's octaves on both sides are used.
+      const pu = clamp(this.state.pure, 0, 1), O = this.scale.pseudo_octave_ratio + (2 - this.scale.pseudo_octave_ratio) * pu;
+      const base = this.scale.base_freq_hz, oc = 1200 * Math.log2(O);
+      const dc = slendro ? [0, 1, 2, 3, 4].map(k => k * oc / 5) : this.scale.scale_cents.map((c, i) => c + ((PURE_CENTS[i] ?? c) - c) * pu);
+      this.colorDegs = dc.map((c, d) => d).filter(d => {
+        if (d === 0) return false;
+        const f = base / O * Math.pow(2, dc[d] / 1200);
+        return Math.min(Math.abs(f - base / O), Math.abs(f - base)) >= BED_CLEAR_HZ;
+      });
       return voices;
     }
 
@@ -418,7 +439,7 @@
     // so every turn (the wrap included) keeps tones in common with the last.
     _plan() {
       const st = this.state, G = this.groups.length;
-      const key = `${st.seed}|${st.space}|${this.groups.map(g => g.key).join(',')}`;
+      const key = `${st.seed}|${st.space}|${st.scale}|${this.groups.map(g => g.key).join(',')}`;
       if (this._planKey === key) return this._planned;
       const rng = mulberry32(fnv1a(`${st.seed}|turns`));
       const pick = a => a[Math.floor(rng() * a.length)];
@@ -427,26 +448,88 @@
       const order = Array.from({ length: G }, (_, i) => i);
       for (let i = G - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }
       const cur = new Array(G).fill(0);
-      for (let i = 0; i < k0; i++) cur[order[i]] = 1;
-      const seq = [];
+      // How gamelan keeps close tones from grating: neighbors never ring
+      // together (a player damps the last key when striking the next), and
+      // what does sound together sits on the scale's consonances — for
+      // slendro three steps (kempyung) or an octave (gembyang), for our own
+      // scale its derived intervals. So: tones closer than about a minor
+      // third take turns, nothing sits that close to an anchor, and partners
+      // are sought on those intervals.
+      const C = i => this.groups[i].cents, octC = 1200 * Math.log2(this.scale.pseudo_octave_ratio);
+      const banned = i => this.anchorCents.some(a => Math.abs(a - C(i)) < NEAR_CENTS);
+      const good = st.scale === 'slendro' ? [3, 5, 8, 10].map(k => k * octC / 5)
+        : [1, 2].flatMap(o => [0, ...this.scale.scale_cents.slice(1)].map(c => c + (c === 0 ? o * octC : (o - 1) * octC)));
+      const partner = d => good.some(g => Math.abs(d - g) < 20);
+      const count = () => cur.reduce((a, v) => a + v, 0), free = i => !cur[i] && !banned(i) && !cur.some((v, j) => v && this._conflict(i, j));
+      const fit = i => cur.filter((v, j) => v && partner(Math.abs(C(i) - C(j)))).length + this.anchorCents.filter(a => partner(Math.abs(a - C(i)))).length;
+      if (st.space <= 0) cur.fill(1);   // "all in": the wall, by request
+      else for (const i of order) if (count() < k0 && free(i)) cur[i] = 1;
+      const seq = [], waited = new Array(G).fill(0), held = new Array(G).fill(0);   // phrases out / in
       let color = 0;
+      const colorDegs = this.colorDegs;
       for (let n = 0; n < 16; n++) {
         if (n > 0 && st.space > 0) {
-          const ins = () => cur.map((v, i) => v ? i : -1).filter(i => i >= 0), outs = () => cur.map((v, i) => v ? -1 : i).filter(i => i >= 0);
-          let brought = -1;
-          if (outs().length && ins().length) { brought = pick(outs()); const sent = pick(ins()); cur[brought] = 1; cur[sent] = 0; }
-          const r = rng(), size = ins().length;
-          if (r < 0.3 && size < kmax && outs().length) cur[pick(outs())] = 1;
-          else if (r < 0.6 && size > kmin) { const c = ins().filter(i => i !== brought); if (c.length) cur[pick(c)] = 0; }
+          const insNow = cur.map((v, i) => v ? i : -1).filter(i => i >= 0);
+          // bring one tone in: the one that fits best with what stays
+          let best = null;
+          for (let i = 0; i < G; i++) {
+            if (cur[i] || banned(i)) continue;
+            const kept = insNow.filter(j => !this._conflict(i, j));
+            if (!kept.length && insNow.length) continue;   // always keep a tone in common
+            // ... and the longer a tone has waited, the more it is due
+            const score = kept.filter(j => partner(Math.abs(C(i) - C(j)))).length +
+              this.anchorCents.filter(a => partner(Math.abs(a - C(i)))).length + Math.min(6, waited[i]) * 1.2 + rng() * 1.5;
+            if (!best || score > best.score) best = { i, kept, score };
+          }
+          if (best) {
+            for (const j of insNow) if (this._conflict(best.i, j)) cur[j] = 0;   // damp its neighbors
+            cur[best.i] = 1;
+            const others = () => best.kept.filter(j => cur[j]);
+            const eldest = () => others().sort((x, y) => held[y] - held[x] || x - y)[0];
+            // too many, or nothing was damped: the one that has sounded longest steps out
+            while (count() > kmax && others().length >= 2) cur[eldest()] = 0;
+            if (best.kept.length === insNow.length && others().length >= 2 && count() > kmin && rng() < 0.6) cur[eldest()] = 0;
+            // too few: add whatever fits best without crowding
+            if (count() < kmin) { const c = order.filter(free).sort((x, y) => fit(y) - fit(x)); if (c.length) cur[c[0]] = 1; }
+          }
         }
+        for (let i = 0; i < G; i++) { if (cur[i]) { held[i]++; waited[i] = 0; } else { waited[i]++; held[i] = 0; } }
         // the foundation's color: one featured degree at a time, held when it can be
-        const feat = [...new Set(this.groups.filter((g, i) => cur[i] && g.degree !== 0).map(g => g.degree))];
+        const feat = [...new Set(this.groups.filter((g, i) => cur[i] && colorDegs.includes(g.degree)).map(g => g.degree))];
         if (!feat.includes(color) || rng() > 0.6) color = feat.length ? pick(feat) : 0;
         seq.push({ in: cur.slice(), color });
       }
       this._planKey = key;
       this._planned = seq.concat(seq.slice(1, -1).reverse());
       return this._planned;
+    }
+
+    // two tone groups too close to ring together (unless "all in" is asked for)
+    _conflict(i, j) { return i !== j && this.state.space > 0 && Math.abs(this.groups[i].cents - this.groups[j].cents) < NEAR_CENTS; }
+
+    // a tone group's gate: overlapping handover normally; but when it trades
+    // places with a neighboring step, the old one leaves before the new one
+    // arrives, so the two never ring together
+    _groupGate(gi, u, stagger) {
+      const plan = this._plan(), L = plan.length, m = Math.round(u);
+      const A = plan[wrap(m - 1, L)].in, B = plan[wrap(m, L)].in;
+      if (A[gi] === B[gi]) return A[gi];
+      for (let j = 0; j < A.length; j++) {
+        if (A[j] !== B[j] && A[j] !== A[gi] && this._conflict(gi, j)) return this._gate(p => p.in[gi], u, 0, -0.07, 0.26);
+      }
+      return this._gate(p => p.in[gi], u, stagger);
+    }
+
+    // seconds since this group last came in (negative while it is still
+    // arriving; Infinity if it has not entered lately or is on its way out)
+    _entryAge(gi, u, stagger) {
+      const plan = this._plan(), L = plan.length, m0 = Math.round(u), P = Math.max(20, this.state.phrase);
+      for (let m = m0; m > m0 - 8; m--) {
+        const before = plan[wrap(m - 1, L)].in[gi], after = plan[wrap(m, L)].in[gi];
+        if (!before && after) return (u - (m + stagger - 0.08)) * P;
+        if (before && !after) return Infinity;
+      }
+      return Infinity;
     }
 
     // 0..1: is this group in at phrase position u? Around a turn a tone fades
@@ -517,6 +600,7 @@
       const anchors = this.voices.filter(x => x.role === 'anchor');
       // where we are in the weave (whole numbers of u are the turns)
       const u = this.turnPos(adv.ct);
+      const bump = Math.exp(-Math.pow((u - Math.round(u)) / 0.1, 2));   // 1 at a turn
       // each layer: its own width (a voice as a cloud over several phones)
       const widths = {}, peaks = {};
       for (const role of ['anchor', 'voice', 'shimmer']) {
@@ -542,12 +626,19 @@
             : 0.5 + 0.5 * Math.sin(phase + 2 * Math.PI * ai / Math.max(anchors.length, 1));
         }
         // anchors hold (they breathe); the other tones come and go at the turns
-        const tide = vc.group < 0 ? 1 : this._gate(p => p.in[vc.group], u, vc.stagger);
+        const tide = vc.group < 0 ? 1 : this._groupGate(vc.group, u, vc.stagger);
+        // Bronze: a struck bar's bell partials flare and die away while the
+        // hum stays. Here the strike is stretched out: as a tone arrives its
+        // upper partials bloom, then recede over seconds — the higher, the
+        // sooner. Anchors flare at each turn, with the root's gong-like swell.
+        const age = vc.group < 0 ? null : this._entryAge(vc.group, u, vc.stagger);
+        const flare = vc.group < 0 ? [bump, 0.7 * bump, 0.5 * bump]
+          : [16, 9, 5].map(tau => age === Infinity ? 0 : age < 0 ? Math.exp(age / 6) : Math.exp(-age / tau));
         const level = roleP.base_gain * vc.gain * env * breathG * entry * c.masterM * tide * st.L[vc.role][0];
         const posU = vc.v + adv.lt[LAYER_INDEX[vc.role]] * S;
         const shares = windowShares(posU, w).map(([iU, g]) => ({ slot: wrap(iU, S), g }));
         return {
-          v: vc.v, role: vc.role, f0, level, tide, posU, pos: wrap(posU, S), shares, peak: peaks[vc.role],
+          v: vc.v, role: vc.role, f0, level, tide, flare, posU, pos: wrap(posU, S), shares, peak: peaks[vc.role],
           color: voiceColor(f0, vc.role, this.scale.base_freq_hz, es.pseudo_octave_ratio),
           fp: this.fingerprint(vc.v, vc.role, f0, tMs, c.fpAmp),
           bloom: vc.role === 'anchor' ? 0.35 : st.bloom * c.bloomM,
@@ -578,19 +669,16 @@
       // which keeps the bottom steadier than what sits above it.
       const O = es.pseudo_octave_ratio, root = pitchHzFor(es, 0, -2);
       // The root and its octaves never leave; at each turn the root swells a
-      // little, like a gong marking it. One color (a featured degree, two
-      // octaves down, with its octave) sits on top and changes at the turns.
-      const bump = Math.exp(-Math.pow((u - Math.round(u)) / 0.1, 2));
-      const colorParts = [1, 2, 3].flatMap(deg => {
-        const g = this._gate(p => p.color === deg, u, 0, -0.13, 0.26), f = pitchHzFor(es, deg, -2);
-        return [[f, 0.35 * g, 0.85, 0.6], [f * O, 0.14 * g, 0.85, 0.4]];
-      });
+      // little, like a gong marking it. One color (a featured degree, an
+      // octave under the tones) sits on top and changes at the turns.
+      const colorParts = this.colorDegs.map(deg =>
+        [pitchHzFor(es, deg, -1), 0.3 * this._gate(p => p.color === deg, u, 0, -0.13, 0.26), 0.85, 0.5]);
       const bed = {
         lvl: st.bed * c.masterM * (0.85 + 0.15 * Math.sin(phase + 1)),
         parts: [[root, 1 + 0.3 * bump, 0.35, 0], [root * O, 0.45, 0.85, 0.75], [root * O * O, 0.2, 0.85, 0], ...colorParts]
           .map(([f, g, depth, trade], i) => ({ f, g, depth, trade, beat: this.beatHz(f) * (0.8 + 0.4 * hash01(`${st.seed}|bed|${i}`)) })),
       };
-      const groupsIn = this.groups.filter((g, i) => this._gate(p => p.in[i], u, 0) > 0.5).length;
+      const groupsIn = this.groups.filter((g, i) => this._groupGate(i, u, 0) > 0.5).length;
 
       const absRate = Math.abs(rate);
       return {
@@ -662,6 +750,10 @@
           singers.push({ g: 1 / Math.sqrt(nS), detunes: detunes.map(d => d + c) });
         }
         const vw = this.vowelGains(slot, vc, fr), gl = this.glints(slot, vc, fr);
+        if (st.bronze > 0) for (let j = 1; j < 4; j++) {
+          vw.open[j] += st.bronze * vc.flare[j - 1];
+          if (vc.f0 * fr.ratios[j] >= 700) vw.bright[j - 1] += st.bronze * 0.4 * vc.flare[j - 1] / j;
+        }
         out.push({ v: vc.v, vc, g, detune: singers[0].detunes[0], detunes: singers[0].detunes, singers,
           glints: gl.map((x, i) => x + vw.bright[i]), body: vw.body, open: vw.open });
       }
