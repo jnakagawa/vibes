@@ -5,3 +5,4 @@ void main(void) {
 vUV=(position*madd+madd)*scale;gl_Position=vec4(position,0.0,1.0);
 #define CUSTOM_VERTEX_MAIN_END
 }`;e.ShadersStore[t]||(e.ShadersStore[t]=n);var r={name:t,shader:n};export{r as postprocessVertexShader};
+//# sourceMappingURL=postprocess.vertex-DJCmMhI8.js.map
