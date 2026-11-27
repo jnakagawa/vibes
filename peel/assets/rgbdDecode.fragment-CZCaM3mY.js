@@ -121,3 +121,4 @@ uint2float(rstate*2447445414u));}
 #define CUSTOM_FRAGMENT_DEFINITIONS
 void main(void) 
 {gl_FragColor=vec4(fromRGBD(texture2D(textureSampler,vUV)),1.0);}`;e.ShadersStore[i]||(e.ShadersStore[i]=a);var o=[r];for(let t of o)e.IncludesShadersStore[t.name]||(e.IncludesShadersStore[t.name]=t.shader);var s={name:i,shader:a};export{s as rgbdDecodePixelShader};
+//# sourceMappingURL=rgbdDecode.fragment-CZCaM3mY.js.map

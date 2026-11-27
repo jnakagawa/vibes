@@ -6,3 +6,4 @@ fn main(input : VertexInputs)->FragmentInputs {
 vertexOutputs.vPosition=vertexInputs.position;vertexOutputs.vUV=vertexInputs.position*madd+madd;vertexOutputs.position= vec4f(vertexInputs.position,0.0,1.0);
 #define CUSTOM_VERTEX_MAIN_END
 }`;e.ShadersStoreWGSL[t]||(e.ShadersStoreWGSL[t]=n);var r={name:t,shader:n};export{r as proceduralVertexShaderWGSL};
+//# sourceMappingURL=procedural.vertex-D3o6xkF2.js.map
